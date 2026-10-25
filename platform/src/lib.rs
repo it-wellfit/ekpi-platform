@@ -11,6 +11,7 @@ pub mod causal;
 pub mod coverage_report;
 pub mod docs;
 pub mod engine;
+pub mod eval;
 pub mod evidence;
 pub mod export;
 pub mod formal_verification;

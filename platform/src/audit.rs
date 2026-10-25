@@ -16,6 +16,7 @@ pub enum AuditEventType {
     CaseDecision,
     ProcessConformance,
     EvidenceReview,
+    KnowledgeSearch,
 }
 
 impl AuditEventType {
@@ -26,6 +27,7 @@ impl AuditEventType {
             AuditEventType::CaseDecision => "case_decision",
             AuditEventType::ProcessConformance => "process_conformance",
             AuditEventType::EvidenceReview => "evidence_review",
+            AuditEventType::KnowledgeSearch => "knowledge_search",
         }
     }
 }
@@ -244,6 +246,7 @@ mod tests {
             AuditEventType::CaseDecision,
             AuditEventType::ProcessConformance,
             AuditEventType::EvidenceReview,
+            AuditEventType::KnowledgeSearch,
         ];
         let names: Vec<&str> = types.iter().map(|t| t.name()).collect();
         let mut sorted = names.clone();

@@ -136,6 +136,53 @@ fn run(args: &[String]) -> i32 {
     let want_html = args.iter().any(|a| a == "--html");
     let export_dir = flag_value(args, "--export-legalruleml").map(PathBuf::from);
 
+    // ── --search QUERY：知識搜尋 with citations（Slice 3）。
+    if let Some(query) = flag_value(args, "--search") {
+        let data_dir = flag_value(args, "--data")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_data_dir);
+        let platform = match load_platform(&data_dir, threshold) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        };
+        let mut doc_versions = std::collections::BTreeMap::new();
+        for doc in &platform.docs.documents {
+            if let Some(ver) = doc.versions.last() {
+                doc_versions.insert(doc.doc_id.clone(), ver.version.clone());
+            }
+        }
+        let retriever = ekp_platform::retrieval::Retriever::build(
+            &platform.docs,
+            &doc_versions,
+            threshold,
+        );
+        let result = retriever.search_with_citations(&query, 5, &platform.docs);
+        if result.has_evidence() {
+            if let ekp_platform::retrieval::SearchResult::Hits(citations) = result {
+                println!("search: \"{}\"", query);
+                println!("results: {}", citations.len());
+                for (i, c) in citations.iter().enumerate() {
+                    println!(
+                        "  [{}] {}",
+                        i + 1,
+                        c.format(),
+                    );
+                    println!("      {}", c.verbatim_text);
+                }
+            }
+        } else {
+            println!("search: \"{}\"", query);
+            println!("result: insufficient evidence");
+            if let ekp_platform::retrieval::SearchResult::InsufficientEvidence { reason } = result {
+                println!("reason: {}", reason);
+            }
+        }
+        return 0;
+    }
+
     if want_html && !args.iter().any(|a| a == "--out") {
         eprintln!("FAIL: --html requires --out");
         return 2;
@@ -146,8 +193,43 @@ fn run(args: &[String]) -> i32 {
         if export_dir.is_none() && !want_coverage {
             if schema_flag {
                 // 純 schema 校驗：檢查結果即成敗（違規已在上方 return 1）。
-                return 0;
+        return 0;
+    }
+
+    // ── --eval --test-set PATH：知識搜尋評估（Slice 4）。
+    if let Some(test_set_path) = flag_value(args, "--test-set") {
+        let data_dir = flag_value(args, "--data")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_data_dir);
+        let platform = match load_platform(&data_dir, threshold) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
             }
+        };
+        let mut doc_versions = std::collections::BTreeMap::new();
+        for doc in &platform.docs.documents {
+            if let Some(ver) = doc.versions.last() {
+                doc_versions.insert(doc.doc_id.clone(), ver.version.clone());
+            }
+        }
+        let cases = match ekp_platform::eval::load_eval_cases(std::path::Path::new(&test_set_path)) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        };
+        let metrics = ekp_platform::eval::run_eval(&platform.docs, &doc_versions, &cases, threshold);
+        println!("eval: {} cases", metrics.total_cases);
+        println!("  precision@1: {:.2}", metrics.precision_at_1);
+        println!("  citation support: {:.2}", metrics.citation_support_rate);
+        println!("  permission isolation: {:.2}", metrics.permission_isolation_rate);
+        println!("  avg latency: {:.1}ms", metrics.avg_latency_ms);
+        println!("  hits: {}/{}", metrics.hits, metrics.total_cases);
+        return 0;
+    }
             eprintln!("{USAGE}");
             return 2;
         }

@@ -24,6 +24,9 @@ pub struct Doc {
     #[serde(default)]
     pub title: String,
     pub versions: Vec<DocVersion>,
+    /// Roles that may access this document. Empty means public (all roles).
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
