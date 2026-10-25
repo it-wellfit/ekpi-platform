@@ -19,7 +19,7 @@ The MVP is deliberately narrower than the target product. It proves the adjudica
 | Versioned documents and clause anchors | `platform/data/docs.json`; `docs` and `engine` modules; SHA-256 bindings | A decision resolves to one source version and a clause anchor; stale or ambiguous versions abstain | Unit/integration tests and self-test | Implemented for synthetic data |
 | Active-rule layer and schema validation | `platform/data/rules.json`; `design/rule-schema-v0.1.1.schema.json`; `--declared-rules-schema` | 19 active + 1 draft record; draft is never consumable; invalid schema fails closed | Schema command (20 records), self-test, tests | Implemented for synthetic data |
 | Process replay | `process` module; process models; forbidden pairs, deadlines, loops | Forbidden ordering produces `violate`; insufficient events produce `insufficient_evidence` or `escalate` | Seed/edge cases and self-test | Implemented for synthetic data |
-| Evidence retrieval and abstention | `retrieval`/`evidence`; deterministic threshold; citations | Missing, conflicting or unregistered evidence never produces an unsupported `comply` | Evaluation corpus, hard gates H-1–H-6 | Implemented for synthetic data |
+| Evidence retrieval and abstention | `retrieval`/`evidence`; deterministic threshold; citations; `--search`; fixed 24-case retrieval set | Missing, conflicting or unregistered evidence never produces an unsupported `comply`; search cites a source or abstains | Evaluation corpus, hard gates H-1–H-6, `--eval` search gate | Implemented for synthetic data; lexical search only, no identity filter |
 | Deterministic decision snapshots | `snapshot` module; replay checks | Same input snapshot replays identically | Self-test and integration tests | Implemented for synthetic data |
 | Evaluation harness and reports | `eval` crate; `--out`, `--coverage-report`, `--html` | Reproducible metrics, per-case failure detail, coverage and zero-script HTML | `eval` tests and self-test; smoke gate | Implemented |
 | LegalRuleML export | `export` module; `--export-legalruleml` | Official root/namespace and required statement counts; no stub export | Smoke gate structural checks | Implemented for active corpus |
@@ -44,6 +44,7 @@ The MVP must demonstrate at least these scenarios on synthetic or authorized non
 8. The same snapshot replays identically and the report numbers are derivable from persisted artifacts.
 9. A local governance record is written to the append-only ledger and the audit view verifies the chain.
 10. A fresh clone from the backup bundle passes the full local check and the restore is logged.
+11. A knowledge question returns either a verbatim citation with its source anchor or `insufficient evidence`; the fixed retrieval set passes without claiming AI quality or authorization.
 
 Items 1–9 have synthetic test coverage. Item 10 is a release/operations gate, not a unit test; it must be executed and logged.
 

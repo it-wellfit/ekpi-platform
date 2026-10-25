@@ -59,6 +59,7 @@ In scope:
 - Active-rule layer with schema validation and draft rejection.
 - Process replay with forbidden-pair, deadline and loop checks.
 - Evidence retrieval with citations and conservative abstention.
+- A lexical knowledge-search CLI that returns verbatim cited clauses or an honest refusal, plus a fixed regression set.
 - Deterministic decision snapshots and replay checks.
 - A CLI that produces evaluation, coverage and LegalRuleML artifacts.
 - A local, server-rendered governance workbench for projects, evidence, workflows, quality cases and gate decisions.
