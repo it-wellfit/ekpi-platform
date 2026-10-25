@@ -106,9 +106,14 @@ pub fn run_eval(
         let perm = if case.roles.is_empty() {
             None
         } else {
-            Some(PermissionContext::new("T1", "eval-user", case.roles.clone()))
+            Some(PermissionContext::new(
+                "T1",
+                "eval-user",
+                case.roles.clone(),
+            ))
         };
-        let retriever = Retriever::build_with_permissions(db, doc_versions, threshold, perm.as_ref());
+        let retriever =
+            Retriever::build_with_permissions(db, doc_versions, threshold, perm.as_ref());
         let result = retriever.search_with_citations(&case.question, 5, db);
         let latency_ms = start.elapsed().as_millis() as u64;
 
@@ -117,9 +122,7 @@ pub fn run_eval(
                 let top = citations.first().map(|c| c.score).unwrap_or(0.0);
                 let hit = citations
                     .first()
-                    .map(|c| {
-                        c.doc_id == case.expected_doc_id && c.section == case.expected_section
-                    })
+                    .map(|c| c.doc_id == case.expected_doc_id && c.section == case.expected_section)
                     .unwrap_or(false);
                 (hit, top, citations.len(), true)
             }
@@ -130,16 +133,14 @@ pub fn run_eval(
             true
         } else {
             match &result {
-                SearchResult::Hits(citations) => {
-                    citations.iter().all(|c| {
-                        db.doc(&c.doc_id)
-                            .map(|d| {
-                                d.permissions.is_empty()
-                                    || d.permissions.iter().any(|p| case.roles.contains(p))
-                            })
-                            .unwrap_or(true)
-                    })
-                }
+                SearchResult::Hits(citations) => citations.iter().all(|c| {
+                    db.doc(&c.doc_id)
+                        .map(|d| {
+                            d.permissions.is_empty()
+                                || d.permissions.iter().any(|p| case.roles.contains(p))
+                        })
+                        .unwrap_or(true)
+                }),
                 _ => true,
             }
         };
@@ -259,7 +260,8 @@ mod tests {
 
     #[test]
     fn load_eval_cases_from_json() {
-        let json = r#"[{"id":"TC-1","question":"test","expected_doc_id":"D1","expected_section":"s1"}]"#;
+        let json =
+            r#"[{"id":"TC-1","question":"test","expected_doc_id":"D1","expected_section":"s1"}]"#;
         let path = std::env::temp_dir().join("test_eval_cases.json");
         std::fs::write(&path, json).unwrap();
         let cases = load_eval_cases(&path).unwrap();

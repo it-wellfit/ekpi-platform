@@ -32,7 +32,9 @@ impl PermissionContext {
         if doc_permissions.is_empty() {
             return true;
         }
-        doc_permissions.iter().any(|p| self.roles.iter().any(|r| r == p))
+        doc_permissions
+            .iter()
+            .any(|p| self.roles.iter().any(|r| r == p))
     }
 }
 
@@ -233,11 +235,19 @@ impl Retriever {
 
     /// Search and return a SearchResult with verified citations.
     /// Returns InsufficientEvidence if no section meets the threshold.
-    pub fn search_with_citations(&self, query: &str, top_k: usize, db: &DocDatabase) -> SearchResult {
+    pub fn search_with_citations(
+        &self,
+        query: &str,
+        top_k: usize,
+        db: &DocDatabase,
+    ) -> SearchResult {
         let hits = self.search(query, top_k);
         if hits.is_empty() {
             return SearchResult::InsufficientEvidence {
-                reason: format!("no section scored above threshold {:.2} for query", self.threshold),
+                reason: format!(
+                    "no section scored above threshold {:.2} for query",
+                    self.threshold
+                ),
             };
         }
         let citations: Vec<Citation> = hits
@@ -428,7 +438,8 @@ mod tests {
         doc_versions.insert("SECRET-DOC".to_string(), "1.0".to_string());
 
         let viewer_ctx = PermissionContext::new("T1", "U1", vec!["viewer".to_string()]);
-        let r_viewer = Retriever::build_with_permissions(&db, &doc_versions, 0.1, Some(&viewer_ctx));
+        let r_viewer =
+            Retriever::build_with_permissions(&db, &doc_versions, 0.1, Some(&viewer_ctx));
         assert_eq!(r_viewer.pool_doc_ids(), vec!["PUBLIC-DOC"]);
         assert_eq!(r_viewer.pool_size(), 1);
 
@@ -464,7 +475,10 @@ mod tests {
         let viewer_ctx = PermissionContext::new("T1", "U1", vec!["viewer".to_string()]);
         let r = Retriever::build_with_permissions(&db, &doc_versions, 0.0, Some(&viewer_ctx));
         assert!(r.is_empty(), "viewer must not see admin-only doc");
-        assert!(r.locate("confidential").is_none(), "no retrieval hit for unauthorized user");
+        assert!(
+            r.locate("confidential").is_none(),
+            "no retrieval hit for unauthorized user"
+        );
     }
 
     #[test]
