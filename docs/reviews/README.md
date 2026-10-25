@@ -1,6 +1,6 @@
 # Reviews and improvements
 
-- **Status:** Active; no completed review or retrospective report yet
+- **Status:** Active; one bootstrap retrospective completed
 - **Owner:** Engineering + QA
 - **Last reviewed:** 2026-10-26
 - **Quality gates:** [Quality gates](../development/quality-gates.md)
@@ -39,16 +39,16 @@ Every accepted improvement gets an ID, an owner, a due trigger and a link. “Im
 
 | ID | Source | Improvement | Owner | Priority | Tracking | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| IMP-001 | RETRO-0001 | Add `scripts/check-docs` and wire it into `scripts/check` and `gate.ps1` | Engineering | High | This change | In progress |
-| IMP-002 | RETRO-0001 | Correct stale operational claims (database, WORM, tenant, monitoring, restore) | Engineering | High | This change | In progress |
-| IMP-003 | RETRO-0001 | Execute a real backup/restore drill and record it in `operations/backup-log.md` | Engineering | High | Release/ops gate | Open |
-| IMP-004 | RETRO-0001 | Complete S10–S17 traceability rows with contract IDs and verified/validated distinction | QA | High | `traceability/register.md` | In progress |
+| IMP-001 | RETRO-0001 | Add `scripts/check-docs` and wire it into `scripts/check` and `gate.ps1` | Engineering | High | This change | Done (`283f83a`) |
+| IMP-002 | RETRO-0001 | Correct stale operational claims (database, WORM, tenant, monitoring, restore) | Engineering | High | This change | Done (`283f83a`) |
+| IMP-003 | RETRO-0001 | Execute a real backup/restore drill and record it in `operations/backup-log.md` | Engineering | High | Release/ops gate | Done (`283f83a`, [backup log](../operations/backup-log.md)) |
+| IMP-004 | RETRO-0001 | Complete S10–S17 traceability rows with contract IDs and verified/validated distinction | QA | High | `traceability/register.md` | Done (`283f83a`) |
 | IMP-005 | RETRO-0001 | Provision five triage labels, create issues and run CI after a remote and `gh` auth exist | Engineering | High | GitHub Issues/CI | Blocked |
 | IMP-006 | RETRO-0001 | Add tool-failure cases and a failure-injection harness when a tool/agent path is introduced | QA | Medium | `quality/ai-evaluation.md` `EVAL-GAP-01` | Open |
 | IMP-007 | RETRO-0001 | Delete or implement the placeholder `api.rs` before any HTTP API work | Backend | Medium | `architecture` `ARCH-GAP-01` | Open (blocked by no approved API scope) |
 | IMP-008 | RETRO-0001 | Assign product, security, operations and data owners | Product / Security / Ops | High | `operations/production-readiness.md` | Blocked |
 
-Status vocabulary: `Open`, `In progress`, `Done`, `Blocked`, `Deferred`. `Done` requires linked evidence, not a self-assertion.
+Status vocabulary: `Open`, `In progress`, `Done`, `Blocked`, `Deferred`. `Done` requires linked evidence, not a self-assertion. IMP-001–004 are closed by the 2026-10-26 gate and restore drill; see [backup log](../operations/backup-log.md) and [traceability register](../traceability/register.md).
 
 ## Rules for review findings
 

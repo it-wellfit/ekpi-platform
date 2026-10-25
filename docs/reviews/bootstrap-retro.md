@@ -3,8 +3,8 @@
 - **Date:** 2026-10-26
 - **Facilitator:** Engineering (self-review; no independent facilitator)
 - **Scope:** Workflow bootstrap, community skills, documentation architecture, quality gates
-- **Status:** Draft; actions tracked in the [improvement register](README.md#improvement-register)
-- **Evidence:** repository state at `a2520ed` plus the uncommitted documentation change under review
+- **Status:** Closed for this round; actions tracked in the [improvement register](README.md#improvement-register)
+- **Evidence:** repository state at `a2520ed`, then verification at `283f83a` (gate, docs/secret checks and restore drill)
 
 ## Ground rules
 
@@ -18,13 +18,16 @@ This is a self-review of the bootstrap round. It is **not** evidence of team per
 - A first commit (`a2520ed`, 199 files) captured the working baseline; the worktree was clean at that point.
 - A canonical documentation index, product/architecture/backend/frontend/contracts/quality/operations pages, a Phase A/B gate page and an AI evaluation policy were drafted.
 - Live metadata for three community skill repositories was checked; no additional bundle was installed.
-- The repository still has no remote, no `gh` authentication, no pilot user, no named security/operations owner and no executed restore drill.
+- The repository still has no remote, no `gh` authentication, no pilot user, no named security/operations owner and no off-host backup, RPO/RTO or scheduled restore programme. The local restore drill was executed during this round and is logged.
+- `scripts/check` now rejects missing required documents and broken relative links, and scans tracked/untracked files for high-signal secret patterns.
+- `gate.ps1 -IncludeSmoke` passed 12/12 at `283f83a`; a fresh clone of the generated bundle passed the restored `scripts/check.ps1` (see [backup log](../operations/backup-log.md)).
 
 ## What went well
 
 - The evidence rule held: stale claims such as “WORM”, “tenant isolated” and “PostgreSQL required” were found by inspecting code and wiring, not by trusting prose.
 - The module audit distinguished served surfaces from library-only experiments, which prevents capability inflation.
 - The first commit created a reproducible baseline before the documentation expansion.
+- The restore drill was executed against a committed revision, not an uncommitted worktree, and recorded with the tested revision and bundle checksum.
 - The decision to keep GitHub Issues as the tracker and avoid duplicating governance rules in new files preserved one source of truth.
 
 ## What did not go well
@@ -45,10 +48,10 @@ This is a self-review of the bootstrap round. It is **not** evidence of team per
 
 | ID | Action | Owner | Due / trigger | Status |
 | --- | --- | --- | --- | --- |
-| IMP-001 | Add `scripts/check-docs` and make it part of `scripts/check` and `gate.ps1` | Engineering | This change | In progress |
-| IMP-002 | Correct stale operational claims and label historical documents | Engineering | This change | In progress |
-| IMP-003 | Run a real bundle + restore drill and log it | Engineering | Before release/tag | Open |
-| IMP-004 | Complete S10–S17 traceability rows with contract IDs and verified/validated columns | QA | This change | In progress |
+| IMP-001 | Add `scripts/check-docs` and make it part of `scripts/check` and `gate.ps1` | Engineering | This change | Done |
+| IMP-002 | Correct stale operational claims and label historical documents | Engineering | This change | Done |
+| IMP-003 | Run a real bundle + restore drill and log it | Engineering | Before release/tag | Done |
+| IMP-004 | Complete S10–S17 traceability rows with contract IDs and verified/validated columns | QA | This change | Done |
 | IMP-005 | Provision triage labels, create issues and run CI once remote/auth exist | Engineering | Remote/auth available | Blocked |
 | IMP-006 | Add tool-failure cases when a tool/agent path is introduced | QA | AI/tool scope approved | Open |
 | IMP-007 | Remove or implement `api.rs` before HTTP API work | Backend | API scope approved | Open |
@@ -62,7 +65,7 @@ This is a self-review of the bootstrap round. It is **not** evidence of team per
 
 ## Review
 
-Recheck this retro at the next release or after the first real pilot session. A retro action is closed only with linked evidence in the improvement register.
+Recheck this retro at the next release or after the first real pilot session. IMP-001–004 are closed by the 2026-10-26 gate and restore drill; an action is closed only with linked evidence in the improvement register.
 
 ## Next retro trigger
 

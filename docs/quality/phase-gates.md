@@ -32,14 +32,14 @@ Phase A asks: can a real, authorized workflow be completed, reproduced and hande
 | A5 | Security | Authentication, authorization, input validation, secret handling and data isolation are appropriate to the approved scope | Threat model, boundary tests, secret scan, manual review | `Partial` | Local-only scope has no auth/tenant; not acceptable for shared deployment |
 | A6 | Maintainability | Install, configure, diagnose and hand off from the documentation | Install/config/troubleshooting docs; operator walkthrough | `Partial` | No named operator yet; run a handoff dry run |
 | A7 | Traceability | Each in-scope requirement links to spec, code, test, release evidence and validation | [Traceability register](../traceability/register.md) and [governance/10](../governance/10-traceability-baseline.md) | `Partial` | Complete rows for the pilot scope; distinguish verified vs validated |
-| A8 | Backup and restore | A backup exists from the first important version; a fresh clone passes the restore drill; the result is logged | [Backup log](../operations/backup-log.md) | `Partial` | Procedure and scripts exist; execute and record the drill |
+| A8 | Backup and restore | A backup exists from the first important version; a fresh clone passes the restore drill; the result is logged | [Backup log](../operations/backup-log.md), 2026-10-26 local drill | `Met` (local bundle) | Off-host encrypted copy, approved RPO/RTO and scheduled restore tests remain Phase B `B7` |
 | A9 | AI quality (if AI is in scope) | Fixed evaluation set covers normal, ambiguous, adversarial, wrong-source, tool-failure and insufficient-context cases; changes rerun the applicable set | [AI evaluation](ai-evaluation.md) | `Partial` | Deterministic corpus covers 5 of 6 dimensions; tool-failure cases are absent; no LLM/agent exists |
 | A10 | Documentation and handoff | Scope, known limits, commands, recovery and evidence are current and readable by a new operator | Docs map, release template, runbooks | `Partial` | Add the pilot handoff record and close stale operational claims |
 | A11 | Review and improvement | Major review findings are fixed; a retro is completed; accepted improvements are tracked | PR/review report; [reviews](../reviews/README.md) | `Partial` | No GitHub review/issue execution yet; local review and improvement register exist |
 
 ### Phase A decision
 
-**Not approved.** The prototype is testable and locally runnable, but A1 (real user value), A8 (restore-drill evidence), A7 (complete traceability) and the pilot-scope parts of A2/A3/A5/A6/A10 are not met. Passing A4 alone is not an MVP acceptance.
+**Not approved.** The prototype is testable and locally runnable, and A8 now has a logged local restore drill. A1 (real user value), A7 (complete traceability) and the pilot-scope parts of A2/A3/A5/A6/A10 are still not met. Passing A4 alone is not an MVP acceptance.
 
 Phase A may be approved only when every row in the approved scope is `Met` or has an explicitly accepted, time-bound exception with the accountable owner. A1 cannot be waived by a test result.
 

@@ -27,11 +27,12 @@ The fixed local entry point is `scripts/check.ps1` (Windows) or `scripts/check.s
 
 ## Current evidence (dated)
 
-The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 run:
+The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revision `283f83a` re-ran the same suites:
 
 - `eval`: 9 Cargo tests; self-test 10 checks.
 - `platform`: 183 Cargo tests (170 unit, 2 edge, 3 governance web, 8 integration); self-test 49 assertions; schema 20 records.
 - Smoke: `G_ekpi_engine acc=1.000`, hard gates H-1–H-6 all OK; LegalRuleML 51,026 bytes with 19/19/19/16 structure; `report.html` zero script.
+- 2026-10-26 only: documentation check 44 required files / 427 links in 92 files; high-signal secret scan 197 files; `gate.ps1 -IncludeSmoke` 12/12; fresh-clone restore drill PASS ([backup log](../operations/backup-log.md)).
 
 These are dated observations, not a permanent claim. Re-run the gate for the revision being delivered and attach the output to the PR/release. Do not copy a test count from a README as current evidence without a run.
 

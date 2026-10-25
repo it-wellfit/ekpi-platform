@@ -1,6 +1,6 @@
 # Backup and disaster recovery
 
-- **Status:** Procedure defined; **no executed restore evidence yet**
+- **Status:** Procedure defined; local restore drill executed 2026-10-26
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
 - **Last reviewed:** 2026-10-26
 - **Canonical procedure:** [Local backup](../operations/local-backup.md)
