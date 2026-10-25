@@ -140,6 +140,11 @@ if [ -s "$broken_file" ]; then
     exit 1
 fi
 
+if [ "$failed" -ne 0 ]; then
+    echo "FAIL: required documents missing"
+    exit 1
+fi
+
 echo "PASS: relative Markdown links resolve ($checked_links links in $checked_files files)"
 echo "Documentation check PASSED"
 exit 0

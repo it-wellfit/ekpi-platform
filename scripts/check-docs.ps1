@@ -121,6 +121,11 @@ if ($broken.Count -gt 0) {
     exit 1
 }
 
+if ($failed -gt 0) {
+    Write-Host "FAIL: required documents missing ($failed)" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "PASS: relative Markdown links resolve ($checkedLinks links in $checkedFiles files)" -ForegroundColor Green
 Write-Host "Documentation check PASSED" -ForegroundColor Green
 exit 0
