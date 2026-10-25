@@ -16,3 +16,7 @@
 > Record the tested revision and bundle SHA-256. A `PASS` here proves the
 > committed revision can be restored and checked; it does not prove an
 > off-host backup, an approved RPO/RTO or a scheduled restore programme.
+>
+> The bundle is created before this row is committed, so a restore of that
+> bundle does not contain its own log entry. The row is evidence in the later
+> revision; the next backup includes it.
