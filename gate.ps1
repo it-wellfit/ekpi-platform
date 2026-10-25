@@ -183,6 +183,9 @@ Invoke-CargoStep -Name 'platform selftest' -WorkingDirectory $platformDir -Argum
 Invoke-CargoStep -Name 'platform declared-rules schema' -WorkingDirectory $platformDir -Arguments @(
     'run', '--locked', '--bin', 'ekp_platform', '--', '--declared-rules-schema'
 )
+Invoke-CargoStep -Name 'platform search evaluation' -WorkingDirectory $platformDir -Arguments @(
+    'run', '--locked', '--bin', 'ekp_platform', '--', '--eval', '--test-set', 'data/eval/search_eval.json'
+)
 
 if ($IncludeSmoke) {
     $reportDir = Join-Path $platformDir 'target\regression-report'

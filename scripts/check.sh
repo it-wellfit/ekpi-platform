@@ -62,4 +62,8 @@ echo "cargo run --locked --bin ekp_platform -- --declared-rules-schema"
 cargo run --locked --bin ekp_platform -- --declared-rules-schema
 check "platform declared-rules-schema"
 
+echo "cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json"
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
+check "platform search evaluation"
+
 echo "=== ALL CHECKS PASSED ==="

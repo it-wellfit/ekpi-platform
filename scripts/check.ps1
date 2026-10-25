@@ -66,4 +66,8 @@ Write-Host "cargo run --locked --bin ekp_platform -- --declared-rules-schema" -F
 cargo run --locked --bin ekp_platform -- --declared-rules-schema
 Check-Result "platform declared-rules-schema"
 
+Write-Host "cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json" -ForegroundColor Yellow
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
+Check-Result "platform search evaluation"
+
 Write-Host "=== ALL CHECKS PASSED ===" -ForegroundColor Green

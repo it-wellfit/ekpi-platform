@@ -31,6 +31,7 @@ Before a release or tag:
    cargo build --release --locked --bins
    cargo run --release --locked --bin ekp_platform -- --selftest
    cargo run --release --locked --bin ekp_platform -- --declared-rules-schema
+   cargo run --release --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
    ```
 
 6. Create a backup and execute the restore drill, then record the bundle path and result in the [backup log](../operations/backup-log.md):

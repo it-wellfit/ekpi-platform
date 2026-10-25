@@ -38,7 +38,7 @@ It runs, in order:
 1. Documentation required-file and relative-link check (`scripts/check-docs`).
 2. High-signal secret-pattern scan (`scripts/check-secrets`). This is a limited scan, not a full secret scanner.
 3. `eval`: `cargo fmt -- --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`, `cargo run --locked -- --selftest`.
-4. `platform`: the same format/Clippy/test steps, plus `cargo run --locked --bin ekp_platform -- --selftest` and `--declared-rules-schema`.
+4. `platform`: the same format/Clippy/test steps, plus `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json`.
 
 The equivalent per-crate commands are:
 
@@ -56,6 +56,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo run --locked --bin ekp_platform -- --selftest
 cargo run --locked --bin ekp_platform -- --declared-rules-schema
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
 Set-Location ..
 ```
 
