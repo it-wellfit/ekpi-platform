@@ -28,9 +28,9 @@ POSIX:
 
 The script:
 
-1. creates `ekpi-platform-<timestamp>.bundle` with `git bundle create --all` in `%USERPROFILE%\EKPI-backup\bundles\` or `~/EKPI-backup/bundles/`;
+1. creates `ekpi-platform-<timestamp>.bundle` with `git bundle create --all` in `%USERPROFILE%\EKPI-backup\bundles\` or `~/EKPI-backup/bundles/`, and prints its SHA-256;
 2. clones the bundle to a temporary directory;
-3. runs the restored repository's check script (`scripts/check.ps1` or `check.sh`) — format, Clippy, tests, self-tests and schema validation;
+3. runs the restored repository's check script (`scripts/check.ps1` or `check.sh`) — documentation links, high-signal secret scan, format, Clippy, tests, self-tests and schema validation;
 4. reports `RESTORE DRILL PASSED` or fails non-zero.
 
 A backup is verified only if the restored clone passes the drill. Do not mark it verified from the bundle's existence or size.

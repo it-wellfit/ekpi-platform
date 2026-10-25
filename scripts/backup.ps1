@@ -1,5 +1,6 @@
 # Local Backup Script (PowerShell)
-# Creates a git bundle and runs a restore drill. Records result in backup-log.md.
+# Creates a git bundle and runs a restore drill. Prints the result; the operator
+# records the bundle path and outcome in docs/operations/backup-log.md.
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\.."
@@ -13,13 +14,22 @@ Write-Host "Creating bundle: $bundlePath" -ForegroundColor Cyan
 Set-Location $root
 git bundle create "$bundlePath" --all
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: bundle create" -ForegroundColor Red; exit 1 }
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+$stream = [System.IO.File]::OpenRead($bundlePath)
+try {
+    $bundleHash = [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')
+} finally {
+    $stream.Dispose()
+    $sha256.Dispose()
+}
 Write-Host "Bundle created." -ForegroundColor Green
+Write-Host "SHA-256: $bundleHash"
 
 # Restore drill
 $drillDir = "$env:TEMP\ekpi-restore-drill"
 if (Test-Path $drillDir) { Remove-Item -Recurse -Force $drillDir }
 Write-Host "Restore drill: cloning bundle..." -ForegroundColor Cyan
-git clone "$bundlePath" "$drillDir" 2>&1 | Out-Null
+git clone "$bundlePath" "$drillDir"
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: clone" -ForegroundColor Red; exit 1 }
 
 Write-Host "Restore drill: running the restored repository check..." -ForegroundColor Cyan
