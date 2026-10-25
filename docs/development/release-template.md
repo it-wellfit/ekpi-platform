@@ -10,6 +10,10 @@
 - Toolchain and build environment:
 - Release owner and approver:
 - Related issues, specs, and requirements:
+- Phase gate being claimed (Phase A / Phase B / none) and status:
+- Traceability register rows updated (IDs):
+- Contract IDs affected:
+- Data classification and security impact:
 
 ## Version notes
 
@@ -44,12 +48,16 @@
 
 | Gate / smoke case | Environment and revision | Command or steps | Result | Evidence link | Defect / follow-up |
 | --- | --- | --- | --- | --- | --- |
+| Documentation links and required files |  | `scripts/check-docs` | Pending |  |  |
+| High-signal secret pattern scan |  | `scripts/check-secrets` | Pending |  |  |
 | Formatting / Clippy / tests |  |  | Pending |  |  |
 | eval self-test and report |  |  | Pending |  |  |
 | platform self-test and schema |  |  | Pending |  |  |
 | Report / export / coverage / HTML (if affected) |  |  | Not run |  |  |
 | Governance web local smoke (if affected) |  |  | Not run |  |  |
 | Security / dependency scans |  |  | Pending |  |  |
+| Backup bundle + restore drill |  | `scripts/backup` | Pending |  |  |
+| Phase A/B gate evidence |  | Link this template | Pending |  |  |
 
 Do not mark an unrun or blocked check as passed. Link the PR checks and attach manual evidence with date, operator, and test-data identifier.
 
@@ -57,7 +65,8 @@ Do not mark an unrun or blocked check as passed. Link the PR checks and attach m
 
 - Artifact names, checksums, and storage location:
 - Release channel / deployment target, or `Not configured` with reason:
-- Pre-release backup and integrity check:
+- Pre-release backup bundle path and creation time:
+- Restore drill environment, command, result, and backup-log row:
 - Rollback / recovery procedure and owner:
 - Recovery verification and data-loss boundary:
 - Post-release smoke result and time:
@@ -89,3 +98,4 @@ Do not mark an unrun or blocked check as passed. Link the PR checks and attach m
 | Product / process owner |  | Pending |  |  |
 | IT / security / data owner (as applicable) |  | Pending |  |  |
 | Operations owner |  | Pending |  |  |
+| Phase A/B gate owner (if a gate is claimed) |  | Pending |  |  |

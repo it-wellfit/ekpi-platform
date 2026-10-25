@@ -18,16 +18,15 @@ rm -rf "$drill_dir"
 echo "Restore drill: cloning bundle..."
 git clone "$bundle_path" "$drill_dir" >/dev/null 2>&1
 
-pass=true
-for crate in eval platform; do
-    cd "$drill_dir/$crate"
-    echo "  [$crate] cargo fmt -- --check"
-    cargo fmt -- --check >/dev/null 2>&1 || pass=false
-    echo "  [$crate] cargo clippy --locked --all-targets -- -D warnings"
-    cargo clippy --locked --all-targets -- -D warnings >/dev/null 2>&1 || pass=false
-    echo "  [$crate] cargo test --locked"
-    cargo test --locked >/dev/null 2>&1 || pass=false
-done
+echo "Restore drill: running the restored repository check..."
+if [ ! -x "$drill_dir/scripts/check.sh" ]; then
+    chmod +x "$drill_dir/scripts/check.sh"
+fi
+if "$drill_dir/scripts/check.sh"; then
+    pass=true
+else
+    pass=false
+fi
 
 cd "$root"
 if [ "$pass" = true ]; then

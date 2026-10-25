@@ -22,21 +22,14 @@ Write-Host "Restore drill: cloning bundle..." -ForegroundColor Cyan
 git clone "$bundlePath" "$drillDir" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: clone" -ForegroundColor Red; exit 1 }
 
-$pass = $true
-foreach ($crate in @("eval", "platform")) {
-    Set-Location "$drillDir\$crate"
-    Write-Host "  [$crate] cargo fmt -- --check" -ForegroundColor Yellow
-    cargo fmt -- --check 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { $pass = $false; Write-Host "  FAIL fmt" -ForegroundColor Red }
-
-    Write-Host "  [$crate] cargo clippy --locked --all-targets -- -D warnings" -ForegroundColor Yellow
-    cargo clippy --locked --all-targets -- -D warnings 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { $pass = $false; Write-Host "  FAIL clippy" -ForegroundColor Red }
-
-    Write-Host "  [$crate] cargo test --locked" -ForegroundColor Yellow
-    cargo test --locked 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { $pass = $false; Write-Host "  FAIL test" -ForegroundColor Red }
+Write-Host "Restore drill: running the restored repository check..." -ForegroundColor Cyan
+$checkScript = Join-Path $drillDir "scripts\check.ps1"
+if (-not (Test-Path -LiteralPath $checkScript)) {
+    Write-Host "FAIL: restored bundle has no scripts/check.ps1" -ForegroundColor Red
+    exit 1
 }
+& powershell -NoProfile -ExecutionPolicy Bypass -File $checkScript
+$pass = ($LASTEXITCODE -eq 0)
 
 Set-Location $root
 if ($pass) {

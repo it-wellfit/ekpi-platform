@@ -12,6 +12,18 @@ function Check-Result($label) {
     Write-Host "PASS: $label" -ForegroundColor Green
 }
 
+Write-Host "=== Documentation ===" -ForegroundColor Cyan
+
+Write-Host "scripts/check-docs.ps1" -ForegroundColor Yellow
+& powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\check-docs.ps1"
+Check-Result "documentation"
+
+Write-Host "=== Secret Patterns ===" -ForegroundColor Cyan
+
+Write-Host "scripts/check-secrets.ps1" -ForegroundColor Yellow
+& powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\check-secrets.ps1"
+Check-Result "secret patterns"
+
 Write-Host "=== Eval Crate ===" -ForegroundColor Cyan
 Set-Location "$root\eval"
 

@@ -1,5 +1,15 @@
 # EKPI Final Validation Report
 
+> **Historical snapshot (2026-10-25). Not current evidence.**
+>
+> This report is retained for the record. It contains statements that were later found to be
+> inaccurate or superseded: S5 claimed completion before a restore drill was executed, the
+> validation-status section contains an intermediate “tests blocked” result, and the test
+> counts do not match the final run. Do not cite this file for readiness, test counts or
+> restore evidence. Current evidence: [regression checklist](../development/regression-checklist.md),
+> the gate output for the revision being delivered, and the [traceability register](../traceability/register.md).
+> For corrections and current status, see the note at the end of this file.
+
 > Generated as part of MASTER PROMPT v2.0 full completion. Records the outcome of the
 > repository-resident quality-gates baseline and the operational/validation slices
 > (S1–S11). All commands run offline from the repo root; no remote or cloud service
@@ -56,11 +66,11 @@ Selftest highlights: oracle accuracy 1.0, wrong_allow 0, hard gate tripped on al
 | S2 | Metrics instrumentation (unwarranted refusal, manual handoff, completion, error, anchor resolution) | `eval/src/metrics.rs`, `eval/src/report.rs` | complete |
 | S3 | Local-first workflow | `docs/operations/local-first-workflow.md` | complete |
 | S4 | Secrets & sensitive data policy | `docs/operations/secrets-policy.md`, `.env.example` | complete |
-| S5 | Local backup procedure + log | `docs/operations/local-backup.md`, `docs/operations/backup-log.md` | complete |
+| S5 | Local backup procedure + log | `docs/operations/local-backup.md`, `docs/operations/backup-log.md` | procedure written; **restore drill NOT executed** (historical claim corrected) |
 | S6 | Edge cases (12) + 50+ corpus regression test | `eval/cases/edge_cases.jsonl`, `platform/tests/edge_cases.rs` | complete (corpus = 67 ≥ 50) |
 | S7 | Fixed local check scripts | `scripts/check.ps1`, `scripts/check.sh` | complete |
 | S9 | Traceability register | `docs/traceability/register.md` | complete |
-| S11 | Final validation report | `docs/operations/final-validation-report.md` | complete (this file) |
+| S11 | Final validation report | `docs/operations/final-validation-report.md` | historical; not current evidence |
 
 ## Metrics instrumentation (S2)
 
@@ -124,3 +134,15 @@ Regression tests verify each edge case's verdict, citation set, and abstain sema
 - Enterprise authentication, external connectors, AI workflow drafts (prototype remains local-only).
 - PM4Py sidecar production integration (optional R3 oracle per hash-artifact contract).
 - New core engine logic (already complete; hard gates H-1..H-6 all OK).
+
+## Correction note (2026-10-26)
+
+This report is a historical snapshot and contains contradictory/stale statements. Corrections:
+
+- **S5:** marked “complete” before any restore drill existed. Correct status: procedure and scripts defined; restore drill **not executed**; `docs/operations/backup-log.md` remained empty. A backup is unverified until the drill passes.
+- **Validation status:** the “tests blocked by Windows Application Control” paragraph describes an intermediate run. A later 2026-10-25 gate run executed 9 eval tests, 183 platform tests, both self-tests, schema validation (20 records) and smoke checks (H-1–H-6 OK; LegalRuleML 51,026 bytes, 19/19/19/16; `report.html` zero script). See [regression-checklist](../development/regression-checklist.md) for the current dated record.
+- **S6:** “complete (corpus = 67 ≥ 50)” is accurate for corpus size but does not mean the target acceptance matrix (`AT-01`–`AT-31`) passed. Those cases remain `NOT RUN`.
+- **Modules:** several modules listed as “now real” are library-only and are not served by either binary. Implementation of a module is not evidence of a delivered capability. See [architecture](../architecture/README.md).
+- **Readiness:** the prototype is local-only. It is not production-ready, authenticated, tenant-isolated or WORM. See [production readiness](production-readiness.md).
+
+Do not cite this file for current test counts, restore evidence or readiness. Keep it for the historical record only.

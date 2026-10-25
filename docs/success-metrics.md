@@ -1,5 +1,12 @@
 # Quantifiable Success Metrics
 
+- **Status:** Historical summary. **Not the current target register.**
+- **Last reviewed:** 2026-10-26
+- **Canonical register:** [metrics/targets.md](metrics/targets.md)
+- **Phase gates:** [quality/phase-gates.md](quality/phase-gates.md)
+
+> Targets in this file differ from the locked/proposed register and were never all approved or measured. Where they conflict, [metrics/targets.md](metrics/targets.md) wins. Do not cite these numbers as current acceptance criteria or as achieved results.
+
 ## Accuracy Metrics
 
 | Metric | Target | Measurement |

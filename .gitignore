@@ -4,3 +4,26 @@
 Thumbs.db
 *.swp
 *.tmp
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials*
+
+# Local backups and bundles
+*.bundle
+backups/
+EKPI-backup/
+
+# Local governance ledger (default is outside the repo, but keep it out if copied in)
+governance-ledger.jsonl
+
+# Editor and tool output
+.vscode/
+.idea/

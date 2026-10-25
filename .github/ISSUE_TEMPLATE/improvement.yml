@@ -1,0 +1,89 @@
+name: Improvement action
+description: Track an accepted improvement from a retrospective, review, incident or audit finding. See docs/reviews/README.md.
+title: "[Improvement]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An improvement is a work item, not a wish. It needs an observed problem, an owner, an acceptance condition and the durable control (test, check, document or gate) that prevents recurrence.
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      description: Where did this improvement come from? Link the retro, review, incident or gate row below.
+      options:
+        - Retrospective
+        - Code or spec review
+        - Release review
+        - Incident
+        - Audit / assessment
+        - Gate finding
+    validations:
+      required: true
+  - type: input
+    id: source_link
+    attributes:
+      label: Source record
+      description: Link the RETRO-, review, incident or gate row. Use the improvement register ID if this issue was opened from it.
+      placeholder: "e.g. docs/reviews/bootstrap-retro.md#IMP-001 or INC-2026-001"
+    validations:
+      required: true
+  - type: textarea
+    id: observed_problem
+    attributes:
+      label: Observed problem and evidence
+      description: Describe what actually happened or what demonstrably failed. Separate observed evidence from a causal hypothesis.
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Improvement and durable control
+      description: State the specific change and which test, automated check, document or gate prevents recurrence. "Be more careful" is not a control.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and completion evidence
+      description: State how completion will be demonstrated, including the command or review evidence required.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: Owner
+      description: Name the accountable person or role. Do not assign a group without a named accountable role.
+    validations:
+      required: true
+  - type: input
+    id: review_trigger
+    attributes:
+      label: Due date or review trigger
+      description: State the date or the event (next release, next Phase gate, before any API work) at which this is rechecked.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk if deferred
+      description: State the residual risk, affected users/data, and the gate or control that currently compensates for it.
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blockers and dependencies
+      description: List external access, decisions or upstream issues. Use "Blocked by: #<issue>" or write "None".
+    validations:
+      required: true

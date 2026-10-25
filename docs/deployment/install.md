@@ -1,43 +1,100 @@
-# Installation Guide
+# Installation guide (local prototype)
+
+- **Status:** Current for the local prototype; **not** a production installation guide
+- **Owner:** Engineering
+- **Last reviewed:** 2026-10-26
+- **Canonical operating procedures:** [Operations](../operations/README.md)
 
 ## Prerequisites
 
-- Rust toolchain 1.99.1 (via rust-toolchain.toml)
-- PostgreSQL 16+ with pgvector extension
-- Tantivy (bundled as crate dependency)
+- Rust toolchain pinned by `rust-toolchain.toml` (currently 1.99.1) with Cargo.
+- A supported local OS (Windows or Linux) with Git.
+- No database, search engine, message queue, container runtime or cloud account is required.
+
+PostgreSQL, pgvector, Tantivy, a message queue and a separate search service are **not** current dependencies. They appear only as research or target-product options in [tech selection](../tech-selection-round1.md); do not install them for this prototype.
 
 ## Build
 
-```bash
-# Platform crate
+Run each command from the crate directory. The two crates are independent; there is no root Cargo workspace.
+
+```powershell
 cd platform
 cargo build --locked --release
 
-# Eval crate
-cd ../eval
+cd ..\eval
 cargo build --locked --release
+```
+
+## Verify
+
+```powershell
+cd eval
+cargo fmt -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo run --locked -- --selftest
+
+cd ..\platform
+cargo fmt -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo run --locked --bin ekp_platform -- --selftest
+cargo run --locked --bin ekp_platform -- --declared-rules-schema
+```
+
+From the repository root, the fixed entry points are:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+powershell -ExecutionPolicy Bypass -File gate.ps1 -IncludeSmoke
+```
+
+```bash
+./scripts/check.sh
 ```
 
 ## Run
 
-```bash
-# Self-test
+```powershell
+cd platform
+
+# Engine integration self-test
 cargo run --locked --bin ekp_platform -- --selftest
 
-# Ablation report
-cargo run --locked --bin ekp_platform -- --out report_out
+# Ablation/evaluation report, snapshots and hard gates
+cargo run --locked --bin ekp_platform -- --out target/report
 
 # Coverage report
 cargo run --locked --bin ekp_platform -- --coverage-report
 
 # LegalRuleML export
-cargo run --locked --bin ekp_platform -- --export-legalruleml export_out
+cargo run --locked --bin ekp_platform -- --export-legalruleml target/lrml
 ```
 
-## Local-First Workflow
+The local governance workbench is a separate binary:
 
-1. All data in `platform/data/` (JSON files)
-2. All tests in `platform/tests/` and `platform/src/*/tests`
-3. All docs in `docs/`
-4. Git version control (local, no remote required)
-5. Check scripts: `scripts/check.ps1` and `scripts/check.sh`
+```powershell
+cd platform
+cargo run --locked --bin governance_web
+```
+
+It binds **`127.0.0.1:3000` only**. Use synthetic or authorized non-sensitive data. It has no login, no tenant isolation and no enterprise identity integration; do not expose it beyond the local machine. See [operations](../operations/README.md) and the [threat model](../architecture/threat-model.md).
+
+## Data locations
+
+| Path | Content | Notes |
+| --- | --- | --- |
+| `platform/data/docs.json` | Synthetic source documents and versions | Fixture; not customer content |
+| `platform/data/rules.json` | 19 active + 1 draft rule record | Validated against `design/rule-schema-v0.1.1.schema.json` |
+| `platform/data/processes.json` | 3 process models | Synthetic fixture |
+| `platform/config/engine-params.json` | Engine parameters and locked invariants | Fail-closed |
+| `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | Local governance ledger | Append-only hash chain; not WORM |
+| `platform/out/`, `platform/report_out/`, `eval/report_out/` | Generated artifacts | Regenerate; do not treat as source |
+
+## Local-first workflow
+
+Git is the source of truth and works offline. A remote is an opt-in upgrade governed by [remote collaboration criteria](../remote-collaboration-criteria.md). See [local-first workflow](../operations/local-first-workflow.md) and [local backup](../operations/local-backup.md).
+
+## Update triggers
+
+Update this guide when a dependency, toolchain, command, bind address, data path or supported environment changes. Do not add a prerequisite that the code does not actually require.

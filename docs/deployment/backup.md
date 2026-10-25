@@ -1,26 +1,52 @@
-# Backup & Disaster Recovery
+# Backup and disaster recovery
 
-## Local Backup
+- **Status:** Procedure defined; **no executed restore evidence yet**
+- **Owner:** Engineering / Operations (operations owner not yet assigned)
+- **Last reviewed:** 2026-10-26
+- **Canonical procedure:** [Local backup](../operations/local-backup.md)
+- **Evidence log:** [Backup log](../operations/backup-log.md)
+
+## What exists
+
+- `scripts/backup.ps1` and `scripts/backup.sh` create a Git bundle in a directory outside the workspace and run a restore drill.
+- The drill clones the bundle to a temporary path and runs the repository check script in the clone.
+- `docs/operations/backup-log.md` is the evidence record.
+
+## What the bundle contains and excludes
+
+A `git bundle --all` contains committed Git history and refs. It does **not** contain:
+
+- uncommitted or untracked working-tree files;
+- ignored files such as `.env` and local keys;
+- the local governance ledger outside the repository (default `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA`);
+- generated artifacts that were not committed.
+
+A bundle is **not** a full system backup. It does not replace an encrypted off-host backup, database backup (there is no database in the current prototype), or a documented RPO/RTO. For the local prototype, back up the ledger separately if it contains data you need to retain.
+
+## Run the drill
 
 ```powershell
-# Backup data directory
-Compress-Archive -Path platform/data -DestinationPath backups/data-$(Get-Date -Format 'yyyyMMdd').zip
-# Backup config
-Compress-Archive -Path platform/config -DestinationPath backups/config-$(Get-Date -Format 'yyyyMMdd').zip
+powershell -ExecutionPolicy Bypass -File scripts/backup.ps1
 ```
 
-## Verification
-
-```powershell
-# Verify backup integrity
-Test-Path backups/data-*.zip
-# Restore
-Expand-Archive -Path backups/data-*.zip -DestinationPath platform/
+```bash
+./scripts/backup.sh
 ```
 
-## Disaster Recovery
+The drill is verified only when the restored clone passes the check. Record the date, bundle path, result and operator in [backup-log.md](../operations/backup-log.md). An empty log means **unverified**, not “no incidents”.
 
-1. Restore from latest backup
-2. Re-run `cargo build --locked`
-3. Re-run `cargo test --locked`
-4. Re-run `--selftest` to verify
+## Disaster recovery (local)
+
+1. Clone the latest verified bundle to a new directory.
+2. Run `scripts/check.ps1` (Windows) or `scripts/check.sh` (POSIX) in the clone.
+3. Restore the ledger separately if it is needed, and verify the hash chain on `/audit`.
+4. Record the recovery drill and any data-loss gap in the backup log and, if material, the [incident log](../operations/incident-log.md).
+5. Do not overwrite the only copy of a suspect ledger; preserve it before repair.
+
+## Production gap
+
+Phase B requires off-host encrypted backup, approved RPO/RTO, scheduled restore tests, integrity checks and a named backup owner (`DEC-14`). Those do not exist. See [production readiness](../operations/production-readiness.md).
+
+## Update triggers
+
+Update this page when the backup scope, script, storage location, ledger path or recovery procedure changes. Keep the backup log current; do not mark a backup verified without a passing restore drill.

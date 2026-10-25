@@ -14,6 +14,8 @@ This checkout has no Git remote, and the existing GitHub repository URL has not 
 - Comment, label, and close with gh issue comment, gh issue edit, and gh issue close.
 - A multi-ticket feature uses one parent map/spec issue and linked child tickets. Prefer GitHub native sub-issues and issue dependencies; if unavailable, include Part of #<parent> and Blocked by: #<issue> in the child body.
 - Specs live in issues and link to applicable governance requirement IDs and repo documents. A PR links its issue and spec.
+- Use the issue forms in `.github/ISSUE_TEMPLATE/`: `feature.yml` for a proposed behavior change, `ticket.yml` for one independently verifiable slice, `improvement.yml` for an accepted retro/review/incident action, and `bug.yml` for a defect. The forms require requirement/contract IDs, risk tier, phase-gate impact and verification evidence so the issue can be traced before work starts.
+- A missing field is written as `None` with a reason, not left blank or filled with an invented value. A proposed requirement stays "not yet accepted" until the accountable owner accepts it.
 
 ## Wayfinding operations
 

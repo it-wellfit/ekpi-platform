@@ -1,26 +1,30 @@
-name: Feature request
+name: Feature or behavior change
 description: Propose a specific, testable change. For a detailed spec, use docs/development/spec-template.md.
 title: "[Feature]: "
 body:
+  - type: markdown
+    attributes:
+      value: |
+        A feature request is not an approved requirement. Record the user problem and evidence first; a change to acceptance behavior needs an accepted spec and a traceability row.
   - type: textarea
     id: problem
     attributes:
       label: Business or user problem
-      description: Who encounters the problem, in what situation, and what happens today?
+      description: Who encounters the problem, in what situation, and what happens today? Link research, support evidence or a named owner request.
     validations:
       required: true
   - type: textarea
     id: outcome
     attributes:
-      label: Desired outcome
-      description: Describe the observable result without prescribing an unvalidated implementation.
+      label: Desired outcome and success measure
+      description: Describe the observable result and the measure that would show it worked. Do not prescribe an unvalidated implementation.
     validations:
       required: true
   - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: List verifiable outcomes, including refusal, error, or empty states where relevant.
+      description: List verifiable outcomes, including refusal, error, empty, permission-denied and recovery states where relevant.
       placeholder: |
         - Given ...
         - When ...
@@ -30,14 +34,35 @@ body:
   - type: textarea
     id: traceability
     attributes:
-      label: Requirement and source links
-      description: Link requirement IDs, governance specifications, user research, or authoritative evidence.
+      label: Requirement, contract and source links
+      description: Link requirement IDs, governance specifications, acceptance cases (AT-*), user research or authoritative evidence. State "Proposed requirement; not yet accepted" when no ID exists.
+    validations:
+      required: true
+  - type: input
+    id: contracts
+    attributes:
+      label: Affected contract IDs
+      description: CLI command, web route, data format or export contract affected. Use the IDs in docs/contracts/; write "None" with a reason when not applicable.
+      placeholder: "e.g. CLI-process, WEB-governance, DATA-rules-json; or None"
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase gate affected
+      description: Passing tests do not approve a gate. See docs/quality/phase-gates.md.
+      options:
+        - None
+        - Phase A (0 → 1 MVP)
+        - Phase B (production-grade)
+        - Unknown
     validations:
       required: true
   - type: dropdown
     id: risk
     attributes:
       label: Initial risk tier
+      description: Choose the highest plausible tier until evidence narrows it. See docs/development/quality-gates.md.
       options:
         - Low
         - Medium
@@ -49,6 +74,13 @@ body:
     id: constraints
     attributes:
       label: Constraints and unresolved decisions
-      description: Include compatibility, security, accessibility, data, and rollout constraints. Assign an owner to each unresolved decision.
+      description: Include compatibility, security, privacy, accessibility, data, AI-evaluation and rollout constraints. Assign an owner to each unresolved decision.
     validations:
       required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals and alternatives considered
+      description: State what this change will not do and which simpler alternative was rejected, to prevent scope creep.
+    validations:
+      required: false

@@ -1,5 +1,12 @@
 # Requirements Specification (EKPI Platform)
 
+- **Status:** Historical summary. **Not the current source of truth.**
+- **Last reviewed:** 2026-10-26
+- **Canonical requirements:** [governance/02](governance/02-requirements-v0.1.md), [05 functional spec](governance/05-functional-spec-v1.md), [06 data and state model](governance/06-data-and-state-model-v1.md), [07 security and connectors](governance/07-security-integration-spec-v1.md)
+- **Acceptance:** [governance/04](governance/04-acceptance-test-matrix.md); **metrics:** [metrics/targets.md](metrics/targets.md); **phase gates:** [quality/phase-gates.md](quality/phase-gates.md)
+
+> This early FR/NFR list is retained for context. It mixes current deterministic behavior with target capabilities (for example, the “restricted agent loop” is not implemented). Do not use it as an acceptance basis or as evidence of delivery.
+
 ## Scope
 
 EKPI platform provides deterministic adjudication for ISMS compliance cases:

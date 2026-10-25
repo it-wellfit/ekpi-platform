@@ -12,6 +12,14 @@ check() {
     echo "PASS: $label"
 }
 
+echo "=== Documentation ==="
+"$root/scripts/check-docs.sh"
+check "documentation"
+
+echo "=== Secret Patterns ==="
+"$root/scripts/check-secrets.sh"
+check "secret patterns"
+
 echo "=== Eval Crate ==="
 cd "$root/eval"
 

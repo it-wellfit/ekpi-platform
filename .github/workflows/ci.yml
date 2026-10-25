@@ -6,90 +6,58 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  fmt:
-    name: Format check
+  validate:
+    name: validate (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            command: bash scripts/check.sh
+          - os: windows-latest
+            command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check platform fmt
-        working-directory: platform
-        run: cargo fmt -- --check
-      - name: Check eval fmt
-        working-directory: eval
-        run: cargo fmt -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Clippy platform
-        working-directory: platform
-        run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Clippy eval
-        working-directory: eval
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-  test:
-    name: Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Test platform
-        working-directory: platform
-        run: cargo test --locked
-      - name: Test eval
-        working-directory: eval
-        run: cargo test --locked
-
-  selftest:
-    name: Selftest
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Platform selftest
-        working-directory: platform
-        run: cargo run --locked --bin ekp_platform -- --selftest
-      - name: Platform declared-rules-schema
-        working-directory: platform
-        run: cargo run --locked --bin ekp_platform -- --declared-rules-schema
-      - name: Eval selftest
-        working-directory: eval
-        run: cargo run --locked -- --selftest
+      - name: Run repository checks
+        run: ${{ matrix.command }}
 
   security:
-    name: Security scan
+    name: security
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Secret scan
-        run: |
-          if git log --all -p | grep -iE '(password|secret|token|api_key|private_key)\s*[:=]' ; then
-            echo "Potential secrets found"; exit 1
-          fi
-          echo "Secret scan clean"
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: High-signal secret pattern scan
+        run: bash scripts/check-secrets.sh
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
       - name: Audit platform lockfile
         working-directory: platform
-        run: cargo audit 2>/dev/null || echo "cargo-audit not available, skipping"
+        run: cargo audit
+
       - name: Audit eval lockfile
         working-directory: eval
-        run: cargo audit 2>/dev/null || echo "cargo-audit not available, skipping"
+        run: cargo audit
+
+# Notes:
+# - The validate matrix calls the same fixed entry point contributors run locally;
+#   the commands are not duplicated in the workflow.
+# - Smoke/report/export artifacts are part of gate.ps1 -IncludeSmoke and are required
+#   locally for changes that affect reports, exports, coverage, HTML or data. CI does
+#   not yet run a separate smoke job; do not claim CI proved those artifacts.
+# - Actions are tag-pinned. Pin by SHA when the security policy requires it.

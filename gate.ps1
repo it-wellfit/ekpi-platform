@@ -103,6 +103,46 @@ function Assert-LegalRuleML {
     Write-Host ("  LegalRuleML ok: {0:N0} bytes, root {{{1}}}LegalRuleML, {2} PrescriptiveStatement, {3} PenaltyStatement, {4} Reparation, {5} LegalSource" -f $item.Length, $root.NamespaceURI, $prescriptive, $penalties, $reparations, $sources)
 }
 
+function Invoke-DocsStep {
+    $index = $script:Passed + $script:Failed + 1
+    Write-Host ''
+    Write-Host ("[{0}] documentation" -f $index)
+
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\check-docs.ps1')
+    $exitCode = $LASTEXITCODE
+    $timer.Stop()
+
+    if ($exitCode -ne 0) {
+        $script:Failed++
+        Write-Host ("FAILED: documentation (exit {0}, {1:N1}s)" -f $exitCode, $timer.Elapsed.TotalSeconds) -ForegroundColor Red
+        exit $exitCode
+    }
+
+    $script:Passed++
+    Write-Host ("PASS: documentation ({0:N1}s)" -f $timer.Elapsed.TotalSeconds) -ForegroundColor Green
+}
+
+function Invoke-SecretsStep {
+    $index = $script:Passed + $script:Failed + 1
+    Write-Host ''
+    Write-Host ("[{0}] secret patterns" -f $index)
+
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\check-secrets.ps1')
+    $exitCode = $LASTEXITCODE
+    $timer.Stop()
+
+    if ($exitCode -ne 0) {
+        $script:Failed++
+        Write-Host ("FAILED: secret patterns (exit {0}, {1:N1}s)" -f $exitCode, $timer.Elapsed.TotalSeconds) -ForegroundColor Red
+        exit $exitCode
+    }
+
+    $script:Passed++
+    Write-Host ("PASS: secret patterns ({0:N1}s)" -f $timer.Elapsed.TotalSeconds) -ForegroundColor Green
+}
+
 $evalDir = Join-Path $repoRoot 'eval'
 $platformDir = Join-Path $repoRoot 'platform'
 
@@ -111,6 +151,9 @@ foreach ($crateDir in @($evalDir, $platformDir)) {
         throw "Not a Cargo crate: $crateDir"
     }
 }
+
+Invoke-DocsStep
+Invoke-SecretsStep
 
 Invoke-CargoStep -Name 'eval fmt' -WorkingDirectory $evalDir -Arguments @(
     'fmt', '--', '--check'

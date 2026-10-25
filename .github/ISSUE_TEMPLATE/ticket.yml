@@ -2,25 +2,30 @@ name: Work slice
 description: Create one independently verifiable slice linked to a parent spec. See docs/development/ticket-template.md.
 title: "[Task]: "
 body:
+  - type: markdown
+    attributes:
+      value: |
+        A work slice must leave the repository runnable and reviewable on its own. Prefer a vertical slice over separate front-end, back-end and data tickets that cannot be verified independently.
   - type: input
     id: parent
     attributes:
       label: Parent spec or issue
-      description: Link the accepted spec and parent issue.
+      description: Link the accepted spec and parent issue. Prefer a native sub-issue link; otherwise write "Part of #<number>".
+      placeholder: "Part of #123; spec: docs/development/spec-template.md"
     validations:
       required: true
   - type: textarea
     id: requirements
     attributes:
-      label: Requirement IDs and outcome
-      description: State the traceable requirements and observable result for this slice.
+      label: Requirement IDs, contract IDs and outcome
+      description: State the traceable requirement IDs, affected contract IDs and the observable result of this slice. Write "None" with a reason when a field does not apply.
     validations:
       required: true
   - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Keep the slice independently verifiable; include refusal/error behavior where relevant.
+      description: Keep the slice independently verifiable; include refusal, error, empty, permission-denied and retry behavior where relevant.
       placeholder: |
         - Given ...
         - When ...
@@ -28,16 +33,24 @@ body:
     validations:
       required: true
   - type: textarea
+    id: scope
+    attributes:
+      label: Implementation scope
+      description: Name the expected files/modules, the data or contract change, and anything explicitly out of scope.
+    validations:
+      required: true
+  - type: textarea
     id: dependencies
     attributes:
       label: Design, dependencies, and open decisions
-      description: Link ADRs, list blockers, and name an owner for unresolved decisions.
+      description: Link ADRs, list blockers with "Blocked by: #<issue>", and name an owner for unresolved decisions.
     validations:
       required: true
   - type: dropdown
     id: risk
     attributes:
       label: Risk tier
+      description: Choose the highest plausible tier until evidence narrows it. See docs/development/quality-gates.md.
       options:
         - Low
         - Medium
@@ -49,6 +62,25 @@ body:
     id: verification
     attributes:
       label: Verification plan
-      description: List regression cases, checks, and evidence to attach to the PR.
+      description: List the test levels, regression cases, high-risk refusal/failure cases and manual evidence to attach to the PR.
+      placeholder: |
+        - Unit: ...
+        - Integration/contract: ...
+        - scripts/check: ...
+        - Manual/UI or restore: ...
+    validations:
+      required: true
+  - type: textarea
+    id: documentation
+    attributes:
+      label: Documentation and traceability impact
+      description: Name the documents, contracts and traceability register row to update in the same change, or state "None" with a reason.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback and recovery
+      description: State how the change can be reverted and whether it affects data, migrations, backups or a released contract.
     validations:
       required: true
