@@ -19,6 +19,9 @@
 //!   引用次數、verdict 分布、條款錨點與觀測引用，輸出 markdown（R3）。
 //!   搭配 `--out` 時寫入 `out/coverage_report.md`。
 //! - `--html`：搭配 `--out`，把同一 report.md 渲染為 `report.html`。
+//! - `--search QUERY`：詞彙檢索並輸出逐字引用；低於門檻時誠實回報證據不足。
+//! - `--eval --test-set PATH`：在固定 JSON 評測集上執行檢索回歸，任一案例失敗即
+//!   回傳非零；`--threshold` 可覆寫評測集宣告的營運門檻。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -41,7 +44,7 @@ use ekp_platform::process::{events_sha256, ReplayEvent};
 use ekp_platform::snapshot::DecisionSnapshot;
 use ekp_platform::{params as params_module, validate};
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html]]";
+const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY | --eval --test-set PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -107,6 +110,7 @@ fn run(args: &[String]) -> i32 {
     };
 
     // 閾值：CLI 覆寫 > 治理檔 > 預設。
+    let threshold_explicit = flag_value(args, "--threshold").is_some();
     let mut threshold = loaded_params
         .as_ref()
         .map_or(DEFAULT_RETRIEVAL_THRESHOLD, |p| p.retrieval_threshold);
@@ -176,6 +180,85 @@ fn run(args: &[String]) -> i32 {
         return 0;
     }
 
+    // ── --eval --test-set PATH：固定評測集回歸；任一案例失敗即非零。
+    let want_eval = args.iter().any(|a| a == "--eval");
+    if want_eval || args.iter().any(|a| a == "--test-set") {
+        let test_set_path = match flag_value(args, "--test-set") {
+            Some(path) => path,
+            None => {
+                eprintln!("FAIL: --eval requires --test-set PATH");
+                return 2;
+            }
+        };
+        let data_dir = flag_value(args, "--data")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_data_dir);
+        let platform = match load_platform(&data_dir, threshold) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        };
+        let mut doc_versions = std::collections::BTreeMap::new();
+        for doc in &platform.docs.documents {
+            if let Some(ver) = doc.versions.last() {
+                doc_versions.insert(doc.doc_id.clone(), ver.version.clone());
+            }
+        }
+        let set = match ekp_platform::eval::load_eval_set(Path::new(&test_set_path)) {
+            Ok(set) => set,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        };
+        let eval_threshold = if threshold_explicit {
+            threshold
+        } else {
+            set.threshold.unwrap_or(threshold)
+        };
+        let metrics =
+            ekp_platform::eval::run_eval(&platform.docs, &doc_versions, &set.cases, eval_threshold);
+        println!(
+            "eval: {} cases (set v{}, threshold {:.2})",
+            metrics.total_cases, set.version, eval_threshold
+        );
+        println!(
+            "  top-1 hits: {}/{} answer cases",
+            metrics.hits, metrics.answer_cases
+        );
+        println!(
+            "  refusals: {}/{} correct",
+            metrics.correct_refusals, metrics.refusal_cases
+        );
+        println!("  precision@1: {:.2}", metrics.precision_at_1);
+        println!("  citation support: {:.2}", metrics.citation_support_rate);
+        println!(
+            "  permission isolation: {:.2}",
+            metrics.permission_isolation_rate
+        );
+        println!("  refusal accuracy: {:.2}", metrics.refusal_accuracy);
+        println!("  avg latency: {:.1}ms", metrics.avg_latency_ms);
+        for case in metrics.cases.iter().filter(|c| !c.passed) {
+            println!(
+                "FAIL: [{}] {}: {}",
+                case.id,
+                case.category,
+                case.failure.as_deref().unwrap_or("unknown failure")
+            );
+        }
+        let gate_failures = metrics.gate_failures();
+        if !gate_failures.is_empty() {
+            for failure in &gate_failures {
+                eprintln!("FAIL: eval gate: {failure}");
+            }
+            return 1;
+        }
+        println!("eval gate: PASS");
+        return 0;
+    }
+
     if want_html && !args.iter().any(|a| a == "--out") {
         eprintln!("FAIL: --html requires --out");
         return 2;
@@ -189,46 +272,6 @@ fn run(args: &[String]) -> i32 {
                 return 0;
             }
 
-            // ── --eval --test-set PATH：知識搜尋評估（Slice 4）。
-            if let Some(test_set_path) = flag_value(args, "--test-set") {
-                let data_dir = flag_value(args, "--data")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(default_data_dir);
-                let platform = match load_platform(&data_dir, threshold) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("FAIL: {e}");
-                        return 1;
-                    }
-                };
-                let mut doc_versions = std::collections::BTreeMap::new();
-                for doc in &platform.docs.documents {
-                    if let Some(ver) = doc.versions.last() {
-                        doc_versions.insert(doc.doc_id.clone(), ver.version.clone());
-                    }
-                }
-                let cases =
-                    match ekp_platform::eval::load_eval_cases(std::path::Path::new(&test_set_path))
-                    {
-                        Ok(c) => c,
-                        Err(e) => {
-                            eprintln!("FAIL: {e}");
-                            return 1;
-                        }
-                    };
-                let metrics =
-                    ekp_platform::eval::run_eval(&platform.docs, &doc_versions, &cases, threshold);
-                println!("eval: {} cases", metrics.total_cases);
-                println!("  precision@1: {:.2}", metrics.precision_at_1);
-                println!("  citation support: {:.2}", metrics.citation_support_rate);
-                println!(
-                    "  permission isolation: {:.2}",
-                    metrics.permission_isolation_rate
-                );
-                println!("  avg latency: {:.1}ms", metrics.avg_latency_ms);
-                println!("  hits: {}/{}", metrics.hits, metrics.total_cases);
-                return 0;
-            }
             eprintln!("{USAGE}");
             return 2;
         }

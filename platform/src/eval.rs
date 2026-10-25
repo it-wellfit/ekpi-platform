@@ -1,27 +1,63 @@
 #![forbid(unsafe_code)]
 
-//! Knowledge search evaluation harness (Slice 4).
+//! Deterministic knowledge-search evaluation harness.
 //!
-//! Loads a fixed test set (JSON), runs retrieval for each question,
-//! and computes precision@K, citation support, and permission isolation metrics.
+//! Loads a fixed test set (JSON), runs retrieval for each question and records
+//! whether the top citation matches the expected source, or whether the query
+//! correctly returned insufficient evidence. This is a regression harness for
+//! the lexical retrieval path; it is not an LLM/agent quality claim.
 
 use crate::docs::DocDatabase;
 use crate::retrieval::{PermissionContext, Retriever, SearchResult};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
+
+/// The fixed set must exercise these dimensions. Tool failure is covered
+/// separately by the fail-closed CLI test because retrieval calls no tool.
+pub const REQUIRED_CATEGORIES: [&str; 5] = [
+    "general",
+    "ambiguous",
+    "adversarial",
+    "wrong_source",
+    "insufficient_context",
+];
+
+/// A set smaller than this is not accepted as a regression baseline.
+pub const MIN_EVAL_CASES: usize = 10;
+
+fn default_category() -> String {
+    "general".to_string()
+}
+
+fn default_min_score() -> f64 {
+    0.42
+}
+
+fn default_version() -> u32 {
+    1
+}
 
 /// A single evaluation case.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalCase {
     /// Unique case ID.
     pub id: String,
+    /// Dimension this case exercises (`general`, `ambiguous`, ...).
+    #[serde(default = "default_category")]
+    pub category: String,
     /// The question to search for.
     pub question: String,
-    /// Expected document ID in the top results (for precision).
+    /// True when the correct behavior is an honest refusal, not a citation.
+    #[serde(default)]
+    pub expect_refusal: bool,
+    /// Expected document ID in the top result (required unless refusing).
+    #[serde(default)]
     pub expected_doc_id: String,
-    /// Expected section in the top results.
+    /// Expected section in the top result (required unless refusing).
+    #[serde(default)]
     pub expected_section: String,
-    /// Minimum acceptable score threshold.
+    /// Minimum acceptable top-1 score for an expected hit.
     #[serde(default = "default_min_score")]
     pub min_score: f64,
     /// User roles for permission testing (empty = no permission filter).
@@ -29,16 +65,45 @@ pub struct EvalCase {
     pub roles: Vec<String>,
 }
 
-fn default_min_score() -> f64 {
-    0.1
+/// A fixed evaluation set with an operating threshold.
+#[derive(Debug, Clone)]
+pub struct EvalSet {
+    pub version: u32,
+    pub threshold: Option<f64>,
+    pub cases: Vec<EvalCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EvalSetFile {
+    #[serde(default = "default_version")]
+    version: u32,
+    #[serde(default)]
+    threshold: Option<f64>,
+    cases: Vec<EvalCase>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum EvalFile {
+    Set(EvalSetFile),
+    List(Vec<EvalCase>),
 }
 
 /// Result of evaluating a single case.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalCaseResult {
     pub id: String,
+    pub category: String,
     pub question: String,
+    pub expect_refusal: bool,
+    /// True when an expected answer matched the top citation.
     pub hit: bool,
+    /// True when the full case contract was satisfied.
+    pub passed: bool,
+    /// Human-readable reason when `passed` is false.
+    pub failure: Option<String>,
+    pub top_doc_id: Option<String>,
+    pub top_section: Option<String>,
     pub top_score: f64,
     pub citation_count: usize,
     pub has_evidence: bool,
@@ -46,35 +111,72 @@ pub struct EvalCaseResult {
     pub latency_ms: u64,
 }
 
+/// Per-category pass counts.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CategorySummary {
+    pub total: usize,
+    pub passed: usize,
+}
+
 /// Aggregate evaluation metrics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalMetrics {
     pub total_cases: usize,
+    pub answer_cases: usize,
+    pub refusal_cases: usize,
     pub hits: usize,
+    pub correct_refusals: usize,
+    pub passed_cases: usize,
+    pub failed_cases: usize,
     pub precision_at_1: f64,
     pub citation_support_rate: f64,
     pub permission_isolation_rate: f64,
+    pub refusal_accuracy: f64,
     pub avg_latency_ms: f64,
+    pub categories: BTreeMap<String, CategorySummary>,
     pub cases: Vec<EvalCaseResult>,
 }
 
 impl EvalMetrics {
     pub fn compute(cases: &[EvalCaseResult]) -> Self {
         let total = cases.len();
+        let answer_cases = cases.iter().filter(|c| !c.expect_refusal).count();
+        let refusal_cases = total - answer_cases;
         let hits = cases.iter().filter(|c| c.hit).count();
-        let with_evidence = cases.iter().filter(|c| c.has_evidence).count();
+        let passed_cases = cases.iter().filter(|c| c.passed).count();
+        let with_evidence = cases
+            .iter()
+            .filter(|c| !c.expect_refusal && c.has_evidence)
+            .count();
         let isolated = cases.iter().filter(|c| c.permission_isolated).count();
+        let correct_refusals = cases
+            .iter()
+            .filter(|c| c.expect_refusal && c.passed)
+            .count();
         let total_latency: u64 = cases.iter().map(|c| c.latency_ms).sum();
+        let mut categories: BTreeMap<String, CategorySummary> = BTreeMap::new();
+        for case in cases {
+            let entry = categories.entry(case.category.clone()).or_default();
+            entry.total += 1;
+            if case.passed {
+                entry.passed += 1;
+            }
+        }
         Self {
             total_cases: total,
+            answer_cases,
+            refusal_cases,
             hits,
-            precision_at_1: if total > 0 {
-                hits as f64 / total as f64
+            correct_refusals,
+            passed_cases,
+            failed_cases: total - passed_cases,
+            precision_at_1: if answer_cases > 0 {
+                hits as f64 / answer_cases as f64
             } else {
                 0.0
             },
-            citation_support_rate: if total > 0 {
-                with_evidence as f64 / total as f64
+            citation_support_rate: if answer_cases > 0 {
+                with_evidence as f64 / answer_cases as f64
             } else {
                 0.0
             },
@@ -83,13 +185,45 @@ impl EvalMetrics {
             } else {
                 0.0
             },
+            refusal_accuracy: if refusal_cases > 0 {
+                correct_refusals as f64 / refusal_cases as f64
+            } else {
+                0.0
+            },
             avg_latency_ms: if total > 0 {
                 total_latency as f64 / total as f64
             } else {
                 0.0
             },
+            categories,
             cases: cases.to_vec(),
         }
+    }
+
+    /// Gate failures that make this run unsuitable as regression evidence.
+    pub fn gate_failures(&self) -> Vec<String> {
+        let mut failures = Vec::new();
+        if self.total_cases < MIN_EVAL_CASES {
+            failures.push(format!(
+                "only {} case(s); at least {MIN_EVAL_CASES} are required",
+                self.total_cases
+            ));
+        }
+        if self.failed_cases > 0 {
+            failures.push(format!("{} case(s) failed", self.failed_cases));
+        }
+        if self.permission_isolation_rate < 1.0 {
+            failures.push(format!(
+                "permission isolation rate is {:.2}, expected 1.00",
+                self.permission_isolation_rate
+            ));
+        }
+        for category in REQUIRED_CATEGORIES {
+            if self.categories.get(category).map_or(0, |c| c.total) == 0 {
+                failures.push(format!("required category `{category}` has no cases"));
+            }
+        }
+        failures
     }
 }
 
@@ -107,7 +241,7 @@ pub fn run_eval(
             None
         } else {
             Some(PermissionContext::new(
-                "T1",
+                "eval-tenant",
                 "eval-user",
                 case.roles.clone(),
             ))
@@ -117,40 +251,71 @@ pub fn run_eval(
         let result = retriever.search_with_citations(&case.question, 5, db);
         let latency_ms = start.elapsed().as_millis() as u64;
 
-        let (hit, top_score, citation_count, has_evidence) = match &result {
-            SearchResult::Hits(citations) => {
-                let top = citations.first().map(|c| c.score).unwrap_or(0.0);
-                let hit = citations
-                    .first()
-                    .map(|c| c.doc_id == case.expected_doc_id && c.section == case.expected_section)
-                    .unwrap_or(false);
-                (hit, top, citations.len(), true)
-            }
-            SearchResult::InsufficientEvidence { .. } => (false, 0.0, 0, false),
+        let (citations, has_evidence) = match &result {
+            SearchResult::Hits(citations) => (citations.as_slice(), !citations.is_empty()),
+            SearchResult::InsufficientEvidence { .. } => (&[][..], false),
         };
+        let top = citations.first();
+        let top_doc_id = top.map(|c| c.doc_id.clone());
+        let top_section = top.map(|c| c.section.clone());
+        let top_score = top.map(|c| c.score).unwrap_or(0.0);
 
-        let permission_isolated = if case.roles.is_empty() {
-            true
-        } else {
-            match &result {
-                SearchResult::Hits(citations) => citations.iter().all(|c| {
-                    db.doc(&c.doc_id)
-                        .map(|d| {
-                            d.permissions.is_empty()
-                                || d.permissions.iter().any(|p| case.roles.contains(p))
-                        })
-                        .unwrap_or(true)
-                }),
-                _ => true,
+        let expected_match = top
+            .map(|c| c.doc_id == case.expected_doc_id && c.section == case.expected_section)
+            .unwrap_or(false);
+        let hit = !case.expect_refusal && expected_match && top_score >= case.min_score;
+        let permission_isolated = citations.iter().all(|c| {
+            db.doc(&c.doc_id)
+                .map(|d| {
+                    case.roles.is_empty()
+                        || d.permissions.is_empty()
+                        || d.permissions.iter().any(|p| case.roles.contains(p))
+                })
+                .unwrap_or(false)
+        });
+
+        let failure = if permission_isolated {
+            match (case.expect_refusal, has_evidence, expected_match, top_score) {
+                (true, false, _, _) => None,
+                (true, true, _, _) => Some(format!(
+                    "expected refusal but returned {} citation(s), top {}@{}",
+                    citations.len(),
+                    top_doc_id.as_deref().unwrap_or("?"),
+                    top_section.as_deref().unwrap_or("?")
+                )),
+                (false, false, _, _) => Some(format!(
+                    "expected {}@{} but returned insufficient evidence",
+                    case.expected_doc_id, case.expected_section
+                )),
+                (false, true, false, _) => Some(format!(
+                    "expected {}@{} but top was {}@{}",
+                    case.expected_doc_id,
+                    case.expected_section,
+                    top_doc_id.as_deref().unwrap_or("?"),
+                    top_section.as_deref().unwrap_or("?")
+                )),
+                (false, true, true, score) if score < case.min_score => Some(format!(
+                    "top {:.3} is below min_score {:.3}",
+                    score, case.min_score
+                )),
+                _ => None,
             }
+        } else {
+            Some("returned a citation the user is not permitted to see".to_string())
         };
 
         results.push(EvalCaseResult {
             id: case.id.clone(),
+            category: case.category.clone(),
             question: case.question.clone(),
+            expect_refusal: case.expect_refusal,
             hit,
+            passed: failure.is_none(),
+            failure,
+            top_doc_id,
+            top_section,
             top_score,
-            citation_count,
+            citation_count: citations.len(),
             has_evidence,
             permission_isolated,
             latency_ms,
@@ -159,15 +324,89 @@ pub fn run_eval(
     EvalMetrics::compute(&results)
 }
 
-/// Load evaluation cases from a JSON file.
-pub fn load_eval_cases(path: &std::path::Path) -> Result<Vec<EvalCase>, String> {
+/// Load an evaluation set from a JSON array or an object containing `cases`.
+pub fn load_eval_set(path: &Path) -> Result<EvalSet, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let cases: Vec<EvalCase> =
+    let parsed: EvalFile =
         serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
-    if cases.is_empty() {
-        return Err("eval case file is empty".to_string());
+    let set = match parsed {
+        EvalFile::Set(set) => set,
+        EvalFile::List(cases) => EvalSetFile {
+            version: 1,
+            threshold: None,
+            cases,
+        },
+    };
+    validate_eval_set(path, &set)?;
+    Ok(EvalSet {
+        version: set.version,
+        threshold: set.threshold,
+        cases: set.cases,
+    })
+}
+
+fn validate_eval_set(path: &Path, set: &EvalSetFile) -> Result<(), String> {
+    if set.cases.is_empty() {
+        return Err(format!("{}: eval case set is empty", path.display()));
     }
-    Ok(cases)
+    if let Some(threshold) = set.threshold {
+        if !(0.0..=1.0).contains(&threshold) {
+            return Err(format!(
+                "{}: threshold {threshold} is outside [0,1]",
+                path.display()
+            ));
+        }
+    }
+    let mut ids = BTreeSet::new();
+    for case in &set.cases {
+        if case.id.trim().is_empty() {
+            return Err(format!("{}: case with empty id", path.display()));
+        }
+        if !ids.insert(case.id.clone()) {
+            return Err(format!(
+                "{}: duplicate case id `{}`",
+                path.display(),
+                case.id
+            ));
+        }
+        if case.question.trim().is_empty() {
+            return Err(format!(
+                "{}: case `{}` has an empty question",
+                path.display(),
+                case.id
+            ));
+        }
+        if case.category.trim().is_empty() {
+            return Err(format!(
+                "{}: case `{}` has an empty category",
+                path.display(),
+                case.id
+            ));
+        }
+        if !(0.0..=1.0).contains(&case.min_score) {
+            return Err(format!(
+                "{}: case `{}` min_score {} is outside [0,1]",
+                path.display(),
+                case.id,
+                case.min_score
+            ));
+        }
+        if !case.expect_refusal
+            && (case.expected_doc_id.trim().is_empty() || case.expected_section.trim().is_empty())
+        {
+            return Err(format!(
+                "{}: case `{}` must name expected_doc_id and expected_section unless it expects refusal",
+                path.display(),
+                case.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Load evaluation cases from a JSON file.
+pub fn load_eval_cases(path: &Path) -> Result<Vec<EvalCase>, String> {
+    Ok(load_eval_set(path)?.cases)
 }
 
 #[cfg(test)]
@@ -209,20 +448,46 @@ mod tests {
         (db, dv)
     }
 
+    fn case(id: &str, category: &str, question: &str, doc: &str, section: &str) -> EvalCase {
+        EvalCase {
+            id: id.to_string(),
+            category: category.to_string(),
+            question: question.to_string(),
+            expect_refusal: false,
+            expected_doc_id: doc.to_string(),
+            expected_section: section.to_string(),
+            min_score: 0.1,
+            roles: vec![],
+        }
+    }
+
+    fn refusal_case(id: &str, category: &str, question: &str) -> EvalCase {
+        EvalCase {
+            id: id.to_string(),
+            category: category.to_string(),
+            question: question.to_string(),
+            expect_refusal: true,
+            expected_doc_id: String::new(),
+            expected_section: String::new(),
+            min_score: 0.1,
+            roles: vec![],
+        }
+    }
+
     #[test]
     fn eval_case_hits_expected() {
         let (db, dv) = make_db();
-        let cases = vec![EvalCase {
-            id: "TC-001".to_string(),
-            question: "quality management".to_string(),
-            expected_doc_id: "SOP-CHANGE".to_string(),
-            expected_section: "4.3".to_string(),
-            min_score: 0.1,
-            roles: vec![],
-        }];
+        let cases = vec![case(
+            "TC-001",
+            "general",
+            "quality management",
+            "SOP-CHANGE",
+            "4.3",
+        )];
         let metrics = run_eval(&db, &dv, &cases, 0.1);
         assert_eq!(metrics.total_cases, 1);
         assert_eq!(metrics.hits, 1);
+        assert_eq!(metrics.passed_cases, 1);
         assert_eq!(metrics.precision_at_1, 1.0);
         assert!(metrics.citation_support_rate > 0.0);
     }
@@ -230,36 +495,140 @@ mod tests {
     #[test]
     fn eval_case_misses_wrong_expected() {
         let (db, dv) = make_db();
-        let cases = vec![EvalCase {
-            id: "TC-002".to_string(),
-            question: "quality management".to_string(),
-            expected_doc_id: "NONEXISTENT".to_string(),
-            expected_section: "9.9".to_string(),
-            min_score: 0.1,
-            roles: vec![],
-        }];
+        let cases = vec![case(
+            "TC-002",
+            "general",
+            "quality management",
+            "NONEXISTENT",
+            "9.9",
+        )];
         let metrics = run_eval(&db, &dv, &cases, 0.1);
         assert_eq!(metrics.hits, 0);
+        assert_eq!(metrics.passed_cases, 0);
         assert_eq!(metrics.precision_at_1, 0.0);
+        assert!(metrics.cases[0]
+            .failure
+            .as_deref()
+            .unwrap_or("")
+            .contains("expected NONEXISTENT@9.9"));
     }
 
     #[test]
     fn eval_permission_isolation() {
         let (db, dv) = make_db();
         let cases = vec![EvalCase {
-            id: "TC-003".to_string(),
-            question: "confidential admin".to_string(),
-            expected_doc_id: "SECRET-DOC".to_string(),
-            expected_section: "s1".to_string(),
-            min_score: 0.1,
             roles: vec!["viewer".to_string()],
+            expect_refusal: true,
+            expected_doc_id: String::new(),
+            expected_section: String::new(),
+            ..case(
+                "TC-003",
+                "general",
+                "confidential admin",
+                "SECRET-DOC",
+                "s1",
+            )
         }];
-        let metrics = run_eval(&db, &dv, &cases, 0.1);
+        let metrics = run_eval(&db, &dv, &cases, 0.3);
         assert_eq!(metrics.permission_isolation_rate, 1.0);
+        assert_eq!(
+            metrics.passed_cases, 1,
+            "viewer must get an honest refusal: {:?}",
+            metrics.cases
+        );
     }
 
     #[test]
-    fn load_eval_cases_from_json() {
+    fn refusal_case_passes_when_no_evidence() {
+        let (db, dv) = make_db();
+        let cases = vec![refusal_case(
+            "TC-004",
+            "insufficient_context",
+            "completely unrelated topic",
+        )];
+        let metrics = run_eval(&db, &dv, &cases, 0.99);
+        assert_eq!(metrics.refusal_accuracy, 1.0);
+        assert_eq!(metrics.passed_cases, 1);
+    }
+
+    #[test]
+    fn refusal_case_fails_when_evidence_returned() {
+        let (db, dv) = make_db();
+        let cases = vec![refusal_case("TC-005", "adversarial", "quality management")];
+        let metrics = run_eval(&db, &dv, &cases, 0.1);
+        assert_eq!(metrics.refusal_accuracy, 0.0);
+        assert_eq!(metrics.passed_cases, 0);
+        assert!(metrics.cases[0]
+            .failure
+            .as_deref()
+            .unwrap_or("")
+            .contains("expected refusal"));
+    }
+
+    #[test]
+    fn min_score_is_enforced() {
+        let (db, dv) = make_db();
+        let mut candidate = case(
+            "TC-006",
+            "general",
+            "quality management",
+            "SOP-CHANGE",
+            "4.3",
+        );
+        candidate.min_score = 1.0;
+        let metrics = run_eval(&db, &dv, &[candidate], 0.1);
+        assert_eq!(metrics.hits, 0);
+        assert_eq!(metrics.passed_cases, 0);
+        assert!(metrics.cases[0]
+            .failure
+            .as_deref()
+            .unwrap_or("")
+            .contains("below min_score"));
+    }
+
+    #[test]
+    fn gate_detects_missing_required_category() {
+        let cases = vec![EvalCaseResult {
+            id: "1".to_string(),
+            category: "general".to_string(),
+            question: "q".to_string(),
+            expect_refusal: false,
+            hit: true,
+            passed: true,
+            failure: None,
+            top_doc_id: Some("D".to_string()),
+            top_section: Some("s".to_string()),
+            top_score: 0.9,
+            citation_count: 1,
+            has_evidence: true,
+            permission_isolated: true,
+            latency_ms: 1,
+        }];
+        let metrics = EvalMetrics::compute(&cases);
+        let failures = metrics.gate_failures();
+        assert!(failures.iter().any(|f| f.contains("ambiguous")));
+        assert!(failures.iter().any(|f| f.contains("at least")));
+    }
+
+    #[test]
+    fn load_eval_set_from_object() {
+        let json = r#"{
+            "version": 2,
+            "threshold": 0.33,
+            "cases": [{"id":"TC-1","category":"general","question":"test","expected_doc_id":"D1","expected_section":"s1"}]
+        }"#;
+        let path = std::env::temp_dir().join("test_eval_set_object.json");
+        std::fs::write(&path, json).unwrap();
+        let set = load_eval_set(&path).unwrap();
+        assert_eq!(set.version, 2);
+        assert_eq!(set.threshold, Some(0.33));
+        assert_eq!(set.cases.len(), 1);
+        assert_eq!(set.cases[0].id, "TC-1");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_eval_cases_from_json_array() {
         let json =
             r#"[{"id":"TC-1","question":"test","expected_doc_id":"D1","expected_section":"s1"}]"#;
         let path = std::env::temp_dir().join("test_eval_cases.json");
@@ -267,6 +636,19 @@ mod tests {
         let cases = load_eval_cases(&path).unwrap();
         assert_eq!(cases.len(), 1);
         assert_eq!(cases[0].id, "TC-1");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn duplicate_ids_rejected() {
+        let json = r#"[
+            {"id":"TC-1","question":"test","expected_doc_id":"D1","expected_section":"s1"},
+            {"id":"TC-1","question":"test","expected_doc_id":"D1","expected_section":"s1"}
+        ]"#;
+        let path = std::env::temp_dir().join("test_eval_duplicate.json");
+        std::fs::write(&path, json).unwrap();
+        let error = load_eval_cases(&path).unwrap_err();
+        assert!(error.contains("duplicate case id"));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -283,8 +665,14 @@ mod tests {
         let cases = vec![
             EvalCaseResult {
                 id: "1".to_string(),
+                category: "general".to_string(),
                 question: "q1".to_string(),
+                expect_refusal: false,
                 hit: true,
+                passed: true,
+                failure: None,
+                top_doc_id: Some("D1".to_string()),
+                top_section: Some("s1".to_string()),
                 top_score: 0.9,
                 citation_count: 2,
                 has_evidence: true,
@@ -293,8 +681,14 @@ mod tests {
             },
             EvalCaseResult {
                 id: "2".to_string(),
+                category: "general".to_string(),
                 question: "q2".to_string(),
+                expect_refusal: false,
                 hit: false,
+                passed: false,
+                failure: Some("miss".to_string()),
+                top_doc_id: None,
+                top_section: None,
                 top_score: 0.0,
                 citation_count: 0,
                 has_evidence: false,
@@ -305,6 +699,7 @@ mod tests {
         let m = EvalMetrics::compute(&cases);
         assert_eq!(m.total_cases, 2);
         assert_eq!(m.hits, 1);
+        assert_eq!(m.passed_cases, 1);
         assert!((m.precision_at_1 - 0.5).abs() < 1e-9);
         assert!((m.citation_support_rate - 0.5).abs() < 1e-9);
         assert!((m.permission_isolation_rate - 1.0).abs() < 1e-9);
