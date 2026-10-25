@@ -1,0 +1,12 @@
+standard_id,org,name,version,url,purpose_in_platform,verified,verified_date,verification_method,notes
+bpmn-2.0,OMG,Business Process Model and Notation (BPMN),2.0.2,https://www.omg.org/spec/BPMN/,流程模型撰寫層（活動/事件/分支/路徑）,yes,2026-10-25,official_page_fetch,官方頁確認v2.0.2；撰寫後轉 Petri net 執行驗證
+dmn-omg,OMG,Decision Model and Notation (DMN),頁面顯示1.7 beta,https://www.omg.org/spec/DMN/,決策表與決策邏輯（多條件判定）,yes,2026-10-25,official_page_fetch,採用前確認當時最新正式版本號
+shacl-w3c,W3C,Shapes Constraint Language (SHACL),1.0,https://www.w3.org/TR/shacl/,知識圖譜結構約束驗證與驗證報告,yes,2026-10-25,official_page_fetch,結構約束為主；時間性/流程正確性需搭配規則引擎與流程模型
+prov-o-w3c,W3C,"PROV-O: The PROV Ontology",REC 2013,https://www.w3.org/TR/prov-o/,證據鏈/產證活動/責任者的表示詞彙,yes,2026-10-25,official_page_fetch,decision snapshot manifest 的參照模型
+ocel-2.0,OCEL Community,Object-Centric Event Log (OCEL),2.0,https://www.ocel-standard.org/,多物件事件資料（案件內多實體審計）,yes,2026-10-25,official_page_fetch,一案件含申請/文件/表單/簽核多實體時優於傳統XES
+xes-ieee-1849,IEEE,eXtensible Event Stream (XES),1849-2023（取代1849-2016）,https://standards.ieee.org/standard/1849-2016.html,事件日誌交換格式,yes,2026-10-25,websearch_cross_check,2026年起引用須用2023版(IEEE Xplore 10384513)；tf-pm.org本環境TLS異常故改走IEEE官方頁
+legalruleml-oasis,OASIS,LegalRuleML Core Specification,v1.0 OASIS Standard (2021-08-30),https://docs.oasis-open.org/legalruleml/legalruleml-core-spec/v1.0/os/legalruleml-core-spec-v1.0-os.html,規範規則標準表示（obligation/prohibition/permission/例外/override）,yes,2026-10-25,websearch_cross_check,legalruleml.oasis-open.org DNS未解析；經OASIS docs授權版+TC頁核實；例庫 github.com/oasis-tcs/legalruleml
+pm4py-tool,PM4Py (Fraunhofer FIT),PM4Py process mining library,latest,https://pm4py.org/,conformance checking / token replay / alignments / Petri net 核心,yes,2026-10-25,official_page_fetch,pm4py.fit.fraunhofer.de本環境連線失敗改用官方pm4py.org；BPMN匯入等API於Round 2實作時驗證
+nist-ai-rmf-gai,NIST,AI Risk Management Framework - Generative AI Profile,AI 600-1,https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-generative-artificial-intelligence,治理與風險管理框架,yes,2026-10-25,official_page_fetch,
+owasp-genai,OWASP,OWASP Gen AI Security Project (LLM Applications Top 10),站點顯示當期版本,https://genai.owasp.org/,LLM應用資安測試基準,yes,2026-10-25,official_page_fetch,採用時確認當期版本頁
+mojo-lang,Modular,Mojo programming language (with MAX),未確認,https://www.modular.com/mojo,前沿方法軌道：未來自建推論/數值核心的候選（research-only）,partial,2026-10-25,official_page_fetch(title存在),mojo.modular.com DNS未解析；授權/穩定版本/可重現建置三項未核實前不得進入 compliance-critical 路徑

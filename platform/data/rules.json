@@ -1,0 +1,529 @@
+{
+  "rules": [
+    {
+      "rule_id": "RULE-CHG-001",
+      "rule_version": "2.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": {
+        "required_before": ["approve_change"],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "block",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2025-06-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [
+        {
+          "evidence_type": "approval_record",
+          "min_count": 1,
+          "metadata_constraints": [ { "field": "actor_role", "op": "in", "value": ["QA_manager", "dept_head"] } ],
+          "missing_evidence_result": "insufficient_evidence"
+        }
+      ],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CHANGE",
+        "document_version": "2.1",
+        "clause_refs": [ { "section": "4.3", "page": 11, "paragraph": null } ],
+        "verbatim_text": "變更執行前，須完成風險評估並取得核准紀錄；核准完成時間不得晚於變更執行開始時間。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2025-06-10", "change_note": null } },
+      "validation": { "test_case_refs": ["ORD-003"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-CHG-001",
+      "rule_version": "3.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": {
+        "required_before": ["approve_change"],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "block",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [
+        {
+          "evidence_type": "approval_record",
+          "min_count": 1,
+          "metadata_constraints": [ { "field": "actor_role", "op": "in", "value": ["QA_manager", "dept_head"] } ],
+          "missing_evidence_result": "insufficient_evidence"
+        }
+      ],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CHANGE",
+        "document_version": "3.2",
+        "clause_refs": [ { "section": "4.3", "page": 12, "paragraph": null } ],
+        "verbatim_text": "變更執行前，須完成風險評估並取得核准紀錄；核准完成時間不得晚於變更執行開始時間。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-02-20", "change_note": null } },
+      "validation": { "test_case_refs": ["ORD-001", "ORD-002", "EVD-001", "SEC-001", "PAR-001"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-CHG-002",
+      "rule_version": "3.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "QA_manager", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "close_change" } } ] },
+      "sequencing": {
+        "required_before": ["execute_change"],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "warn",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CHANGE",
+        "document_version": "3.2",
+        "clause_refs": [ { "section": "5.1", "page": 14, "paragraph": null } ],
+        "verbatim_text": "變更執行完成後，由品質經理執行關閉程序並複核結案證據。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-02-20", "change_note": null } },
+      "validation": { "test_case_refs": ["PAR-001"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-EX-007",
+      "rule_version": "2.0",
+      "deontic": { "modality": "permission", "strength": "optional" },
+      "subject": { "entity_type": "change_request", "actor_role": "dept_head", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "approve_change" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "warn",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": ["RULE-CHG-001"], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2025-01-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [
+        {
+          "evidence_type": "appendix_text",
+          "min_count": 1,
+          "metadata_constraints": [ { "field": "anchor_verbatim", "op": "eq", "value": "經部門主管核准且屬無 QMS 影響的變更，得免除品質經理複核。" } ],
+          "missing_evidence_result": "insufficient_evidence"
+        }
+      ],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "EX-7",
+        "document_version": "2.0",
+        "clause_refs": [ { "section": "7.2", "page": 1, "paragraph": null } ],
+        "verbatim_text": "經部門主管核准且屬無 QMS 影響的變更，得免除品質經理複核。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_B", "reviewed_at": "2025-01-05", "change_note": null } },
+      "validation": { "test_case_refs": ["ORD-003", "EVD-001"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-CAPA-012",
+      "rule_version": "1.2",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "capa_case", "actor_role": "QA", "scope": { "processes": ["P-CAPA"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "corrective_action_executed" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "escalate",
+        "loop_policy": { "failures_cap": 3, "on_exceeded": "escalate", "doc_ref": "§6.2", "first_iteration_ref": "§6.1" }
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2025-04-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CAPA",
+        "document_version": "1.4",
+        "clause_refs": [ { "section": "6.1", "page": 8, "paragraph": null } ],
+        "verbatim_text": "矯正措施驗證未通過時，得回退至 REWORK 階段重新執行矯正措施。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2025-04-10", "change_note": null } },
+      "validation": { "test_case_refs": ["CAP-001", "CAP-002"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-PUR-002",
+      "rule_version": "4.4",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "purchase_request", "actor_role": "buyer", "scope": { "processes": ["P-PURCH"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "purchase_requested" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "block",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": ["RULE-QM-014"] },
+      "temporal": { "effective_from": "2025-10-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-PURCH",
+        "document_version": "4.4",
+        "clause_refs": [ { "section": "3.1", "page": 5, "paragraph": null } ],
+        "verbatim_text": "採購金額達新臺幣壹佰萬元以上者，須依簽核流程取得主管核准後始得下單執行。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_C", "reviewed_at": "2025-10-05", "change_note": null } },
+      "validation": { "test_case_refs": ["SRC-001"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-QM-014",
+      "rule_version": "5.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "purchase_request", "actor_role": "buyer", "scope": { "processes": ["P-PURCH"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "purchase_requested" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "warn",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": ["RULE-PUR-002"] },
+      "temporal": { "effective_from": "2025-10-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "QM-01",
+        "document_version": "5.0",
+        "clause_refs": [ { "section": "2.4", "page": 4, "paragraph": null } ],
+        "verbatim_text": "採購申請一經受理即視為取得執行許可；各單位得依受理時點執行後續作業。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_D", "reviewed_at": "2025-10-01", "change_note": null } },
+      "validation": { "test_case_refs": ["SRC-001"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-CHG-001-DRAFT",
+      "rule_version": "3.1",
+      "deontic": { "modality": "permission", "strength": "optional" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": null,
+        "on_violation": "warn",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CHANGE",
+        "document_version": "3.2",
+        "clause_refs": [ { "section": "4.3", "page": 12, "paragraph": null } ],
+        "verbatim_text": "（AI 草稿：核准可全數豁免，不需簽核紀錄。）",
+        "selectors": []
+      },
+      "provenance": {
+        "origin": "ai_extracted",
+        "extraction": { "method": "llm_extraction_v0", "model_id": "test-model", "confidence": 0.42, "extracted_at": "2026-03-02" },
+        "review": { "status": "draft_ai", "reviewer": null, "reviewed_at": null, "change_note": "未經專家核准的抽取草稿——引擎必須拒收" }
+      },
+      "validation": { "test_case_refs": [], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-REL-002",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": { "anchor": "activity_end", "ref": "approve_change", "duration_iso": "P2D" },
+        "on_violation": "block",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-REL",
+        "document_version": "1.0",
+        "clause_refs": [ { "section": "2.1", "page": 5, "paragraph": null } ],
+        "verbatim_text": "變更核准完成後，應於 2 個工作日內完成執行；逾期之處置準則見第 2.2 節與併行機制。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-110", "BC-111", "BC-114", "BC-191"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-REL-003",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": { "anchor": "activity_end", "ref": "approve_change", "duration_iso": "P2D" },
+        "on_violation": "escalate",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-REL",
+        "document_version": "1.0",
+        "clause_refs": [ { "section": "2.2", "page": 6, "paragraph": null } ],
+        "verbatim_text": "逾期的變更執行，視其治理分類自動升級品質經理人工裁定。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-112"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-REL-006",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": {
+        "required_before": [],
+        "forbidden_after": [],
+        "deadline": { "anchor": "activity_end", "ref": "approve_change", "duration_iso": "P2D" },
+        "on_violation": "warn",
+        "loop_policy": null
+      },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-REL",
+        "document_version": "1.0",
+        "clause_refs": [ { "section": "2.2", "page": 6, "paragraph": null } ],
+        "verbatim_text": "逾期的變更執行，視其治理分類自動升級品質經理人工裁定。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": "warn 態治理聲明：逾期僅登記不阻擋不升級（engine-spec D-05）" } },
+      "validation": { "test_case_refs": ["BC-194"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-DRF-004",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "block", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2025-04-01", "effective_to": "2026-06-30", "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-REL",
+        "document_version": "1.0",
+        "clause_refs": [ { "section": "3.1", "page": 9, "paragraph": null } ],
+        "verbatim_text": "本 SOP 之第 2 節規定適用至 2026-06-30；屆期後另行公告。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-105", "BC-106", "BC-192"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-FUT-005",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "prod_line", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "execute_change" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "block", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2027-01-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-REL",
+        "document_version": "1.0",
+        "clause_refs": [ { "section": "2.1", "page": 5, "paragraph": null } ],
+        "verbatim_text": "變更核准完成後，應於 2 個工作日內完成執行；逾期之處置準則見第 2.2 節與併行機制。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": "未生效規則測試專用（engine-spec D-10 反向）" } },
+      "validation": { "test_case_refs": ["BC-103", "BC-104"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-CLOSE-GATE",
+      "rule_version": "1.0",
+      "deontic": { "modality": "prohibition", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "QA_manager", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "close_change" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": ["execute_change"], "deadline": null, "on_violation": "block", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CLOSE",
+        "document_version": "1.0",
+        "clause_refs": [ { "section": "3.1", "page": 4, "paragraph": null } ],
+        "verbatim_text": "變更關閉後，除經主管重新開案登記者外，不得再執行任何變更作業。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-115", "BC-116", "BC-117"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-SIG-002",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "change_request", "actor_role": "QA_manager", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "approve_change" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "warn", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2026-03-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [
+        {
+          "evidence_type": "approval_record",
+          "min_count": 2,
+          "metadata_constraints": [ { "field": "actor_role", "op": "in", "value": ["QA_manager", "dept_head"] } ],
+          "missing_evidence_result": "partial_pass_note"
+        }
+      ],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CHANGE",
+        "document_version": "3.2",
+        "clause_refs": [ { "section": "4.3", "page": 12, "paragraph": null } ],
+        "verbatim_text": "變更執行前，須完成風險評估並取得核准紀錄；核准完成時間不得晚於變更執行開始時間。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_A", "reviewed_at": "2026-03-05", "change_note": "partial_pass_note 示範規則（engine-spec D-07）" } },
+      "validation": { "test_case_refs": ["BC-142", "BC-143"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-EXB-002",
+      "rule_version": "1.0",
+      "deontic": { "modality": "permission", "strength": "optional" },
+      "subject": { "entity_type": "change_request", "actor_role": "dept_head", "scope": { "processes": ["P-CHANGE"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "approve_change" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "warn", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": [] },
+      "temporal": { "effective_from": "2025-06-01", "effective_to": "2026-02-28", "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [
+        {
+          "evidence_type": "appendix_text",
+          "min_count": 1,
+          "metadata_constraints": [ { "field": "anchor_verbatim", "op": "eq", "value": "經部門主管核准且屬無 QMS 影響的變更，得免除品質經理複核。" } ],
+          "missing_evidence_result": "insufficient_evidence"
+        }
+      ],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-CHANGE",
+        "document_version": "2.1",
+        "clause_refs": [ { "section": "4.3", "page": 11, "paragraph": null } ],
+        "verbatim_text": "變更執行前，須完成風險評估並取得核准紀錄；核准完成時間不得晚於變更執行開始時間。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_B", "reviewed_at": "2026-03-05", "change_note": "附錄綁定一致性測試（引擎 spec D-13）：錨點文本屬 EX-7而規則訂在 SOP-CHANGE@2.1 → 命中不算" } },
+      "validation": { "test_case_refs": ["BC-144"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-PAY-001",
+      "rule_version": "1.0",
+      "deontic": { "modality": "permission", "strength": "optional" },
+      "subject": { "entity_type": "purchase_request", "actor_role": "buyer", "scope": { "processes": ["P-PURCH"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "purchase_requested" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "warn", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": ["RULE-PAY-002"], "overrides": [], "conflicts_with": ["RULE-PAY-002"] },
+      "temporal": { "effective_from": "2026-06-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-PURCH",
+        "document_version": "4.5",
+        "clause_refs": [ { "section": "3.2", "page": 6, "paragraph": null } ],
+        "verbatim_text": "小額（未達新臺幣壹拾萬元）付款得單簽辦理，優先於原則性條款。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_C", "reviewed_at": "2026-06-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-164"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-PAY-002",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "purchase_request", "actor_role": "buyer", "scope": { "processes": ["P-PURCH"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "purchase_requested" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "warn", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": ["RULE-PAY-001"], "conflicts_with": ["RULE-PAY-001"] },
+      "temporal": { "effective_from": "2026-06-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-PURCH",
+        "document_version": "4.5",
+        "clause_refs": [ { "section": "3.3", "page": 6, "paragraph": null } ],
+        "verbatim_text": "付款一律須經副總簽核，不因金額大小而免除。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_C", "reviewed_at": "2026-06-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-164"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-PAY-003",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "purchase_request", "actor_role": "buyer", "scope": { "processes": ["P-PURCH"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "purchase_requested" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "warn", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": ["RULE-PAY-004"] },
+      "temporal": { "effective_from": "2026-06-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-PURCH",
+        "document_version": "4.5",
+        "clause_refs": [ { "section": "3.4", "page": 7, "paragraph": null } ],
+        "verbatim_text": "所有付款單皆須主管親筆簽名。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_C", "reviewed_at": "2026-06-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-163"], "last_run": null }
+    },
+    {
+      "rule_id": "RULE-PAY-004",
+      "rule_version": "1.0",
+      "deontic": { "modality": "obligation", "strength": "mandatory" },
+      "subject": { "entity_type": "purchase_request", "actor_role": "buyer", "scope": { "processes": ["P-PURCH"], "org_unit": null, "jurisdiction": null, "asset_types": [] } },
+      "condition": { "all": [ { "predicate": { "field": "activity.name", "op": "eq", "value": "purchase_requested" } } ] },
+      "sequencing": { "required_before": [], "forbidden_after": [], "deadline": null, "on_violation": "warn", "loop_policy": null },
+      "exceptions": { "exception_of": [], "overridden_by": [], "overrides": [], "conflicts_with": ["RULE-PAY-003"] },
+      "temporal": { "effective_from": "2026-06-01", "effective_to": null, "supersedes": [], "superseded_by": null },
+      "evidence_requirements": [],
+      "decision": { "method": "deterministic_rule_check", "missing_evidence_result": "insufficient_evidence", "abstain_threshold": null },
+      "source": {
+        "document_id": "SOP-PURCH",
+        "document_version": "4.5",
+        "clause_refs": [ { "section": "3.5", "page": 7, "paragraph": null } ],
+        "verbatim_text": "合格電子簽章視同親筆簽名。",
+        "selectors": []
+      },
+      "provenance": { "origin": "authoritative_text", "extraction": null, "review": { "status": "active", "reviewer": "domain_expert_C", "reviewed_at": "2026-06-05", "change_note": null } },
+      "validation": { "test_case_refs": ["BC-163"], "last_run": null }
+    }
+  ]
+}

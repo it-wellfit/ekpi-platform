@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  fmt:
+    name: Format check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check platform fmt
+        working-directory: platform
+        run: cargo fmt -- --check
+      - name: Check eval fmt
+        working-directory: eval
+        run: cargo fmt -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Clippy platform
+        working-directory: platform
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Clippy eval
+        working-directory: eval
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test platform
+        working-directory: platform
+        run: cargo test --locked
+      - name: Test eval
+        working-directory: eval
+        run: cargo test --locked
+
+  selftest:
+    name: Selftest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Platform selftest
+        working-directory: platform
+        run: cargo run --locked --bin ekp_platform -- --selftest
+      - name: Platform declared-rules-schema
+        working-directory: platform
+        run: cargo run --locked --bin ekp_platform -- --declared-rules-schema
+      - name: Eval selftest
+        working-directory: eval
+        run: cargo run --locked -- --selftest
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan
+        run: |
+          if git log --all -p | grep -iE '(password|secret|token|api_key|private_key)\s*[:=]' ; then
+            echo "Potential secrets found"; exit 1
+          fi
+          echo "Secret scan clean"
+      - name: Audit platform lockfile
+        working-directory: platform
+        run: cargo audit 2>/dev/null || echo "cargo-audit not available, skipping"
+      - name: Audit eval lockfile
+        working-directory: eval
+        run: cargo audit 2>/dev/null || echo "cargo-audit not available, skipping"

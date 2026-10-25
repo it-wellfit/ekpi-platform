@@ -1,0 +1,82 @@
+# Existing functionality regression checklist
+
+This checklist records the behavior already present in the local prototype. It is the regression baseline for changes to existing code; it is not evidence that the future enterprise product requirements have been implemented. The detailed AT-01–AT-31 matrix in `docs/governance/04-acceptance-test-matrix.md` is a target-product plan. Do not mark those cases passed based only on this prototype's tests.
+
+## 1. Required automated baseline
+
+Run the exact commands in [quality gates](quality-gates.md) from each independent crate directory. CI runs them on Ubuntu and Windows. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest` and the schema check.
+
+The full local baseline and representative CLI paths were rerun for this audit (Rust 1.99.1, 2026-10-25):
+
+- `eval`: format, Clippy, Cargo tests, CLI self-test, default report generation, and explicit single-adapter report generation passed; Cargo reported 9 unit tests and the self-test reported 10 checks. Unknown adapter selection returned the expected exit code 2.
+- `platform`: format, Clippy, Cargo tests, engine self-test, declared-rules schema, parameterized report/export/coverage/HTML generation, and output artifact checks passed. Cargo reported 183 tests (170 unit including 9 LegalRuleML exporter tests and 3 subject-activity tests, 2 edge-case tests, 3 governance web, 8 engine integration). The CLI self-test reported 49 assertions; the schema command validated 20 records. Malformed params and `--html` without `--out` returned the expected refusal exit codes. The generated HTML had no script element; the LegalRuleML export was 51,026 bytes with 19 `PrescriptiveStatement` elements and validated against the exporter's compact-schema self-check.
+
+These are dated observations. Re-run them for the revision being delivered and attach the new output to the PR.
+
+### 2026-10-26 regression corrections
+
+- D-08 subject qualification now uses only `subject.actor_role`. Evidence `actor_role` constraints filter approval records and must not disqualify an otherwise authorised subject. When the governed activity is present, at least one occurrence must match the subject role; additional signers remain valid. Regression cases: EC-006 and BC-143.
+- D-05 `sequencing.on_violation = warn` now records `deadline_overdue_warned` and preserves `Comply` instead of treating the deadline breach as `Violate`. Regression case: BC-194.
+- The LegalRuleML exporter was restored after a placeholder returned `<LegalRuleML/>`. The regenerated artifact is byte-identical to the 51,026-byte reference, and the smoke gate now rejects undersized or structurally incomplete exports.
+
+## 2. `eval/` behavior to preserve
+
+- Parse seed/evaluation cases and preserve warnings/errors for malformed input.
+- Keep adapter identity attached to each decision; reject a result tagged as a different system.
+- Preserve verdict, citation, and metric semantics, including wrongful-allow hard gates, refusal-on-definitive, correct refusal, escalation, coverage, and report summaries.
+- Preserve the default oracle / allow-all / refuse-all adapters and explicit `--systems` selection behavior.
+- Preserve JSON and Markdown report generation, timestamps, and per-case failure details.
+
+Relevant code: `eval/src/types.rs`, `metrics.rs`, `systems.rs`, `report.rs`, `main.rs`. Required automated checks: `cargo test --locked` and `cargo run --locked -- --selftest`. The expected CLI refusals are exit code 2 for an unknown adapter.
+
+Optional CLI smoke (write output under the ignored crate target/ directory):
+
+    cargo run --locked -- --out target/regression-report
+
+Confirm the command succeeds and creates `report.json` and `report.md` under that ignored target/ directory.
+
+## 3. `platform/` deterministic engine and CLI behavior
+
+- Load versioned source-document and rule data; preserve source-version bindings, hashes, valid-time checks, and fail-closed schema validation.
+- Keep draft AI-extracted rules out of the active engine; preserve verdicts, citations, abstention behavior, hard gates H-1 through H-6, process replay findings, and deterministic snapshot/replay checks.
+- Preserve the configurable retrieval threshold and parameter precedence. Invalid parameter files or invalid thresholds must refuse execution.
+- Preserve the declared-rules schema, LegalRuleML export validation, coverage report for the seed and casebook sets, HTML report output, and combined `--out` behavior.
+
+Relevant code: `platform/src/{docs,rules,process,retrieval,engine,snapshot,params,validate,export,coverage_report,main}.rs`; test coverage is in module tests and `platform/tests/integration.rs`.
+
+Required CI commands: Cargo tests, engine `--selftest`, and `--declared-rules-schema`. Expected CLI refusals are exit code 1 for malformed or tampered params and 2 for `--html` without `--out`. The remaining report/export flags are not separate required CI steps today. Run this focused smoke when touching CLI output, configuration, report, export, or case loading:
+
+    cargo run --locked --bin ekp_platform -- --params config/engine-params.json --declared-rules-schema --out target/regression-report --coverage-report --export-legalruleml target/regression-lrml --html
+
+Confirm exit code 0 and that target/regression-report contains `report.json`, `report.md`, `report.html`, `coverage_report.md`, `engine_snapshots.json`, `engine_hard_gates.json`, plus the LegalRuleML export under target/regression-lrml. Also confirm `report.html` is generated from the Markdown report and does not contain executable script elements. For the LegalRuleML export, confirm the artifact is at least 10 KB, has the official `lrml:LegalRuleML` root and namespace, and carries at least 19 `PrescriptiveStatement`, 19 `PenaltyStatement`, 19 `Reparation`, and 16 `LegalSource` elements. `gate.ps1 -IncludeSmoke` enforces these checks so a 14-byte stub cannot pass as a real export.
+
+## 4. Governance web prototype behavior to preserve
+
+### Read routes and presentation
+
+- `GET /`, `/projects`, `/evidence`, `/inspections`, `/workflows`, `/controls`, `/lifecycle`, and `/audit` render their expected headings.
+- `GET /assets/governance.css` returns CSS with the expected content type.
+- Preserve the skip link, visible keyboard focus styling, narrow-screen media rule, Content Security Policy header, and zero-script HTML.
+
+### Mutating flows and records
+
+- Project creation assigns an identifier and persists a valid ledger event.
+- Evidence references link project, source system, source URL, source version, type, and owner; review decisions persist.
+- Workflow drafts can be saved and published by version without mutating published versions.
+- Quality cases preserve status transitions; CAPA cannot be closed before verification/effectiveness steps.
+- Quality inspection requires all 29 checklist decisions and their evidence.
+- Gate decisions preserve non-waivable blocking behavior.
+- Audit view verifies the hash-linked local event ledger and reflects recorded project, evidence, inspection, workflow, CAPA, and gate events.
+- Mutating requests with a foreign Origin are rejected; the test confirms rejection does not append a ledger event.
+
+Relevant routes and tests: `platform/src/governance_web.rs`, `platform/src/governance.rs`, `platform/tests/governance_web.rs`. Preserve the boundary that this prototype is local-only and has no enterprise authentication or external-source permission enforcement.
+
+The existing automated route test checks semantic page headings, CSP presence, skip link, zero script, CSS content type, focus-visible selector, and a narrow-screen media rule. It is not a substitute for manual keyboard, screen-reader, contrast, or browser-resize checks on UI changes.
+
+## 5. Review checklist for every change
+
+- [ ] Identify affected items above and link the relevant unit, integration, or self-test evidence in the PR.
+- [ ] If an existing behavior changes intentionally, link the accepted spec and update this inventory and its regression test in the same change.
+- [ ] For a UI change, record keyboard, screen-reader, contrast, narrow-screen, and existing-route checks where applicable.
+- [ ] For high-risk behavior, add applicable denial, stale/conflicting version, duplicate/retry, failed approval, and recovery cases; preserve fail-closed behavior.
+- [ ] Keep prototype behavior claims separate from target-product requirements and unimplemented integrations.

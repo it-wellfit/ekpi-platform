@@ -1,0 +1,54 @@
+name: Work slice
+description: Create one independently verifiable slice linked to a parent spec. See docs/development/ticket-template.md.
+title: "[Task]: "
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: Parent spec or issue
+      description: Link the accepted spec and parent issue.
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirement IDs and outcome
+      description: State the traceable requirements and observable result for this slice.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Keep the slice independently verifiable; include refusal/error behavior where relevant.
+      placeholder: |
+        - Given ...
+        - When ...
+        - Then ...
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Design, dependencies, and open decisions
+      description: Link ADRs, list blockers, and name an owner for unresolved decisions.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk tier
+      options:
+        - Low
+        - Medium
+        - High
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: List regression cases, checks, and evidence to attach to the PR.
+    validations:
+      required: true

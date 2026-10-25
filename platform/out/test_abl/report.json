@@ -1,0 +1,1331 @@
+{
+  "generated_at_unix": 1792914797,
+  "per_system": {
+    "G_ekpi_engine": {
+      "n_cases": 46,
+      "n_matched": 46,
+      "accuracy_nonabstain": 1.0,
+      "wrong_allow": 0,
+      "violation_as_comply": 0,
+      "refusal_on_definitive": 0.0,
+      "correct_refusal": 1.0,
+      "escalation_correct": 1.0,
+      "citation_recall": 1.0,
+      "citation_precision": 1.0,
+      "mean_confidence": 0.782608695652174,
+      "mean_latency_ms": 0.0,
+      "mean_cost_tokens": 0.0,
+      "confusion_matrix": {
+        "comply|comply": 21,
+        "escalate|escalate": 8,
+        "insufficient_evidence|insufficient_evidence": 10,
+        "violate|violate": 7
+      },
+      "coverage_curve": [
+        {
+          "coverage": 0.021739130434782608,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.043478260869565216,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.06521739130434782,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.08695652173913043,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.10869565217391304,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.13043478260869565,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.15217391304347827,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.17391304347826086,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.1956521739130435,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.21739130434782608,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.2391304347826087,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.2608695652173913,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.2826086956521739,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.30434782608695654,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.32608695652173914,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.34782608695652173,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.3695652173913043,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.391304347826087,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.41304347826086957,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.43478260869565216,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.45652173913043476,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.4782608695652174,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5217391304347826,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5434782608695652,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5652173913043478,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5869565217391305,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6086956521739131,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6304347826086957,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6521739130434783,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6739130434782609,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6956521739130435,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.717391304347826,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.7391304347826086,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.7608695652173914,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.782608695652174,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8043478260869565,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8260869565217391,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8478260869565217,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8695652173913043,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8913043478260869,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9130434782608695,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9347826086956522,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9565217391304348,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9782608695652174,
+          "risk": 0.0
+        },
+        {
+          "coverage": 1.0,
+          "risk": 0.0
+        }
+      ],
+      "hard_gate_violated": false,
+      "failures": []
+    },
+    "stub:allow_all": {
+      "n_cases": 46,
+      "n_matched": 46,
+      "accuracy_nonabstain": 0.5833333333333334,
+      "wrong_allow": 25,
+      "violation_as_comply": 7,
+      "refusal_on_definitive": 0.0,
+      "correct_refusal": 0.0,
+      "escalation_correct": 0.0,
+      "citation_recall": 0.0,
+      "citation_precision": null,
+      "mean_confidence": 1.0,
+      "mean_latency_ms": 1.0,
+      "mean_cost_tokens": 0.0,
+      "confusion_matrix": {
+        "comply|comply": 21,
+        "escalate|comply": 8,
+        "insufficient_evidence|comply": 10,
+        "violate|comply": 7
+      },
+      "coverage_curve": [
+        {
+          "coverage": 0.021739130434782608,
+          "risk": 1.0
+        },
+        {
+          "coverage": 0.043478260869565216,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.06521739130434782,
+          "risk": 0.6666666666666666
+        },
+        {
+          "coverage": 0.08695652173913043,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.10869565217391304,
+          "risk": 0.6
+        },
+        {
+          "coverage": 0.13043478260869565,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.15217391304347827,
+          "risk": 0.5714285714285714
+        },
+        {
+          "coverage": 0.17391304347826086,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.1956521739130435,
+          "risk": 0.5555555555555556
+        },
+        {
+          "coverage": 0.21739130434782608,
+          "risk": 0.6
+        },
+        {
+          "coverage": 0.2391304347826087,
+          "risk": 0.5454545454545454
+        },
+        {
+          "coverage": 0.2608695652173913,
+          "risk": 0.5833333333333334
+        },
+        {
+          "coverage": 0.2826086956521739,
+          "risk": 0.5384615384615384
+        },
+        {
+          "coverage": 0.30434782608695654,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.32608695652173914,
+          "risk": 0.5333333333333333
+        },
+        {
+          "coverage": 0.34782608695652173,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.3695652173913043,
+          "risk": 0.5294117647058824
+        },
+        {
+          "coverage": 0.391304347826087,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.41304347826086957,
+          "risk": 0.5263157894736842
+        },
+        {
+          "coverage": 0.43478260869565216,
+          "risk": 0.55
+        },
+        {
+          "coverage": 0.45652173913043476,
+          "risk": 0.5714285714285714
+        },
+        {
+          "coverage": 0.4782608695652174,
+          "risk": 0.5909090909090909
+        },
+        {
+          "coverage": 0.5,
+          "risk": 0.6086956521739131
+        },
+        {
+          "coverage": 0.5217391304347826,
+          "risk": 0.5833333333333334
+        },
+        {
+          "coverage": 0.5434782608695652,
+          "risk": 0.56
+        },
+        {
+          "coverage": 0.5652173913043478,
+          "risk": 0.5384615384615384
+        },
+        {
+          "coverage": 0.5869565217391305,
+          "risk": 0.5555555555555556
+        },
+        {
+          "coverage": 0.6086956521739131,
+          "risk": 0.5357142857142857
+        },
+        {
+          "coverage": 0.6304347826086957,
+          "risk": 0.5517241379310345
+        },
+        {
+          "coverage": 0.6521739130434783,
+          "risk": 0.5666666666666667
+        },
+        {
+          "coverage": 0.6739130434782609,
+          "risk": 0.5483870967741935
+        },
+        {
+          "coverage": 0.6956521739130435,
+          "risk": 0.53125
+        },
+        {
+          "coverage": 0.717391304347826,
+          "risk": 0.5454545454545454
+        },
+        {
+          "coverage": 0.7391304347826086,
+          "risk": 0.5294117647058824
+        },
+        {
+          "coverage": 0.7608695652173914,
+          "risk": 0.5428571428571428
+        },
+        {
+          "coverage": 0.782608695652174,
+          "risk": 0.5555555555555556
+        },
+        {
+          "coverage": 0.8043478260869565,
+          "risk": 0.5405405405405406
+        },
+        {
+          "coverage": 0.8260869565217391,
+          "risk": 0.5263157894736842
+        },
+        {
+          "coverage": 0.8478260869565217,
+          "risk": 0.5384615384615384
+        },
+        {
+          "coverage": 0.8695652173913043,
+          "risk": 0.525
+        },
+        {
+          "coverage": 0.8913043478260869,
+          "risk": 0.5121951219512195
+        },
+        {
+          "coverage": 0.9130434782608695,
+          "risk": 0.5238095238095238
+        },
+        {
+          "coverage": 0.9347826086956522,
+          "risk": 0.5348837209302325
+        },
+        {
+          "coverage": 0.9565217391304348,
+          "risk": 0.5454545454545454
+        },
+        {
+          "coverage": 0.9782608695652174,
+          "risk": 0.5333333333333333
+        },
+        {
+          "coverage": 1.0,
+          "risk": 0.5434782608695652
+        }
+      ],
+      "hard_gate_violated": true,
+      "failures": [
+        {
+          "case_id": "BC-101",
+          "category": "stale_pool_pin_mismatch",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "陳舊檢索池（僅存 SOP-CHANGE@2.1）＋釘住來源版本 3.2：綁定無可消費記錄 → 保守拒答（D-02；拒答不攜引用）。"
+        },
+        {
+          "case_id": "BC-103",
+          "category": "future_rule",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "規則 effective_from 2027-01-01 未到 → 引擎不得代裁未生效規則（D-10 前向）→ 保守拒答。"
+        },
+        {
+          "case_id": "BC-105",
+          "category": "rule_expired",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "規則 effective_to 2026-06-30 屆滿（t 早於 earliest）→ 保守拒答並註記 rule_expired（D-10 後向）。"
+        },
+        {
+          "case_id": "BC-110",
+          "category": "deadline_overdue_block",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "deadline activity_end(approve) 起算 P2D，執行晚 8 天 → 超期嚴格 >：on_violation=block → violate（D-04/D-05）。"
+        },
+        {
+          "case_id": "BC-112",
+          "category": "deadline_overdue_escalate",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "同超期事實但 on_violation=escalate → 升級人工裁定（D-05 三態差異）。"
+        },
+        {
+          "case_id": "BC-113",
+          "category": "deadline_anchor_missing",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "anchor 事件（approve_change）未觀測 → 錨點缺失≠未發生 → 保守拒答（D-04）。"
+        },
+        {
+          "case_id": "BC-115",
+          "category": "close_gate_violated",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "關閉後（subject 完成 03-04）再執行變更 03-05（嚴格 >）→ forbidden_after 違禁 → block → violate（D-06/H-1）。"
+        },
+        {
+          "case_id": "BC-120",
+          "category": "actor_role_mismatch",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "主體資格要求 buyer，觀測 actor 會計 → 無憑據不裁越權亦不擅放行 → escalate＋subject_actor_mismatch（D-08）。"
+        },
+        {
+          "case_id": "BC-122",
+          "category": "capa_actor_mismatch",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "D-08 先於 D-15：主體不符即升級，loop 狀態缺失不再另行拒答（管線短路次序）。"
+        },
+        {
+          "case_id": "BC-131",
+          "category": "loop_beyond_cap",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "retries=4 ≥ cap=3 → 停止回退並升級（引擎按 policy.failures_cap 裁決，引用超限條款 §6.2）。"
+        },
+        {
+          "case_id": "BC-132",
+          "category": "loop_no_cap_field",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "案件 loop 無 cap 欄（無 D-16 註記觸發），retries=3 達 policy cap → escalate。"
+        },
+        {
+          "case_id": "BC-133",
+          "category": "loop_state_missing",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "loop 規則已宣告但案件無 loop 狀態 → 引擎不可自設預設（0 次回退）→ 保守拒答＋loop_state_missing（D-15）。"
+        },
+        {
+          "case_id": "BC-134",
+          "category": "loop_cap_conflict_lower",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "案件 cap=2 與 policy failures_cap=3 不一致 → 僅登記治理註記不改判定（D-16）；超限事實依 policy → escalate。"
+        },
+        {
+          "case_id": "BC-140",
+          "category": "approval_actor_unqualified",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "核准簽核存在但簽核人不具資格（QA_manager/dept_head 計數 0）→ 檢證型證據不足 → 保守拒答。"
+        },
+        {
+          "case_id": "BC-144",
+          "category": "appendix_binding_mismatch",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "錨點文本實存於 EX-7@2.0，但規則綁定 SOP-CHANGE@2.1 → 命中文件與規則綁定不一致，視為不可定位（D-13）→ 保守拒答。"
+        },
+        {
+          "case_id": "BC-150",
+          "category": "non_repeatable_duplicate",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "規則層全滿足但非可重複活動 execute_change 出現 2 次 → D-18 流程偏差 → H-1 保護帶 violate（引用仍保留規則條款）。"
+        },
+        {
+          "case_id": "BC-151",
+          "category": "duplicate_and_close",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "重複執行＋關閉鏈皆在案：雙規則引用全保留，D-18 偏差推至 violate。"
+        },
+        {
+          "case_id": "BC-160",
+          "category": "unregistered_rule_id",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "宣告的 rule_id 未於規則庫登記 → 引擎不猜測語義 → 保守拒答＋顯式 note（D-02 顯式聲明主義）。"
+        },
+        {
+          "case_id": "BC-162",
+          "category": "draft_rule_invisible",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "draft 規則已登記但非 active → 不得被消費（投毒防線）→ note 顯式'草稿不可見'→ 保守拒答。"
+        },
+        {
+          "case_id": "BC-163",
+          "category": "conflict_no_override",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "互指 conflicts_with 且雙方均無覆寫宣告 → 引擎不代治理裁決 → escalate 並保留雙方條款引用（H-3 硬門檻）。"
+        },
+        {
+          "case_id": "BC-180",
+          "category": "subject_actor_unrecognized",
+          "expected": "escalate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "執行者角色未註冊（非 prod_line）→ D-08：無憑據不裁越權、也不擅放行 → escalate＋subject_actor_mismatch。"
+        },
+        {
+          "case_id": "BC-190",
+          "category": "close_before_execute",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "關閉早於執行：規則層反序（violate，§5.1）＋流程層 precedence 逆轉（H-1 Deviation）雙證 → violate（雙引用保留）。"
+        },
+        {
+          "case_id": "BC-191",
+          "category": "deadline_overdue_with_gap",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "多規則併案：CHG-001 證據齊 → comply（§4.3）；REL-002 deadline 超期 9 天 → block（§2.1）→ 優先序 escalate>violate>insufficient>comply 取最高 → violate。"
+        },
+        {
+          "case_id": "BC-192",
+          "category": "injection_and_rule_expiry",
+          "expected": "insufficient_evidence",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "注入文件在池（H-5 僅 note）＋另一規則屆滿（D-10 conservative）→ 合併最高嚴重度為 insufficient → 拒答清空引用。"
+        },
+        {
+          "case_id": "BC-196",
+          "category": "deviation_and_unknown_coexist",
+          "expected": "violate",
+          "actual": "comply",
+          "rules_used": [],
+          "notes": "D-18 重複偏差與模型外活動並存：偏差（severity 3）壓過 Unconfirmed（severity 1）→ violate。"
+        }
+      ]
+    },
+    "stub:oracle": {
+      "n_cases": 46,
+      "n_matched": 46,
+      "accuracy_nonabstain": 1.0,
+      "wrong_allow": 0,
+      "violation_as_comply": 0,
+      "refusal_on_definitive": 0.0,
+      "correct_refusal": 1.0,
+      "escalation_correct": 1.0,
+      "citation_recall": 1.0,
+      "citation_precision": 1.0,
+      "mean_confidence": 0.9978260869565218,
+      "mean_latency_ms": 2.0,
+      "mean_cost_tokens": 1.0,
+      "confusion_matrix": {
+        "comply|comply": 21,
+        "escalate|escalate": 8,
+        "insufficient_evidence|insufficient_evidence": 10,
+        "violate|violate": 7
+      },
+      "coverage_curve": [
+        {
+          "coverage": 0.021739130434782608,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.043478260869565216,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.06521739130434782,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.08695652173913043,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.10869565217391304,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.13043478260869565,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.15217391304347827,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.17391304347826086,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.1956521739130435,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.21739130434782608,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.2391304347826087,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.2608695652173913,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.2826086956521739,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.30434782608695654,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.32608695652173914,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.34782608695652173,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.3695652173913043,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.391304347826087,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.41304347826086957,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.43478260869565216,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.45652173913043476,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.4782608695652174,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5217391304347826,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5434782608695652,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5652173913043478,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.5869565217391305,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6086956521739131,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6304347826086957,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6521739130434783,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6739130434782609,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.6956521739130435,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.717391304347826,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.7391304347826086,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.7608695652173914,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.782608695652174,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8043478260869565,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8260869565217391,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8478260869565217,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8695652173913043,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.8913043478260869,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9130434782608695,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9347826086956522,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9565217391304348,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.9782608695652174,
+          "risk": 0.0
+        },
+        {
+          "coverage": 1.0,
+          "risk": 0.0
+        }
+      ],
+      "hard_gate_violated": false,
+      "failures": []
+    },
+    "stub:refuse_all": {
+      "n_cases": 46,
+      "n_matched": 46,
+      "accuracy_nonabstain": 0.0,
+      "wrong_allow": 0,
+      "violation_as_comply": 0,
+      "refusal_on_definitive": 1.0,
+      "correct_refusal": 1.0,
+      "escalation_correct": 0.0,
+      "citation_recall": 0.0,
+      "citation_precision": null,
+      "mean_confidence": 0.9500000000000004,
+      "mean_latency_ms": 1.0,
+      "mean_cost_tokens": 0.0,
+      "confusion_matrix": {
+        "comply|insufficient_evidence": 21,
+        "escalate|insufficient_evidence": 8,
+        "insufficient_evidence|insufficient_evidence": 10,
+        "violate|insufficient_evidence": 7
+      },
+      "coverage_curve": [
+        {
+          "coverage": 0.021739130434782608,
+          "risk": 0.0
+        },
+        {
+          "coverage": 0.043478260869565216,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.06521739130434782,
+          "risk": 0.3333333333333333
+        },
+        {
+          "coverage": 0.08695652173913043,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.10869565217391304,
+          "risk": 0.4
+        },
+        {
+          "coverage": 0.13043478260869565,
+          "risk": 0.5
+        },
+        {
+          "coverage": 0.15217391304347827,
+          "risk": 0.5714285714285714
+        },
+        {
+          "coverage": 0.17391304347826086,
+          "risk": 0.625
+        },
+        {
+          "coverage": 0.1956521739130435,
+          "risk": 0.6666666666666666
+        },
+        {
+          "coverage": 0.21739130434782608,
+          "risk": 0.6
+        },
+        {
+          "coverage": 0.2391304347826087,
+          "risk": 0.6363636363636364
+        },
+        {
+          "coverage": 0.2608695652173913,
+          "risk": 0.6666666666666666
+        },
+        {
+          "coverage": 0.2826086956521739,
+          "risk": 0.6923076923076923
+        },
+        {
+          "coverage": 0.30434782608695654,
+          "risk": 0.7142857142857143
+        },
+        {
+          "coverage": 0.32608695652173914,
+          "risk": 0.7333333333333333
+        },
+        {
+          "coverage": 0.34782608695652173,
+          "risk": 0.75
+        },
+        {
+          "coverage": 0.3695652173913043,
+          "risk": 0.7647058823529411
+        },
+        {
+          "coverage": 0.391304347826087,
+          "risk": 0.7777777777777778
+        },
+        {
+          "coverage": 0.41304347826086957,
+          "risk": 0.7894736842105263
+        },
+        {
+          "coverage": 0.43478260869565216,
+          "risk": 0.8
+        },
+        {
+          "coverage": 0.45652173913043476,
+          "risk": 0.7619047619047619
+        },
+        {
+          "coverage": 0.4782608695652174,
+          "risk": 0.7727272727272727
+        },
+        {
+          "coverage": 0.5,
+          "risk": 0.7391304347826086
+        },
+        {
+          "coverage": 0.5217391304347826,
+          "risk": 0.75
+        },
+        {
+          "coverage": 0.5434782608695652,
+          "risk": 0.76
+        },
+        {
+          "coverage": 0.5652173913043478,
+          "risk": 0.7692307692307693
+        },
+        {
+          "coverage": 0.5869565217391305,
+          "risk": 0.7407407407407407
+        },
+        {
+          "coverage": 0.6086956521739131,
+          "risk": 0.75
+        },
+        {
+          "coverage": 0.6304347826086957,
+          "risk": 0.7586206896551724
+        },
+        {
+          "coverage": 0.6521739130434783,
+          "risk": 0.7666666666666667
+        },
+        {
+          "coverage": 0.6739130434782609,
+          "risk": 0.7741935483870968
+        },
+        {
+          "coverage": 0.6956521739130435,
+          "risk": 0.78125
+        },
+        {
+          "coverage": 0.717391304347826,
+          "risk": 0.7575757575757576
+        },
+        {
+          "coverage": 0.7391304347826086,
+          "risk": 0.7647058823529411
+        },
+        {
+          "coverage": 0.7608695652173914,
+          "risk": 0.7428571428571429
+        },
+        {
+          "coverage": 0.782608695652174,
+          "risk": 0.75
+        },
+        {
+          "coverage": 0.8043478260869565,
+          "risk": 0.7567567567567568
+        },
+        {
+          "coverage": 0.8260869565217391,
+          "risk": 0.7631578947368421
+        },
+        {
+          "coverage": 0.8478260869565217,
+          "risk": 0.7692307692307693
+        },
+        {
+          "coverage": 0.8695652173913043,
+          "risk": 0.775
+        },
+        {
+          "coverage": 0.8913043478260869,
+          "risk": 0.7804878048780488
+        },
+        {
+          "coverage": 0.9130434782608695,
+          "risk": 0.7857142857142857
+        },
+        {
+          "coverage": 0.9347826086956522,
+          "risk": 0.7906976744186046
+        },
+        {
+          "coverage": 0.9565217391304348,
+          "risk": 0.7727272727272727
+        },
+        {
+          "coverage": 0.9782608695652174,
+          "risk": 0.7777777777777778
+        },
+        {
+          "coverage": 1.0,
+          "risk": 0.782608695652174
+        }
+      ],
+      "hard_gate_violated": false,
+      "failures": [
+        {
+          "case_id": "BC-102",
+          "category": "fresh_pool_resolve",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "新鮮檢索池：pin 3.2 綁至 RULE-CHG-001@3.0（source SOP-CHANGE@3.2）→ 程序與簽核證據均滿足 → comply。"
+        },
+        {
+          "case_id": "BC-104",
+          "category": "future_rule_lapsed_in_force",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "生效後（2027-03）同規則正常管轄：無前置／無期限／無證據要求 → comply。"
+        },
+        {
+          "case_id": "BC-106",
+          "category": "rule_active_window",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "規則有效期內（2026-05）→ 管線續行無反序／無違禁 → comply（引用主條款 §3.1）。"
+        },
+        {
+          "case_id": "BC-110",
+          "category": "deadline_overdue_block",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "deadline activity_end(approve) 起算 P2D，執行晚 8 天 → 超期嚴格 >：on_violation=block → violate（D-04/D-05）。"
+        },
+        {
+          "case_id": "BC-111",
+          "category": "deadline_within",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "1 天 ≤ P2D → 期限內 → comply。"
+        },
+        {
+          "case_id": "BC-112",
+          "category": "deadline_overdue_escalate",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "同超期事實但 on_violation=escalate → 升級人工裁定（D-05 三態差異）。"
+        },
+        {
+          "case_id": "BC-114",
+          "category": "deadline_equal_not_triggered",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "恰好 2 天＝期限界：嚴格 > 不觸發（等於不算超期，D-04 邊界語義）→ comply。"
+        },
+        {
+          "case_id": "BC-115",
+          "category": "close_gate_violated",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "關閉後（subject 完成 03-04）再執行變更 03-05（嚴格 >）→ forbidden_after 違禁 → block → violate（D-06/H-1）。"
+        },
+        {
+          "case_id": "BC-116",
+          "category": "close_gate_clean",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "執行在關閉前完成，無違禁觀測 → comply。"
+        },
+        {
+          "case_id": "BC-117",
+          "category": "close_gate_equal_ts_boundary",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "執行與關閉同時刻：等點視為同批並行，不罰（D-06 邊界；嚴格 >）→ comply。"
+        },
+        {
+          "case_id": "BC-120",
+          "category": "actor_role_mismatch",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "主體資格要求 buyer，觀測 actor 會計 → 無憑據不裁越權亦不擅放行 → escalate＋subject_actor_mismatch（D-08）。"
+        },
+        {
+          "case_id": "BC-121",
+          "category": "actor_role_match",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "buyer 主體符合且無其他約束 → comply。"
+        },
+        {
+          "case_id": "BC-122",
+          "category": "capa_actor_mismatch",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "D-08 先於 D-15：主體不符即升級，loop 狀態缺失不再另行拒答（管線短路次序）。"
+        },
+        {
+          "case_id": "BC-130",
+          "category": "loop_within_cap",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "retries=2 < failures_cap=3 → 循環上限內 → comply（引用首次回退條款 §6.1；D-15/D-16）。"
+        },
+        {
+          "case_id": "BC-131",
+          "category": "loop_beyond_cap",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "retries=4 ≥ cap=3 → 停止回退並升級（引擎按 policy.failures_cap 裁決，引用超限條款 §6.2）。"
+        },
+        {
+          "case_id": "BC-132",
+          "category": "loop_no_cap_field",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "案件 loop 無 cap 欄（無 D-16 註記觸發），retries=3 達 policy cap → escalate。"
+        },
+        {
+          "case_id": "BC-134",
+          "category": "loop_cap_conflict_lower",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "案件 cap=2 與 policy failures_cap=3 不一致 → 僅登記治理註記不改判定（D-16）；超限事實依 policy → escalate。"
+        },
+        {
+          "case_id": "BC-141",
+          "category": "approval_two_signatures",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "雙簽核證據齊備且無反序 → comply（非可重複活動各活動僅 1 次，不觸 D-18 —— approve×2 屬規則要求的多簽，非同活動重複缺陷判定對象）。"
+        },
+        {
+          "case_id": "BC-142",
+          "category": "partial_pass_note",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "雙簽要求只查到 1 簽 → partial_pass_note：缺口僅升 note（evidence_gap_noted），判定不降級（D-07）→ comply。"
+        },
+        {
+          "case_id": "BC-143",
+          "category": "dual_signature_full",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "兩簽都在（QA_manager＋dept_head）→ 證據滿足 → comply。"
+        },
+        {
+          "case_id": "BC-145",
+          "category": "appendix_binding_match",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "例外規則綁定 EX-7@2.0，附錄錨點於同文件命中 → 證據定位成立 → comply。"
+        },
+        {
+          "case_id": "BC-150",
+          "category": "non_repeatable_duplicate",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "規則層全滿足但非可重複活動 execute_change 出現 2 次 → D-18 流程偏差 → H-1 保護帶 violate（引用仍保留規則條款）。"
+        },
+        {
+          "case_id": "BC-151",
+          "category": "duplicate_and_close",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "重複執行＋關閉鏈皆在案：雙規則引用全保留，D-18 偏差推至 violate。"
+        },
+        {
+          "case_id": "BC-152",
+          "category": "capa_repeatable_iterations",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "P-CAPA 為可重複循環流程：重複迭代不算 D-18 偏差；retries=1 < cap=3 → comply。"
+        },
+        {
+          "case_id": "BC-153",
+          "category": "unknown_activity_noted",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "模型外活動 post_mortem_briefing → Unconfirmed（僅 note，不影響判定優先序）→ 判定維持 comply。"
+        },
+        {
+          "case_id": "BC-161",
+          "category": "duplicate_ref_dedup",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "重複引用去重（保持聲明順序，不重複評估、引用集合不膨脹）→ comply。"
+        },
+        {
+          "case_id": "BC-163",
+          "category": "conflict_no_override",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "互指 conflicts_with 且雙方均無覆寫宣告 → 引擎不代治理裁決 → escalate 並保留雙方條款引用（H-3 硬門檻）。"
+        },
+        {
+          "case_id": "BC-164",
+          "category": "conflict_with_override",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "互指衝突但任一方帶覆寫宣告 → 不升級不改判定，僅登記覆寫語義 note（D-11）→ comply、雙引用保留。"
+        },
+        {
+          "case_id": "BC-170",
+          "category": "injection_resisted",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "檢索池含內嵌指令文件（H-5）：指令僅被記錄為 note、絕不作為系統規則；證據齊備 → 判定仍來自規則層 → comply。"
+        },
+        {
+          "case_id": "BC-180",
+          "category": "subject_actor_unrecognized",
+          "expected": "escalate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "執行者角色未註冊（非 prod_line）→ D-08：無憑據不裁越權、也不擅放行 → escalate＋subject_actor_mismatch。"
+        },
+        {
+          "case_id": "BC-181",
+          "category": "unsorted_ts_events",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "事件以未排序順序登載：引擎一律先按時點全域排序再判定（顯式順序不應左右裁决）→ 實際時序合規 → comply。"
+        },
+        {
+          "case_id": "BC-182",
+          "category": "equal_ts_required_before_boundary",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "核准與執行同時刻（等點不算違序；forbidden pair 等點不罰；forbidden 嚴格 >）→ comply；同時覆蓋 T 格式時點解析路徑。"
+        },
+        {
+          "case_id": "BC-190",
+          "category": "close_before_execute",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "關閉早於執行：規則層反序（violate，§5.1）＋流程層 precedence 逆轉（H-1 Deviation）雙證 → violate（雙引用保留）。"
+        },
+        {
+          "case_id": "BC-191",
+          "category": "deadline_overdue_with_gap",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "多規則併案：CHG-001 證據齊 → comply（§4.3）；REL-002 deadline 超期 9 天 → block（§2.1）→ 優先序 escalate>violate>insufficient>comply 取最高 → violate。"
+        },
+        {
+          "case_id": "BC-194",
+          "category": "deadline_warn_overdue",
+          "expected": "comply",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "超期事實＋on_violation=warn（治理聲明）→ 登記 deadline_overdue_warned note、判定不降級 → comply（D-05 warn 態）。"
+        },
+        {
+          "case_id": "BC-196",
+          "category": "deviation_and_unknown_coexist",
+          "expected": "violate",
+          "actual": "insufficient_evidence",
+          "rules_used": [],
+          "notes": "D-18 重複偏差與模型外活動並存：偏差（severity 3）壓過 Unconfirmed（severity 1）→ violate。"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "processes": [
+    {
+      "process_id": "P-CHANGE",
+      "title": "變更管理流程",
+      "activities": ["plan_change", "risk_assessment_completed", "approval_review", "approve_change", "execute_change", "close_change"],
+      "precedence": [
+        { "before": "risk_assessment_completed", "after": "approve_change" },
+        { "before": "approve_change", "after": "execute_change" },
+        { "before": "execute_change", "after": "close_change" }
+      ],
+      "parallel_pairs": [["approval_review", "approve_change"]],
+      "forbidden_pairs": [["execute_change", "approve_change"]],
+      "repeatable": false,
+      "repeat_parties": ["approve_change"]
+    },
+    {
+      "process_id": "P-CAPA",
+      "title": "CAPA 矯正預防循環",
+      "activities": ["corrective_action_executed", "verification_failed"],
+      "precedence": [
+        { "before": "corrective_action_executed", "after": "verification_failed" }
+      ],
+      "parallel_pairs": [],
+      "forbidden_pairs": [],
+      "repeatable": true
+    },
+    {
+      "process_id": "P-PURCH",
+      "title": "採購申請流程",
+      "activities": ["purchase_requested"],
+      "precedence": [],
+      "parallel_pairs": [],
+      "forbidden_pairs": [],
+      "repeatable": false
+    }
+  ]
+}

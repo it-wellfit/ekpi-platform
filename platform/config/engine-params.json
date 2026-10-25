@@ -1,0 +1,18 @@
+{
+  "params_version": "1.0",
+  "spec_ref": "../design/engine-spec-v0.1.2.md",
+  "notes": "參數治理檔：declared_invariants 對引擎既有語義做 fail-closed 聲明（鎖死可選值；載入器逐鍵比對鎖定值，任一不符即拒執行）；adjustable 為既定架構可調參數（非硬編碼語義），CLI --threshold 覆寫之。新增鍵、缺鍵、值非 bool 一律載入失敗。",
+  "declared_invariants": {
+    "draft_rules_consumable": false,
+    "ambiguous_binding_refuses": true,
+    "unregistered_rule_guessing_allowed": false,
+    "equal_timestamp_counts_as_overdue": false,
+    "abstain_clears_citations": true,
+    "forbidden_pair_release_allowed": false,
+    "injection_directive_operates_as_system_rule": false,
+    "decision_path_contains_probability_component": false
+  },
+  "adjustable": {
+    "retrieval_threshold": 0.70
+  }
+}

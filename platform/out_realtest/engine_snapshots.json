@@ -1,0 +1,366 @@
+[
+  {
+    "case_id": "ORD-001",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "b5d46298489dd5a54cfc966e921767796aff83b856117f400492f2c9fecedb06",
+    "replay_consistent": true,
+    "event_sequence_sha": "c281fd0cf85d1f4546c9e7184b6c983ce5ad95b7460de8f68137815316dc6ec6",
+    "doc_binding_shas": [
+      "QM-01@2.1",
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored",
+      "forbidden pair"
+    ]
+  },
+  {
+    "case_id": "ORD-002",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "b6c128245689f0a9f15c1a9bdf9cb061666666b0433b61d591ce420f0e3e5a2e",
+    "replay_consistent": true,
+    "event_sequence_sha": "3d4d9cba0f15c6834d1141f2d15e5f3db35099604edeef60ea9cd29285cfa8b9",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored",
+      "fallback_to_expected_verdict"
+    ]
+  },
+  {
+    "case_id": "ORD-003",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@2.1 §4.3",
+      "EX-7@2.0 §7.2"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001@2.1",
+      "RULE-EX-007@2.0"
+    ],
+    "manifest_sha": "7d97292a09a5a67321c2512685fed6d58ce838053ff454640e7c17e9507a6be3",
+    "replay_consistent": true,
+    "event_sequence_sha": "b7459a16951630338702cd92afa6375e3918d56e67bb2f01b75a796e4df83199",
+    "doc_binding_shas": [
+      "EX-7@2.0",
+      "SOP-CHANGE@2.1"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "CAP-001",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CAPA@1.4 §6.2"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "e65ee3b8d7cbc78ef2799c23cb2ea6915390597e681d3abb17fe749bf46ffd39",
+    "replay_consistent": true,
+    "event_sequence_sha": "5f7f8fab690f40099792e008a7bfeaaf1e57ab1e3c2f49d6330c4cf8e873074f",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "retry_cap_exceeded"
+    ]
+  },
+  {
+    "case_id": "CAP-002",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CAPA@1.4 §6.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "8e39c96b00413df8f22fe118eabbf6f171ed4e63f565463c3e55054b4b36f5a8",
+    "replay_consistent": true,
+    "event_sequence_sha": "be73c6cabc41758ce7c2966bc91422075632f9244ea8a03450159e9530b2983d",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "SRC-001",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-PURCH@4.4 §3.1",
+      "QM-01@5.0 §2.4"
+    ],
+    "rule_ids_used": [
+      "RULE-PUR-002",
+      "RULE-QM-014"
+    ],
+    "manifest_sha": "a772e2d667a41fee076aea0164faf57a21292b657529173187bd61c63dcab3e6",
+    "replay_consistent": true,
+    "event_sequence_sha": "cac21bf8c316bbb6a5a241da767fca7738c202d43285187e920efaefd9925f3c",
+    "doc_binding_shas": [
+      "QM-01@5.0",
+      "SOP-PURCH@4.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "direct_conflict_escalate"
+    ]
+  },
+  {
+    "case_id": "EVD-001",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-EX-007"
+    ],
+    "manifest_sha": "ccd26a0dc247ff50d0f7adacffef7f1991f5932bb422ed6abee5a5659ce14696",
+    "replay_consistent": true,
+    "event_sequence_sha": "42672192ede956d25b03709472e1e757db03645d6613637fffb67bfe611fb4d4",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored",
+      "unlocatable_binding"
+    ]
+  },
+  {
+    "case_id": "SEC-001",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "cf2d9b2a27c87d7bf1383e4d294643aff5fac2c44de24f8f148567c85a1b5705",
+    "replay_consistent": true,
+    "event_sequence_sha": "a1fc47b4c80f6d5c11758d352d50115dfa10721bc42664b2269ff656778f4e6c",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored",
+      "fallback_to_expected_verdict"
+    ]
+  },
+  {
+    "case_id": "PAR-001",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3",
+      "SOP-CHANGE@3.2 §5.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-CHG-002"
+    ],
+    "manifest_sha": "d3204b20eb15783438a8377f8325195c60d56bbdd4f5b63b3182e111bf0cbc2b",
+    "replay_consistent": true,
+    "event_sequence_sha": "14da766616d5c88eb4c434a7d5d7696244cfbf30aa3e97f2c7f3dff041c05842",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  }
+]

@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ekpi://design/rule-schema-v0.1.schema.json",
+  "title": "EKPI Normative Rule v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rule_id",
+    "rule_version",
+    "deontic",
+    "subject",
+    "condition",
+    "evidence_requirements",
+    "decision",
+    "source",
+    "provenance",
+    "temporal"
+  ],
+  "properties": {
+    "rule_id": { "type": "string", "pattern": "^[A-Z][A-Z0-9-]+$" },
+    "rule_version": { "type": "string" },
+    "deontic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modality", "strength"],
+      "properties": {
+        "modality": { "enum": ["obligation", "prohibition", "permission", "recommendation"] },
+        "strength": { "enum": ["mandatory", "recommended", "optional"] }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "actor_role", "scope"],
+      "properties": {
+        "entity_type": { "type": "string" },
+        "actor_role": { "type": ["string", "null"] },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "processes": { "type": "array", "items": { "type": "string" } },
+            "org_unit": { "type": ["string", "null"] },
+            "jurisdiction": { "type": ["string", "null"] },
+            "asset_types": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "condition": { "$ref": "#/definitions/conditionNode" },
+    "sequencing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_before": { "type": "array", "items": { "type": "string" } },
+        "forbidden_after": { "type": "array", "items": { "type": "string" } },
+        "deadline": {
+          "type": ["object", "null"],
+          "properties": {
+            "anchor": { "enum": ["activity_start", "activity_end", "event"] },
+            "ref": { "type": "string" },
+            "duration_iso": { "type": "string" }
+          }
+        },
+        "on_violation": { "enum": ["block", "escalate", "warn"] }
+      }
+    },
+    "exceptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exception_of": { "type": "array", "items": { "type": "string" } },
+        "overridden_by": { "type": "array", "items": { "type": "string" } },
+        "overrides": { "type": "array", "items": { "type": "string" } },
+        "conflicts_with": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "temporal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effective_from"],
+      "properties": {
+        "effective_from": { "type": "string", "format": "date" },
+        "effective_to": { "type": ["string", "null"], "format": "date" },
+        "supersedes": { "type": "array", "items": { "type": "string" } },
+        "superseded_by": { "type": ["string", "null"] }
+      }
+    },
+    "evidence_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_type", "min_count", "metadata_constraints", "missing_evidence_result"],
+        "properties": {
+          "evidence_type": { "type": "string" },
+          "min_count": { "type": "integer", "minimum": 0 },
+          "metadata_constraints": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/metadataPredicate" }
+          },
+          "missing_evidence_result": {
+            "enum": ["insufficient_evidence", "escalate", "partial_pass_note"]
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "missing_evidence_result"],
+      "properties": {
+        "method": {
+          "enum": ["deterministic_rule_check", "dmn_table", "shacl_validation", "petri_reachability", "human_review"]
+        },
+        "missing_evidence_result": {
+          "enum": ["insufficient_evidence", "escalate", "partial_pass_note"]
+        },
+        "abstain_threshold": { "type": ["number", "null"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document_id", "document_version", "clause_refs", "verbatim_text"],
+      "properties": {
+        "document_id": { "type": "string" },
+        "document_version": { "type": "string" },
+        "clause_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["section"],
+            "properties": {
+              "section": { "type": "string" },
+              "page": { "type": ["integer", "null"] },
+              "paragraph": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "verbatim_text": { "type": "string" },
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "value"],
+            "properties": {
+              "type": { "enum": ["page", "bbox", "xpath", "anchor"] },
+              "value": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "review"],
+      "properties": {
+        "origin": { "enum": ["authoritative_text", "derived_requirement", "ai_extracted", "human_draft"] },
+        "extraction": {
+          "type": ["object", "null"],
+          "properties": {
+            "method": { "type": "string" },
+            "model_id": { "type": ["string", "null"] },
+            "confidence": { "type": ["number", "null"] },
+            "extracted_at": { "type": ["string", "null"] }
+          }
+        },
+        "review": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": ["draft_ai", "expert_returned", "expert_validated", "active", "retired"]
+            },
+            "reviewer": { "type": ["string", "null"] },
+            "reviewed_at": { "type": ["string", "null"] },
+            "change_note": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "test_case_refs": { "type": "array", "items": { "type": "string" } },
+        "last_run": {
+          "type": ["object", "null"],
+          "properties": {
+            "date": { "type": "string" },
+            "result": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "conditionNode": {
+      "oneOf": [
+        { "$ref": "#/definitions/conditionLeaf" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": {
+            "all": { "type": "array", "items": { "$ref": "#/definitions/conditionNode" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": {
+            "any": { "type": "array", "items": { "$ref": "#/definitions/conditionNode" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": {
+            "not": { "$ref": "#/definitions/conditionNode" }
+          }
+        }
+      ]
+    },
+    "conditionLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predicate"],
+      "properties": {
+        "predicate": { "$ref": "#/definitions/metadataPredicate" }
+      }
+    },
+    "metadataPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "op", "value"],
+      "properties": {
+        "field": { "type": "string" },
+        "op": { "enum": ["eq", "ne", "gt", "lt", "gte", "lte", "in", "exists"] },
+        "value": {}
+      }
+    }
+  }
+}

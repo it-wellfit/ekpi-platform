@@ -1,0 +1,24 @@
+[package]
+name = "ekp_platform"
+version = "0.1.0"
+edition = "2021"
+description = "EKPI deterministic core: versioned docs, active-rule layer, process token replay, evidence retrieval, decision snapshots"
+
+[dependencies]
+axum = { version = "0.8.9", features = ["form"] }
+maud = "0.27.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ekp_eval = { path = "../eval" }
+tokio = { version = "1.52", features = ["macros", "net", "rt-multi-thread"] }
+
+# 本 crate 的測試全數位於 library 與 `tests/`：binary 不再攜帶測試目標
+# （R3；coverage/markdown 渲染核心已移入 coverage_report 模組）。
+[[bin]]
+name = "ekp_platform"
+test = false
+
+[dev-dependencies]
+http-body-util = "0.1.3"
+tower = { version = "0.5.3", features = ["util"] }

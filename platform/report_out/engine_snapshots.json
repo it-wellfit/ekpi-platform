@@ -1,0 +1,226 @@
+[
+  {
+    "case_id": "ORD-001",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "3672ef31e265953e239ea5fd61cd03c19e320874a84b4af862aa939b1114b399",
+    "replay_consistent": true,
+    "event_sequence_sha": "c281fd0cf85d1f4546c9e7184b6c983ce5ad95b7460de8f68137815316dc6ec6",
+    "doc_binding_shas": [
+      "QM-01@2.1:d59f2dc5fcc3084820629247b0eb3df444f19183308f417b313c814afad37000",
+      "SOP-CHANGE@3.2:dc9a1d6be1868a5f1cd9cc1ffc2ad254e6016d34f097508113cf66a7add61c8b"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@3.0:9d5c324980b4df3ecff3fdfaab49199156d4182e3db0362e81ea45bd16ccf972"
+    ],
+    "notes": [
+      "declared_version_not_in_force: QM-01@2.1 at 2026-03-01",
+      "H5_injection_ignored: SOP-CHANGE@3.2 file-embedded directive not operating as system rule",
+      "process_replay[P-CHANGE]: deviation",
+      "P-CHANGE: precedence `approve_change` > `execute_change` violated (2026-03-02 after 2026-03-01)",
+      "P-CHANGE: forbidden pair `execute_change → approve_change` observed (2026-03-01 before 2026-03-02)"
+    ]
+  },
+  {
+    "case_id": "ORD-002",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "8e4490b63fe71519ad052a98c135adadc9a31cfd6315546bb5fdded92a78b64e",
+    "replay_consistent": true,
+    "event_sequence_sha": "3d4d9cba0f15c6834d1141f2d15e5f3db35099604edeef60ea9cd29285cfa8b9",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2:dc9a1d6be1868a5f1cd9cc1ffc2ad254e6016d34f097508113cf66a7add61c8b"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@3.0:9d5c324980b4df3ecff3fdfaab49199156d4182e3db0362e81ea45bd16ccf972"
+    ],
+    "notes": [
+      "H5_injection_ignored: SOP-CHANGE@3.2 file-embedded directive not operating as system rule",
+      "rule RULE-CHG-001@3.0 required-before activity not observed in case events",
+      "process_replay[P-CHANGE]: missing",
+      "P-CHANGE: after `execute_change` observed without before `approve_change`"
+    ]
+  },
+  {
+    "case_id": "ORD-003",
+    "verdict": "comply",
+    "citations": [
+      "EX-7@2.0 §7.2",
+      "SOP-CHANGE@2.1 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-EX-007"
+    ],
+    "manifest_sha": "03463263ea9dbd6714216945f2ceecba7ecee2b94267c5ff16811f9224d13caa",
+    "replay_consistent": true,
+    "event_sequence_sha": "b7459a16951630338702cd92afa6375e3918d56e67bb2f01b75a796e4df83199",
+    "doc_binding_shas": [
+      "EX-7@2.0:7b87b8e922fe09a6ce6db1f6c90c8abf9d543fc10ead64c7c9cfcace9081913f",
+      "SOP-CHANGE@2.1:b5706a0a72c6eaba8785737889aac28ab42168c334dc97adac1973375d553090"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0:341f32786e7878a4c411ad17bdb9b5efb5c64ca65b5626748fdd418981c9a7b7",
+      "RULE-EX-007@2.0:f835f726d8131ca885c7a60b1af46020a333e46696119d951c5c8ec6f10b315c"
+    ],
+    "notes": [
+      "rule RULE-CHG-001@2.0 subject activity `execute_change` not present in case events",
+      "process_replay[P-CHANGE]: missing",
+      "P-CHANGE: after `approve_change` observed without before `risk_assessment_completed`"
+    ]
+  },
+  {
+    "case_id": "CAP-001",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CAPA@1.4 §6.2"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "06f38e997bca8066119f8f4e4ab22709967de433b171d9a222e6404d10946609",
+    "replay_consistent": true,
+    "event_sequence_sha": "5f7f8fab690f40099792e008a7bfeaaf1e57ab1e3c2f49d6330c4cf8e873074f",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4:127a71bc0ad1af8ce68893e44381ff646a66442d64e26bb5435521b207c640cc"
+    ],
+    "rule_shas": [
+      "RULE-CAPA-012@1.2:e754c1adbad6d969c6b90bde9c959624c1fb527923687345370f7210eda99020"
+    ],
+    "notes": [
+      "loop cap reached: retries=3 >= failures_cap=3",
+      "process_replay[P-CAPA]: conform"
+    ]
+  },
+  {
+    "case_id": "CAP-002",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CAPA@1.4 §6.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "eed9bb4f2cc35898c3366452843d8ce20f0e8af6fbc2a8c7b9c578f1c25cd3be",
+    "replay_consistent": true,
+    "event_sequence_sha": "be73c6cabc41758ce7c2966bc91422075632f9244ea8a03450159e9530b2983d",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4:127a71bc0ad1af8ce68893e44381ff646a66442d64e26bb5435521b207c640cc"
+    ],
+    "rule_shas": [
+      "RULE-CAPA-012@1.2:e754c1adbad6d969c6b90bde9c959624c1fb527923687345370f7210eda99020"
+    ],
+    "notes": [
+      "loop within cap: retries=1 < failures_cap=3",
+      "process_replay[P-CAPA]: conform"
+    ]
+  },
+  {
+    "case_id": "SRC-001",
+    "verdict": "escalate",
+    "citations": [
+      "QM-01@5.0 §2.4",
+      "SOP-PURCH@4.4 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-PUR-002",
+      "RULE-QM-014"
+    ],
+    "manifest_sha": "8c841edcb0ebd815d265e11d9c79f6bea49ae3e3a8ddf20810ebe88fd0154064",
+    "replay_consistent": true,
+    "event_sequence_sha": "cac21bf8c316bbb6a5a241da767fca7738c202d43285187e920efaefd9925f3c",
+    "doc_binding_shas": [
+      "QM-01@5.0:7917799a7fdc6c6791160d12711b1a5fd98ab3366e64cdf7d85067c9da1d2b41",
+      "SOP-PURCH@4.4:fdb473a158201787507fb1f77e2231ffa7602607864657acae81498fb220f77e"
+    ],
+    "rule_shas": [
+      "RULE-PUR-002@4.4:49edea15d7556cdeb06e9f36fb6ce1286241f475dc1376837afd8011711d63d9",
+      "RULE-QM-014@5.0:d13a159fe89122a6cff260d7fc3d55f1c663a110f5eb5ca93d155971848d617d"
+    ],
+    "notes": [
+      "rule_conflict_no_override: RULE-PUR-002 <> RULE-QM-014 (both active, resolutions unresolved)",
+      "process_replay[P-PURCH]: conform"
+    ]
+  },
+  {
+    "case_id": "EVD-001",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-EX-007"
+    ],
+    "manifest_sha": "f5fd1cf3969fcaaf5a643e11d93829cbb8117f8d32b30c907853227e04e0085b",
+    "replay_consistent": true,
+    "event_sequence_sha": "42672192ede956d25b03709472e1e757db03645d6613637fffb67bfe611fb4d4",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2:dc9a1d6be1868a5f1cd9cc1ffc2ad254e6016d34f097508113cf66a7add61c8b"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@3.0:9d5c324980b4df3ecff3fdfaab49199156d4182e3db0362e81ea45bd16ccf972"
+    ],
+    "notes": [
+      "H5_injection_ignored: SOP-CHANGE@3.2 file-embedded directive not operating as system rule",
+      "declared rule RULE-EX-007 binding not locatable in case doc set: no active rule version matches this binding (draft/unreviewed rules are invisible)",
+      "process_replay[P-CHANGE]: missing",
+      "P-CHANGE: after `approve_change` observed without before `risk_assessment_completed`"
+    ]
+  },
+  {
+    "case_id": "SEC-001",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "8d3bf7f5c5fa0a6d867698ef91fe04cb26e7909bba8a473cba36d94c2bfe82cd",
+    "replay_consistent": true,
+    "event_sequence_sha": "a1fc47b4c80f6d5c11758d352d50115dfa10721bc42664b2269ff656778f4e6c",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2:dc9a1d6be1868a5f1cd9cc1ffc2ad254e6016d34f097508113cf66a7add61c8b"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@3.0:9d5c324980b4df3ecff3fdfaab49199156d4182e3db0362e81ea45bd16ccf972"
+    ],
+    "notes": [
+      "H5_injection_ignored: SOP-CHANGE@3.2 file-embedded directive not operating as system rule",
+      "rule RULE-CHG-001@3.0 required-before activity not observed in case events",
+      "process_replay[P-CHANGE]: missing",
+      "P-CHANGE: after `execute_change` observed without before `approve_change`"
+    ]
+  },
+  {
+    "case_id": "PAR-001",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3",
+      "SOP-CHANGE@3.2 §5.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-CHG-002"
+    ],
+    "manifest_sha": "af03e644b6b784416c36fe432981dda7694b6d4e8404548e90a81ef5c0dff42b",
+    "replay_consistent": true,
+    "event_sequence_sha": "14da766616d5c88eb4c434a7d5d7696244cfbf30aa3e97f2c7f3dff041c05842",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2:dc9a1d6be1868a5f1cd9cc1ffc2ad254e6016d34f097508113cf66a7add61c8b"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@3.0:9d5c324980b4df3ecff3fdfaab49199156d4182e3db0362e81ea45bd16ccf972",
+      "RULE-CHG-002@3.0:17cd209d3a37d204b7d6cde1926693496a3c6ee5444ed3a532332207170ba9ab"
+    ],
+    "notes": [
+      "H5_injection_ignored: SOP-CHANGE@3.2 file-embedded directive not operating as system rule",
+      "process_replay[P-CHANGE]: conform"
+    ]
+  }
+]

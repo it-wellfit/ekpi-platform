@@ -1,0 +1,1784 @@
+[
+  {
+    "case_id": "BC-101",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001@3.2"
+    ],
+    "manifest_sha": "c85192149dca5a03074974177e70dc653bc8045c66b74c155eae5265382a35ac",
+    "replay_consistent": true,
+    "event_sequence_sha": "5277c4921604be1daee48225d37a91702ec4ac6677ece4ff69d95daad3546aca",
+    "doc_binding_shas": [
+      "SOP-CHANGE@2.1"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-102",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001@3.2"
+    ],
+    "manifest_sha": "7d61a8ea9856cbc5f6986248a595477f25fdf68358bf29115bba2c737640fba2",
+    "replay_consistent": true,
+    "event_sequence_sha": "5277c4921604be1daee48225d37a91702ec4ac6677ece4ff69d95daad3546aca",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-103",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-FUT-005"
+    ],
+    "manifest_sha": "d5aace741784d323be5163915cd9e9525d0c050b8a8673d22af5a385bb993ec0",
+    "replay_consistent": true,
+    "event_sequence_sha": "72f98a22ca9239083a593e8453da09b8d2cde7335eb9293f33884b7f384eb0b7",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-104",
+    "verdict": "comply",
+    "citations": [
+      "SOP-REL@1.0 §2.1"
+    ],
+    "rule_ids_used": [
+      "RULE-FUT-005"
+    ],
+    "manifest_sha": "f17ae8d68539217dd25c94d59e6b99520a9ff9a008ca0e1c28e9539dfde002e8",
+    "replay_consistent": true,
+    "event_sequence_sha": "184d316200eff8dc818a296ebac636670133163d3241dc8940c804246c6681bf",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-105",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-DRF-004"
+    ],
+    "manifest_sha": "3957769f94f4861c0f5e0a83ea526185d6b375e0467140d6aa61a41d5618202e",
+    "replay_consistent": true,
+    "event_sequence_sha": "94a667d4f37d67e5a1254d81dbaa1a8c31c924afc3e00432c3a2f8f53092b7d0",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-106",
+    "verdict": "comply",
+    "citations": [
+      "SOP-REL@1.0 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-DRF-004"
+    ],
+    "manifest_sha": "f13f523e7ffbb32e03551e382d02646c333cf5afff147a5e7ffa9a9254d2e66f",
+    "replay_consistent": true,
+    "event_sequence_sha": "3322ac992ecd51230efc129d9890b000f6270db97f36f57ab4efc42992b4246f",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-110",
+    "verdict": "violate",
+    "citations": [
+      "SOP-REL@1.0 §2.1"
+    ],
+    "rule_ids_used": [
+      "RULE-REL-002"
+    ],
+    "manifest_sha": "e98841e16ca9edd10f8bd2bd156b97b157bb2663c342ee1ba9f42d84528ddd69",
+    "replay_consistent": true,
+    "event_sequence_sha": "227825e4e6f2f07f26d7335b26dda9b71ec50f5e8e8e0bfdf19901bf489e1124",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-111",
+    "verdict": "comply",
+    "citations": [
+      "SOP-REL@1.0 §2.1"
+    ],
+    "rule_ids_used": [
+      "RULE-REL-002"
+    ],
+    "manifest_sha": "1f9ac60d07eac3c3d6d056fcdd26e88a06c0ba96713a7a2cb2bc13c89febde29",
+    "replay_consistent": true,
+    "event_sequence_sha": "837cc5ee869ab12b1b8052801a7dc986e7f57e457a59d38f13cdf056bba39b25",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-112",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-REL@1.0 §2.2"
+    ],
+    "rule_ids_used": [
+      "RULE-REL-003"
+    ],
+    "manifest_sha": "a1e2d08dd170d29969a6af08bfb608d004bb7e2497397e7828e9c1cded58974b",
+    "replay_consistent": true,
+    "event_sequence_sha": "227825e4e6f2f07f26d7335b26dda9b71ec50f5e8e8e0bfdf19901bf489e1124",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-113",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-REL-002"
+    ],
+    "manifest_sha": "e660b7941d436614bd442bd4669f727664cd827390e1c6abb1e7034c6d9f98a4",
+    "replay_consistent": true,
+    "event_sequence_sha": "e2ea630fa78317c9c3d751efd5ea626f17c772f836f74ea3da90e06b4a3cc34c",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-114",
+    "verdict": "comply",
+    "citations": [
+      "SOP-REL@1.0 §2.1"
+    ],
+    "rule_ids_used": [
+      "RULE-REL-002"
+    ],
+    "manifest_sha": "73b06cbd923055b02212689ed556b96e59698b66628a9d23c1ef34c3588dfd49",
+    "replay_consistent": true,
+    "event_sequence_sha": "b192598017639f8214cc36d7285cda6d8ad2c2273e971534b0391d1903a841bd",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-115",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CLOSE@1.0 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CLOSE-GATE"
+    ],
+    "manifest_sha": "62c3e67a9c09a7f10bfc35a1df5f6693e01a9d4fd8dfa1bae97c8886598f2382",
+    "replay_consistent": true,
+    "event_sequence_sha": "314e947dd46f1e7a2dfd9a1e510dce0a070abc70a7bfe63718174b957ac1c510",
+    "doc_binding_shas": [
+      "SOP-CLOSE@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-116",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CLOSE@1.0 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CLOSE-GATE"
+    ],
+    "manifest_sha": "35af85a05428fba3a7d5ad3b005758a60676d871891baa9b577e7da462b0e576",
+    "replay_consistent": true,
+    "event_sequence_sha": "f66355f9968ad156f3e76bc35fdbc8b1767494c8ff75d5ebb3d23fa772fba377",
+    "doc_binding_shas": [
+      "SOP-CLOSE@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-117",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CLOSE@1.0 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CLOSE-GATE"
+    ],
+    "manifest_sha": "2631b454639d2cc57461d5554d76058a6f5162c946e780057a3dd4939332d466",
+    "replay_consistent": true,
+    "event_sequence_sha": "5c9a4e8bc1966a127a390ef9eb01e327f9bf6deb476f1697ac4c81543e33f67e",
+    "doc_binding_shas": [
+      "SOP-CLOSE@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-120",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-PURCH@4.4 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-PUR-002"
+    ],
+    "manifest_sha": "3d5c3c25be120ec7eeaa8f42c841536b6352a31867872d53dc0f099877c9898f",
+    "replay_consistent": true,
+    "event_sequence_sha": "47041a1e9b75c95bb513229831727e901dc36e0bea7f7ef7a03dcf80fbdbf6aa",
+    "doc_binding_shas": [
+      "SOP-PURCH@4.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-121",
+    "verdict": "comply",
+    "citations": [
+      "SOP-PURCH@4.4 §3.1"
+    ],
+    "rule_ids_used": [
+      "RULE-PUR-002"
+    ],
+    "manifest_sha": "9a3430c028ce16f76ebc8f317e9ea290a9698f8389f2fea53557dafe2446f97f",
+    "replay_consistent": true,
+    "event_sequence_sha": "59746d41a1bc3ec164d452f5ddb341b0380af2e08634bc1604744fda4c0171fc",
+    "doc_binding_shas": [
+      "SOP-PURCH@4.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-122",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CAPA@1.4 §6.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "1804204b591e5072d6f357168419722e59a6517a807ee4d31e608ae8c268868f",
+    "replay_consistent": true,
+    "event_sequence_sha": "a68467007198821528342c497a808ef0fdeee45ddde2fccf65fcc29e3e463d1a",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-130",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CAPA@1.4 §6.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "77157d743644c8b96b9b655bc574148e3a126173579b3efd84ac5041dafe7a8d",
+    "replay_consistent": true,
+    "event_sequence_sha": "99b51e38748dde240d4dfb4d7a8a81b9cfba07c40072df8fb903b6b31016bd49",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-131",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CAPA@1.4 §6.2"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "9ebcaf822f2b1c1705c9de30a96df514fa8851edfd826c6c8c600f2e6a46e8d2",
+    "replay_consistent": true,
+    "event_sequence_sha": "99b51e38748dde240d4dfb4d7a8a81b9cfba07c40072df8fb903b6b31016bd49",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-132",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CAPA@1.4 §6.2"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "9787ecc7e329674a7c010c2f1d51c9f56f41597a9c15b5ecadca5baa138f61bf",
+    "replay_consistent": true,
+    "event_sequence_sha": "99b51e38748dde240d4dfb4d7a8a81b9cfba07c40072df8fb903b6b31016bd49",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-133",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "912f196666173a151efaf409bbd37ba5db8a77b5cebc313c7f8ef24f1660424e",
+    "replay_consistent": true,
+    "event_sequence_sha": "99b51e38748dde240d4dfb4d7a8a81b9cfba07c40072df8fb903b6b31016bd49",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-134",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CAPA@1.4 §6.2"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "3da7911b9a0b6960137cec1a1a6e0fdc6a52921494733ce4d95f1f659a8936de",
+    "replay_consistent": true,
+    "event_sequence_sha": "99b51e38748dde240d4dfb4d7a8a81b9cfba07c40072df8fb903b6b31016bd49",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-140",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "1a6d34cca205c835d8742d34ca43084f463d3de2d4679dfec80c357b6bdb1db2",
+    "replay_consistent": true,
+    "event_sequence_sha": "417df5aab9b779df354891461e27b5f3f4508dcad4cf3446b0315f9d945866a6",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-141",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "10d2c0af8ab8bdf4b618c00590aefbaa59e732fe6567fa60f8310d444ec05556",
+    "replay_consistent": true,
+    "event_sequence_sha": "7ff77fe3e3656a6ba70f3bd43739845ad0160335c4ea7d319ed04ac3b89e94a9",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-142",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-SIG-002"
+    ],
+    "manifest_sha": "daa527518bdf6f8fbe2822bb1af9d7e2ae4c086caa0a8594f1e143eb47730c6b",
+    "replay_consistent": true,
+    "event_sequence_sha": "b192598017639f8214cc36d7285cda6d8ad2c2273e971534b0391d1903a841bd",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-143",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-SIG-002"
+    ],
+    "manifest_sha": "263ff36b54962ebc2ea52ac59fb190f23ac77f5cbc8a22edcbd7cf2eb2323dc8",
+    "replay_consistent": true,
+    "event_sequence_sha": "a0a166eb52c5b876174f5f971070c3d72925635fdb0bab3b74bcb717efbf180e",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-144",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-EXB-002"
+    ],
+    "manifest_sha": "eade6e00d1d1626d07dec727b3f1bcfd15e6258771a6fddb66c30dacf456d6af",
+    "replay_consistent": true,
+    "event_sequence_sha": "8c59274cf0bd575dd9fd0ad0a90875a04a167de3bc06f9f5761bd4d38fec769b",
+    "doc_binding_shas": [
+      "EX-7@2.0",
+      "SOP-CHANGE@2.1"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-145",
+    "verdict": "comply",
+    "citations": [
+      "EX-7@2.0 §7.2"
+    ],
+    "rule_ids_used": [
+      "RULE-EX-007"
+    ],
+    "manifest_sha": "26bb836c49fb87b95db103a4cc63446812d75003908fc5bf8c30683337bed63a",
+    "replay_consistent": true,
+    "event_sequence_sha": "8c59274cf0bd575dd9fd0ad0a90875a04a167de3bc06f9f5761bd4d38fec769b",
+    "doc_binding_shas": [
+      "EX-7@2.0",
+      "SOP-CHANGE@2.1"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-150",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "be2b73b762f4bdde83d2b5d86dcd468addbfd8129c6003007bebb0c06c3ba265",
+    "replay_consistent": true,
+    "event_sequence_sha": "0adbf651509e9a1a37a5f9b794f6e462938d293774b560f5a5bfbf2ab2e2d49c",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-151",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3",
+      "SOP-CHANGE@3.2 §5.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-CHG-002"
+    ],
+    "manifest_sha": "263ae14f39ab1ac71b0f438cefae0fdadcdeaf9fa62d6acbe1fa5d84fc7b39b2",
+    "replay_consistent": true,
+    "event_sequence_sha": "fd1483cb3ecee091f9cb3ac493a5871a6ee4a3d8d3a6a10791edd4fc5912def0",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-152",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CAPA@1.4 §6.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CAPA-012"
+    ],
+    "manifest_sha": "306a8652ef7e47c8572d8ef8b3954ee6a962a1d0f7e945521f0c73be315118e0",
+    "replay_consistent": true,
+    "event_sequence_sha": "cfa729340fee6d45108f0a364b66e3f032e9c5293cf42e087c91a58941a4225f",
+    "doc_binding_shas": [
+      "SOP-CAPA@1.4"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-153",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "165aff9b34dcd6c186f7f016cb5a5b0cf78f21e41490dd970f679897d0968542",
+    "replay_consistent": true,
+    "event_sequence_sha": "bafa96d649b610f33afb4bc6dd3c38c1a8b8b2e751ea4ef4afbf713c0d4b5242",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-160",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-NOSUCH-999"
+    ],
+    "manifest_sha": "eba03cb04bdc767e9045258957d5de0819f59d5e210d568aa983ca45ca20539c",
+    "replay_consistent": true,
+    "event_sequence_sha": "837cc5ee869ab12b1b8052801a7dc986e7f57e457a59d38f13cdf056bba39b25",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-161",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "3b8509af107b790731c6dc2d9ab295f62bf533ec271d0e66d789b36bfaa750ea",
+    "replay_consistent": true,
+    "event_sequence_sha": "f576e79a7953cc1f22e79937be8f07bb12390a2b608ae4e8bf095f74e067f88e",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-162",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001-DRAFT"
+    ],
+    "manifest_sha": "36906a4cb12eb35fe4e14d3d7e9e132a77a55b54998e3c02ecc2801b0bc63c3c",
+    "replay_consistent": true,
+    "event_sequence_sha": "be1bfafaca1e05aef4eb5523c4e367f933f0b5afd7fbfa61a88d5aa7ddb0f59e",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-163",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-PURCH@4.5 §3.4",
+      "SOP-PURCH@4.5 §3.5"
+    ],
+    "rule_ids_used": [
+      "RULE-PAY-003",
+      "RULE-PAY-004"
+    ],
+    "manifest_sha": "3b8964ed40032fcf1f093cd1eb8d8a53171f07d52d4d69edd1f6906b2c11e830",
+    "replay_consistent": true,
+    "event_sequence_sha": "66b7bcd5af8b2d6b3036ebf77d843aafa7f54991d97c7d0c256ea25e20ffc97f",
+    "doc_binding_shas": [
+      "SOP-PURCH@4.5"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-164",
+    "verdict": "comply",
+    "citations": [
+      "SOP-PURCH@4.5 §3.2",
+      "SOP-PURCH@4.5 §3.3"
+    ],
+    "rule_ids_used": [
+      "RULE-PAY-001",
+      "RULE-PAY-002"
+    ],
+    "manifest_sha": "6027821433ce2f0e684f0124ad0b7124c1a0fcd00b50938ae8285d5e00f8e6b5",
+    "replay_consistent": true,
+    "event_sequence_sha": "66b7bcd5af8b2d6b3036ebf77d843aafa7f54991d97c7d0c256ea25e20ffc97f",
+    "doc_binding_shas": [
+      "SOP-PURCH@4.5"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-170",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001@3.2"
+    ],
+    "manifest_sha": "a81cf63f804fe6eb0ef5f826b088f7de38df112eff306ef2ba00753938377c55",
+    "replay_consistent": true,
+    "event_sequence_sha": "f576e79a7953cc1f22e79937be8f07bb12390a2b608ae4e8bf095f74e067f88e",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-180",
+    "verdict": "escalate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "6cc9520357e23ce7124d2438e07aa5bae8c33de367838d419270885179206cdc",
+    "replay_consistent": true,
+    "event_sequence_sha": "9b8e64660ea5d605b58ee5230e4d5221820585a88338b23ab26e5df00dd370f0",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-181",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "8358c655a833b55e7943cd6b7e59933e65671fbe29a37dc096ae8eedb62c20c2",
+    "replay_consistent": true,
+    "event_sequence_sha": "bcb34a3640dd34835a798488a6163d35c1f86b74fdd9519ee50a4152aff52d0b",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-182",
+    "verdict": "comply",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "f0d192dd57aa09ecc4db9d81583ba220c9b82014dd1e5026a2cf5ac3ad572b43",
+    "replay_consistent": true,
+    "event_sequence_sha": "9e7e5de4f762f7f9783edbb25f9d21f1d44b1d064e818edafee6d470bb1b405b",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-190",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3",
+      "SOP-CHANGE@3.2 §5.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-CHG-002"
+    ],
+    "manifest_sha": "a490263044a7176637501d845e50d18cd2053983efc6bc6589f5847045e5caea",
+    "replay_consistent": true,
+    "event_sequence_sha": "43d8f6e99023fc737943de3039c84f716612be1931db70d73c7362d72d517baa",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-191",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3",
+      "SOP-REL@1.0 §2.1"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-REL-002"
+    ],
+    "manifest_sha": "32b6ef30d278e3d303ac53884862bca19a1c78e3a1958f115ec2416c1302ad74",
+    "replay_consistent": true,
+    "event_sequence_sha": "ea93491103f7b1e4dfb503be0ce3f0bfd4bf30695df25d88c5a3a2435d7d88dd",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2",
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-192",
+    "verdict": "insufficient_evidence",
+    "citations": [],
+    "rule_ids_used": [
+      "RULE-CHG-001",
+      "RULE-DRF-004"
+    ],
+    "manifest_sha": "b18d72bb91d94606608233b1ad18d2cef1e231499822c9f021400cdef12db779",
+    "replay_consistent": true,
+    "event_sequence_sha": "316023b3b7987266636db5e16470869c177d9a168739fcb59e9e5261e0ebed64",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2",
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  },
+  {
+    "case_id": "BC-194",
+    "verdict": "comply",
+    "citations": [
+      "SOP-REL@1.0 §2.2"
+    ],
+    "rule_ids_used": [
+      "RULE-REL-006"
+    ],
+    "manifest_sha": "021d64bb9c5d2fd57eca76c9e19a907e5887e268f42dcebc937973e366f0b02e",
+    "replay_consistent": true,
+    "event_sequence_sha": "227825e4e6f2f07f26d7335b26dda9b71ec50f5e8e8e0bfdf19901bf489e1124",
+    "doc_binding_shas": [
+      "SOP-REL@1.0"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": []
+  },
+  {
+    "case_id": "BC-196",
+    "verdict": "violate",
+    "citations": [
+      "SOP-CHANGE@3.2 §4.3"
+    ],
+    "rule_ids_used": [
+      "RULE-CHG-001"
+    ],
+    "manifest_sha": "cbcf029d841ae963f25cfb9f9cfa698e587c9297e06840098d2094f410596ed6",
+    "replay_consistent": true,
+    "event_sequence_sha": "1198b2c16d867559d3e4a5fea60535c0c20c1867ef01a6611eef3e552b19e93f",
+    "doc_binding_shas": [
+      "SOP-CHANGE@3.2"
+    ],
+    "rule_shas": [
+      "RULE-CHG-001@2.0",
+      "RULE-CHG-001@3.0",
+      "RULE-CHG-002@3.0",
+      "RULE-EX-007@2.0",
+      "RULE-CAPA-012@1.2",
+      "RULE-PUR-002@4.4",
+      "RULE-QM-014@5.0",
+      "RULE-REL-002@1.0",
+      "RULE-REL-003@1.0",
+      "RULE-REL-006@1.0",
+      "RULE-DRF-004@1.0",
+      "RULE-FUT-005@1.0",
+      "RULE-CLOSE-GATE@1.0",
+      "RULE-SIG-002@1.0",
+      "RULE-EXB-002@1.0",
+      "RULE-PAY-001@1.0",
+      "RULE-PAY-002@1.0",
+      "RULE-PAY-003@1.0",
+      "RULE-PAY-004@1.0"
+    ],
+    "notes": [
+      "H5_injection_ignored"
+    ]
+  }
+]

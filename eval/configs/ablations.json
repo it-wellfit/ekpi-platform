@@ -1,0 +1,53 @@
+{
+  "$comment": "Ablation matrix for A-G comparison (Master Prompt v1 Section 9 + addendum A7). Components are capability flags; each system adapter declares which flags it consumes. Config here is declarative: the runner currently consumes --systems; this file keeps the canonical mapping set of flags worth ablating.",
+  "components": [
+    "vector",
+    "bm25",
+    "rerank",
+    "tree_index",
+    "graph",
+    "rules",
+    "process",
+    "conformance",
+    "agentic",
+    "abstention_calibration"
+  ],
+  "systems": {
+    "A_naive_rag": {"vector": true},
+    "B_hybrid_rerank": {"vector": true, "bm25": true, "rerank": true},
+    "C_tree_index": {"tree_index": true},
+    "D_graphrag": {"vector": true, "graph": true},
+    "E_agentic": {"vector": true, "bm25": true, "agentic": true},
+    "F_process_rules": {"rules": true, "process": true, "conformance": true},
+    "G_full": {
+      "vector": true, "bm25": true, "rerank": true, "tree_index": true,
+      "graph": ["include as evidence-supported via GraphRAG-Bench outcomes"],
+      "rules": true, "process": true, "conformance": true,
+      "abstention_calibration": true
+    }
+  },
+  "eval": {
+    "k_values": [1, 3, 5, 10],
+    "hard_gates": {
+      "wrong_allow_must_be_zero": true,
+      "violation_as_comply_must_be_zero": true,
+      "comply_with_missing_evidence_must_be_zero": true
+    },
+    "statistical_plan": {
+      "min_cases_for_report": 50,
+      "annotation": "double annotation with Cohen's kappa",
+      "testset_version_bound_to_doc_versions": true
+    },
+    "metrics_order_for_report": [
+      "verdict_accuracy_nonabstain",
+      "wrong_allow",
+      "violation_as_comply",
+      "refusal_on_definitive_rate",
+      "correct_refusal_rate",
+      "citation_recall",
+      "citation_precision",
+      "mean_latency_ms",
+      "mean_cost_tokens"
+    ]
+  }
+}
