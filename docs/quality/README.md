@@ -34,7 +34,7 @@ The [regression checklist](../development/regression-checklist.md) records the 2
 - Search: `--eval --test-set data/eval/search_eval.json` 24 cases, 18/18 top-1, 6/6 refusals, permission isolation 1.00, gate PASS. Lexical only.
 - Smoke: `G_ekpi_engine acc=1.000`, hard gates H-1–H-6 all OK; LegalRuleML 51,026 bytes with 19/19/19/16 structure; `report.html` zero script.
 - Dependencies: `cargo audit` on both lockfiles 2026-10-26, 0 vulnerabilities; no SBOM and no CI execution yet.
-- 2026-10-26 only: documentation check 44 required files / 444 links in 92 files; high-signal secret scan 201 files; `gate.ps1 -IncludeSmoke` 13/13; restore drill PASS at `283f83a`; the later `198d5f3` bundle restore is **BLOCKED** by host Application Control (`os error 4551`), recorded as blocked in the [backup log](../operations/backup-log.md).
+- 2026-10-26 only: documentation check 44 required files / 445 links in 92 files; high-signal secret scan 200 files on a clean tree; `gate.ps1 -IncludeSmoke` 13/13 at `3a5ac47`; restore drill PASS at `283f83a`; the later `198d5f3` bundle restore is **BLOCKED** by host Application Control (`os error 4551`), recorded as blocked in the [backup log](../operations/backup-log.md).
 
 These are dated observations, not a permanent claim. Re-run the gate for the revision being delivered and attach the output to the PR/release. Do not copy a test count from a README as current evidence without a run.
 
