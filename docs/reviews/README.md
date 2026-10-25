@@ -44,11 +44,11 @@ Every accepted improvement gets an ID, an owner, a due trigger and a link. “Im
 | IMP-003 | RETRO-0001 | Execute a real backup/restore drill and record it in `operations/backup-log.md` | Engineering | High | Release/ops gate | Done (`283f83a`, [backup log](../operations/backup-log.md)) |
 | IMP-004 | RETRO-0001 | Complete S10–S17 traceability rows with contract IDs and verified/validated distinction | QA | High | `traceability/register.md` | Done (`283f83a`) |
 | IMP-005 | RETRO-0001 | Provision five triage labels, create issues and run CI after a remote and `gh` auth exist | Engineering | High | GitHub Issues/CI | Blocked |
-| IMP-006 | RETRO-0001 | Add tool-failure cases and a failure-injection harness when a tool/agent path is introduced | QA | Medium | `quality/ai-evaluation.md` `EVAL-GAP-01` | Open |
+| IMP-006 | RETRO-0001 | Add tool-failure cases and a failure-injection harness when a tool/agent path is introduced | QA | Medium | `quality/ai-evaluation.md` `EVAL-GAP-01` | Open; retrieval missing-data fail-closed test does **not** close it |
 | IMP-007 | RETRO-0001 | Delete or implement the placeholder `api.rs` before any HTTP API work | Backend | Medium | `architecture` `ARCH-GAP-01` | Open (blocked by no approved API scope) |
 | IMP-008 | RETRO-0001 | Assign product, security, operations and data owners | Product / Security / Ops | High | `operations/production-readiness.md` | Blocked |
 
-Status vocabulary: `Open`, `In progress`, `Done`, `Blocked`, `Deferred`. `Done` requires linked evidence, not a self-assertion. IMP-001–004 are closed by the 2026-10-26 gate and restore drill; see [backup log](../operations/backup-log.md) and [traceability register](../traceability/register.md).
+Status vocabulary: `Open`, `In progress`, `Done`, `Blocked`, `Deferred`. `Done` requires linked evidence, not a self-assertion. IMP-001–004 are closed by the 2026-10-26 gate and restore drill; see [backup log](../operations/backup-log.md) and [traceability register](../traceability/register.md). The search work at `9d0d793` adds a fixed 24-case retrieval gate, but it does not close IMP-006: a deterministic lexical retrieval function calls no tool, so tool timeout, partial result and retry-exhaustion behavior remain unevaluated.
 
 ## Rules for review findings
 

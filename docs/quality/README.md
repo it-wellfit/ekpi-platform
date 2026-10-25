@@ -20,19 +20,20 @@
 | Smoke/export | Report, coverage, HTML, LegalRuleML | `gate.ps1 -IncludeSmoke` | CLI, report, export, data, or presentation changes |
 | Security | Secret scan, dependency audit, boundary tests | CI security job; targeted refusal tests | High-risk changes and releases |
 | Manual accessibility | Keyboard, screen reader, contrast, narrow layout | Recorded operator evidence | UI changes |
-| AI evaluation | Fixed corpus and model/prompt/tool comparison | [AI evaluation](ai-evaluation.md) | AI/model/prompt/retrieval/tool change; release if AI is in scope |
+| AI evaluation | Fixed corpus, fixed lexical retrieval set, model/prompt/tool comparison | [AI evaluation](ai-evaluation.md); `--eval --test-set data/eval/search_eval.json` | AI/model/prompt/retrieval/tool change; release if AI is in scope |
 | Documentation | Required docs and relative links | `scripts/check-docs.ps1` / `.sh` | Every change; part of `scripts/check` |
 
 The fixed local entry point is `scripts/check.ps1` (Windows) or `scripts/check.sh` (POSIX). The stronger pre-PR/release gate is `gate.ps1`; add `-IncludeSmoke` when the change touches report, export, coverage, HTML, data or CLI output.
 
 ## Current evidence (dated)
 
-The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revision `283f83a` re-ran the same suites:
+The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revisions `283f83a` and `9d0d793` re-ran the same suites plus the search gate:
 
 - `eval`: 9 Cargo tests; self-test 10 checks.
-- `platform`: 183 Cargo tests (170 unit, 2 edge, 3 governance web, 8 integration); self-test 49 assertions; schema 20 records.
+- `platform`: 212 Cargo tests (193 unit, 2 edge, 3 governance web, 8 integration, 6 search evaluation); self-test 49 assertions; schema 20 records.
+- Search: `--eval --test-set data/eval/search_eval.json` 24 cases, 18/18 top-1, 6/6 refusals, permission isolation 1.00, gate PASS. Lexical only.
 - Smoke: `G_ekpi_engine acc=1.000`, hard gates H-1–H-6 all OK; LegalRuleML 51,026 bytes with 19/19/19/16 structure; `report.html` zero script.
-- 2026-10-26 only: documentation check 44 required files / 427 links in 92 files; high-signal secret scan 197 files; `gate.ps1 -IncludeSmoke` 12/12; fresh-clone restore drill PASS ([backup log](../operations/backup-log.md)).
+- 2026-10-26 only: documentation check 44 required files / 435 links in 92 files; high-signal secret scan 198 files; `gate.ps1 -IncludeSmoke` 12/12; fresh-clone restore drill PASS ([backup log](../operations/backup-log.md)).
 
 These are dated observations, not a permanent claim. Re-run the gate for the revision being delivered and attach the output to the PR/release. Do not copy a test count from a README as current evidence without a run.
 

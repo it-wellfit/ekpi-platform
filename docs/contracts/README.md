@@ -19,6 +19,7 @@ A contract is any interface another person, process or test depends on. This rep
 | CTR-DATA-004 | `platform/config/engine-params.json` | [Data formats](data-formats.md#engine-parameters) | 1.0 | CLI fail-closed checks | `--params`, invalid-params tests |
 | CTR-DATA-005 | Report and snapshot artifacts | [Data formats](data-formats.md#report-and-snapshot-artifacts) | De facto v1 | Operators, release evidence | Smoke gate; derivation rule |
 | CTR-DATA-006 | Governance ledger JSONL | [Data formats](data-formats.md#governance-ledger) | Local v1 | `governance_web`, audit view | Hash-chain verification; route tests |
+| CTR-DATA-007 | Search evaluation set | [Data formats](data-formats.md#search-evaluation-set) | 1.0 | `--eval`, integration tests | Loader validation; fixed-set gate; `platform/tests/search_eval.rs` |
 | CTR-EXP-001 | LegalRuleML 1.0 compact export | [Data formats](data-formats.md#legalruleml-export) | 1.0 | External legal-rule consumers | Smoke gate structural checks; exporter self-check |
 | — | JSON HTTP API | Not applicable | — | — | `platform/src/api.rs` is an unwired placeholder; see [backend](../backend/README.md#api-surface) |
 
@@ -47,8 +48,9 @@ For any contract change:
 
 | Contract | Minimum check |
 | --- | --- |
-| CLI | `cargo run --locked --bin ekp_platform -- --selftest`; `--declared-rules-schema`; smoke gate with report/export/coverage/HTML |
+| CLI | `cargo run --locked --bin ekp_platform -- --selftest`; `--declared-rules-schema`; `--eval --test-set data/eval/search_eval.json`; smoke gate with report/export/coverage/HTML |
 | Eval CLI | `cargo test --locked`; `cargo run --locked -- --selftest` |
+| Search evaluation set | `platform/tests/search_eval.rs`; gate rejects wrong expectations and a missing data source |
 | Web routes/forms | `cargo test --locked` (governance route tests) |
 | Rule schema | `--declared-rules-schema`; schema validation of all 20 records |
 | Report artifacts | `gate.ps1 -IncludeSmoke`; artifact presence and zero-script HTML |

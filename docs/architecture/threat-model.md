@@ -24,6 +24,7 @@ If any assumption changes, this model is invalid and must be revised before depl
 | Source references and versions | `platform/data/docs.json` and the ledger | A wrong version can produce a wrong conclusion |
 | Active rules and schema | `platform/data/rules.json`, `design/rule-schema-v0.1.1.schema.json` | Draft or tampered rules can change decisions |
 | Process evidence and case data | `platform/data/processes.json`, evaluation cases | Forbidden transitions and evidence gaps must not be released |
+| Retrieval corpus and evaluation set | `platform/data/docs.json`, `platform/data/eval/search_eval.json` | Search must cite the right source, respect the filter it is given and abstain when evidence is weak |
 | Decision snapshots and reports | `platform/out/`, `platform/report_out/` | They are the audit and reproduction record |
 | Governance ledger | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | It is the local record of governed actions |
 | Local credentials and environment | `.env` (ignored), host environment | Leakage would compromise local or future remote access |
@@ -36,6 +37,7 @@ If any assumption changes, this model is invalid and must be revised before depl
 3. **Process ↔ filesystem:** the CLI reads and writes operator-chosen paths. The ledger writes to a local path. Path and permission handling depend on the host.
 4. **Repository ↔ external supply chain:** Cargo dependencies, GitHub Actions and agent skills are external inputs. They are reviewed by version pinning and CI, not by a formal SBOM process yet.
 5. **Data ↔ external services:** none in the served path. Source references are manual; the platform does not call Microsoft, Google, an LLM or PM4Py.
+6. **Search corpus ↔ search caller:** the retrieval filter is a library API. `--search` runs as the local operator with no identity, so it cannot enforce document permissions; the fixed `--eval` set is the only place roles are exercised.
 
 ## Threats and controls
 
@@ -53,6 +55,8 @@ If any assumption changes, this model is invalid and must be revised before depl
 | TH-10 | Placeholder API is exposed and returns a false `comply` | `api.rs` is not imported by either binary; docs label it a placeholder | A future wiring mistake could expose it | Delete or implement with real engine-backed contract tests before any exposure |
 | TH-11 | Decision artifacts are altered after the fact | Deterministic snapshots and report derivation rules | Files are not signed; no immutable storage | Signed snapshots, hash registry, retention (`DEC-14`) |
 | TH-12 | Data loss on the single local machine | Git history, bundle procedure, restore drill | No automatic off-host backup or monitoring | Off-host encrypted backup, restore cadence, alerting |
+| TH-13 | Search returns a restricted or wrong document, or fabricates an answer | Retrieval returns verbatim citations with source anchors; weak scores abstain; the fixed set covers wrong-source, adversarial and insufficient-context cases; the eval gate fails on any case | `--search` has no user identity and applies no permission filter; lexical matching can miss a correct source or surface a plausible wrong one; no semantic or LLM evaluation | Authenticated retrieval, enforced authorization, expanded and independently reviewed eval set, retrieval provenance (`DEC-12`, `DEC-17`) |
+| TH-14 | Document text injects instructions through search output | Search returns text as quoted document content and never executes it; `injection_directive` is detected and not treated as a system rule; adversarial cases assert refusal or citation of the quoted section | A future LLM summarizer could follow the quoted instruction | Treat retrieved text as untrusted data, isolate tool/model context, adversarial evaluation before any LLM path |
 
 ## Out of scope
 
@@ -72,6 +76,8 @@ Do not claim any of the following on the basis of this repository:
 - “Tenant isolated” — the tenant module is not wired.
 - “Authenticated” — the web app has no login; `local_auth` is library-only.
 - “Prompt-injection proof” — deterministic cases pass, but no LLM/agent path exists or has been evaluated.
+- “Permission-aware search” as a user-facing authorization claim — only the library/eval path accepts a role list; `--search` has no identity and `governance_web` does not call retrieval.
+- “Semantic search” — retrieval is lexical bigram cosine and abstains on paraphrases it cannot match.
 - “Penetration tested”, “ASVS compliant” or “certified” — no such assessment has been performed.
 
 ## Review triggers

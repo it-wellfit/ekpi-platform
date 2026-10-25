@@ -3,7 +3,7 @@
 - **Status:** Active
 - **Owner:** Engineering
 - **Last reviewed:** 2026-10-26
-- **Contract IDs:** `CTR-DATA-001`–`CTR-DATA-006`, `CTR-EXP-001`
+- **Contract IDs:** `CTR-DATA-001`–`CTR-DATA-007`, `CTR-EXP-001`
 
 These are the current local formats. They are file contracts, not a production API. All files are UTF-8. Counts and byte sizes below are observations on 2026-10-26 and must be rechecked after data changes.
 
@@ -17,6 +17,7 @@ These are the current local formats. They are file contracts, not a production A
     {
       "doc_id": "SOP-CHANGE",
       "title": "...",
+      "permissions": [],
       "versions": [
         {
           "version": "3.2",
@@ -38,7 +39,46 @@ Rules:
 - `doc_id` + `version` + `section` identify a clause anchor.
 - `effective_from`/`effective_to` bound the valid-time window. A version outside its window is not applicable.
 - `injection_directive` is a synthetic adversarial field used to prove that embedded instructions do not become system rules. It is never an instruction to the operator.
-- The fixture contains 5 documents and 8 versions. Do not add real customer content.
+- `permissions` is an optional role-name list. An empty list means public to all roles. It is a **library-level filter**, not an authenticated authorization decision: the CLI `--search` mode has no user identity and applies no permission filter, and `governance_web` does not use it. `PermissionContext` is exercised by `retrieval`/`eval` unit tests only.
+- The fixture contains 7 documents and 10 versions. Do not add real customer content.
+
+## Search evaluation set
+
+`platform/data/eval/search_eval.json` (`CTR-DATA-007`).
+
+```json
+{
+  "version": 1,
+  "threshold": 0.42,
+  "cases": [
+    {
+      "id": "GEN-01",
+      "category": "general",
+      "question": "...",
+      "expected_doc_id": "SOP-CHANGE",
+      "expected_section": "4.3",
+      "min_score": 0.42,
+      "roles": []
+    },
+    {
+      "id": "IC-01",
+      "category": "insufficient_context",
+      "question": "...",
+      "expect_refusal": true,
+      "min_score": 0.0
+    }
+  ]
+}
+```
+
+Rules:
+
+- A bare JSON array is also accepted for backward compatibility; the object form is preferred because it carries `version` and an operating `threshold`.
+- `id` is unique; `category` is one of `general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context` (additional categories are allowed but do not satisfy the required coverage gate).
+- An answer case must name `expected_doc_id` and `expected_section`. A refusal case sets `expect_refusal: true` and omits both.
+- `min_score` is the minimum top-1 score for an expected hit. `threshold` and `min_score` are in `[0,1]`.
+- The fixed set is retrieval regression evidence only. It does not test an LLM, prompt, agent tool or production authorization.
+- The gate requires at least 10 cases, zero failed cases, permission isolation 1.00 and at least one case in each required category.
 
 ## Rules
 
@@ -176,6 +216,7 @@ The 19/19/19/16 thresholds are tied to the current 19 active rules. If the activ
 cd platform
 cargo run --locked --bin ekp_platform -- --declared-rules-schema
 cargo run --locked --bin ekp_platform -- --selftest
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
 cargo run --locked --bin ekp_platform -- --params config/engine-params.json `
   --out target/regression-report --coverage-report `
   --export-legalruleml target/regression-lrml --html

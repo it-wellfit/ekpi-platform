@@ -14,7 +14,7 @@ Both CLIs are local, offline tools. Commands must be run from the crate director
 ```text
 usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]
         [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]
-        [--coverage-report] [--html]]
+        [--coverage-report] [--html] | --search QUERY | --eval --test-set PATH]
 ```
 
 Run from `platform/`:
@@ -37,16 +37,25 @@ cargo run --locked --bin ekp_platform -- --selftest
 | `--export-legalruleml` | directory | Exports active rules as LegalRuleML 1.0 compact XML. | — |
 | `--coverage-report` | none | Runs seed + casebook coverage and writes `coverage_report.md`; with `--out`, writes it inside the output directory. | — |
 | `--html` | none | With `--out`, renders `report.md` to `report.html`. Without `--out`, refused with exit code 2. | — |
+| `--search` | query string | Lexical search over every document's latest version. Prints up to five verified verbatim citations, or `insufficient evidence` with a reason. This mode does not receive a user identity and therefore applies **no permission filter**. | — |
+| `--eval` | none | Runs a fixed retrieval regression set. Requires `--test-set`. Exits `1` if any case or coverage gate fails. | — |
+| `--test-set` | file path | JSON evaluation set (`{ "version", "threshold", "cases": [...] }` or a bare array). The set may declare its own operating threshold; an explicit `--threshold` overrides it. | — |
 
-`--selftest` is the primary integration check. `--declared-rules-schema` may be run alone and returns success after validating all records. `--html` is not a standalone mode.
+`--selftest` is the primary integration check. `--declared-rules-schema` may be run alone and returns success after validating all records. `--html` is not a standalone mode. `--search` and `--eval` are standalone modes; combining them with `--out` does not generate a report.
+
+### Search evaluation set
+
+The fixed set is [platform/data/eval/search_eval.json](../../platform/data/eval/search_eval.json) (`CTR-DATA-007`). It contains 24 cases across `general`, `ambiguous`, `adversarial`, `wrong_source` and `insufficient_context`; six cases expect an honest refusal. `tool_failure` is not a case category because retrieval calls no external tool; the CLI's missing-data path is covered by a fail-closed integration test instead.
+
+The gate is `metrics.gate_failures()` in `platform/src/eval.rs`: at least 10 cases, zero failed cases, permission isolation 1.00, and at least one case in every required category. A green run at threshold `0.42` is retrieval regression evidence, not an LLM or production-quality claim.
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Success; requested checks/artifacts completed |
-| `1` | Fail-closed failure: invalid/tampered parameters, invariant mismatch, schema rejection, export/report IO failure, self-test failure |
-| `2` | Usage or argument error: unknown flag, missing value, invalid threshold, `--html` without `--out` |
+| `1` | Fail-closed failure: invalid/tampered parameters, invariant mismatch, schema rejection, export/report IO failure, self-test failure, missing/unreadable data source, failed evaluation gate |
+| `2` | Usage or argument error: unknown flag, missing value, invalid threshold, `--html` without `--out`, `--eval` without `--test-set` |
 
 An exit code of `0` means the requested operation completed; it does not mean the target product is validated or production-ready.
 
@@ -80,6 +89,12 @@ cargo run --locked --bin ekp_platform -- --params config/engine-params.json `
 # Refusal example: --html without --out
 cargo run --locked --bin ekp_platform -- --html
 # expected exit code: 2
+
+# Knowledge search with verified citations
+cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄"
+
+# Fixed retrieval regression gate
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
 ```
 
 ## `ekp_eval`
@@ -123,7 +138,7 @@ Run from `eval/`.
 
 - `cargo test --locked` in both crates.
 - `--selftest` in both crates.
-- `--declared-rules-schema` in `platform/`.
+- `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json` in `platform/`.
 - `gate.ps1 -IncludeSmoke` for report/export/coverage/HTML and structural LegalRuleML checks.
 - `scripts/check-docs.ps1` for documentation links (not a CLI behavior test).
 

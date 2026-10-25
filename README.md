@@ -2,8 +2,9 @@
 
 **Evidence-Grounded Enterprise Knowledge & Process Intelligence Platform**
 
-本資料夾是 Master Prompt（企業知識智慧中樞）執行 **Round 1（研究與技術選型）** 的產出，
-同時是交給任何開發型 Agent（Claude Code / Cursor / OpenCode / Gemini Code）的專案母體。
+本儲存庫是 Master Prompt（企業知識智慧中樞）自 **Round 1（研究與技術選型）** 起持續落地的專案母體，
+目前包含可離線執行的確定性裁決引擎、知識檢索與固定評測、以及本機治理工作台。
+它同時是交給任何開發型 Agent（Claude Code / Cursor / OpenCode / Gemini Code）的實作與交付依據。
 
 **堆疊定案（2026-10-25 創辦人指示）**：Rust 全端主軸 + CSS-first 零 JS 展示層；
 Mojo 列為前沿方法軌道（research-only）；Python 降為參考實作與選配 sidecar。
@@ -55,10 +56,12 @@ ekpi-platform/
 │   ├── rule-schema-v0.1.1.schema.json       ← 規則模型 JSON Schema（v0.1.1，機讀）
 │   └── process-verification-selection.md    ← 流程驗證層選型：Petri/XES/OCEL + 品質關卡 + 拒答校準
 ├── platform/                                ← 確定性核心（Round 2 交付物 C/D 的 MVP 引擎＋Round 3 匯出／治理／覆蓋率）
-│   ├── Cargo.toml / src/                    ← docs/rules/process/retrieval/snapshot/engine/validate/params/export/coverage_report，`#![forbid(unsafe_code)]`、clippy -D warnings 零警告
-│   ├── data/                                ← docs.json（5 文件 8 版本，含注入測試欄位）；rules.json（20 紀錄＝19 active＋1 draft_ai 投毒測試）；processes.json（3 流程模型）
+│   ├── Cargo.toml / src/                    ← docs/rules/process/retrieval/evidence/snapshot/engine/validate/params/export/coverage_report/eval；`#![forbid(unsafe_code)]`、clippy -D warnings 零警告
+│   ├── data/                                ← docs.json（7 文件 10 版本，含注入測試欄位）；rules.json（20 紀錄＝19 active＋1 draft_ai 投毒測試）；processes.json（3 流程模型）
+│   ├── data/eval/search_eval.json           ← 24 案固定檢索評測集（18 應命中、6 應拒答；營運門檻 0.42）
 │   ├── config/engine-params.json     ← 參數治理檔（`--params` 顯式載入或預設路徑自動載入；任一不符即 fail-closed 拒執行）
 │   ├── tests/integration.rs                 ← 端到端整合測試（真實 data + 種子案例）
+│   ├── tests/search_eval.rs                 ← `--search`／`--eval` 的固定集與 fail-closed 整合測試
 │   ├── report_out/                          ← `--out` 產物（report.json/md、engine_snapshots.json、engine_hard_gates.json）
 │   └── out/                                 ← R3 旗標產物（report.json/md/html、coverage_report.md、lrml/legalruleml_v1_compact.xml）
 ├── research/
@@ -87,23 +90,27 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 powershell -ExecutionPolicy Bypass -File gate.ps1 -IncludeSmoke
 ```
 
-逐項命令與 **2026-10-25 真機數據**（不是永久常數；交付修訂版需重跑）：
+逐項命令與 **2026-10-26 真機數據**（不是永久常數；交付修訂版需重跑）：
 
 ```powershell
 cd eval
-cargo run --locked -- --selftest        # 10/10 檢查通過（2026-10-25, rustc 1.99.1）
+cargo run --locked -- --selftest        # 10/10 檢查通過（2026-10-26, rustc 1.99.1）
 cargo run --locked -- --out report_out  # 產出 report.json + report.md（含逐案例失敗分析）
 
 cd ..\platform
 cargo clippy --locked --all-targets -- -D warnings              # 零警告
-cargo test --locked                                             # 170 lib + 2 edge_cases + 3 governance_web + 8 integration = 183 PASS
+cargo test --locked                                             # 193 lib + 2 edge_cases + 3 governance_web + 8 integration + 6 search_eval = 212 PASS
 cargo run --locked --bin ekp_platform -- --selftest             # 49 assertions PASS：9/9 案例判定+引用集合、H-1..H-6、draft 規則拒收
 cargo run --locked --bin ekp_platform -- --declared-rules-schema    # 20 records validated clean（19 active＋1 draft_ai）
+cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄"  # 逐字引用，低於門檻則誠實回報證據不足
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json         # 24 案：18/18 top-1、6/6 拒答、gate PASS
 cargo run --locked --bin ekp_platform -- --export-legalruleml out\lrml  # LegalRuleML v1.0 compact（19 PrescriptiveStatement、51,026 bytes、匯出自檢）
 cargo run --locked --bin ekp_platform -- --coverage-report      # 55 案（seed 9＋casebook 46）真機統計
 cargo run --locked --bin ekp_platform -- --out out --coverage-report --export-legalruleml out\lrml --html
 # R3 組合：engine acc=1.000、hard gates ALL OK；--params config\engine-params.json 可顯式載入治理檔；out/ 產 report.json/md/html＋coverage_report.md
 ```
+
+`--search` 是詞彙（bigram cosine）檢索，不是語意搜尋或 LLM；改寫過的問句可能得到 `insufficient evidence`。`--eval` 是固定的確定性回歸門檻，不代表 AI 品質。CLI 搜尋沒有登入身分，因此不套用文件權限過濾；`permissions`／`PermissionContext` 僅在 library 與評測中使用。
 
 ## 跨專案治理試點工作台
 
@@ -157,3 +164,4 @@ platform 引擎已接入同一 runner（adapter `G_ekpi_engine`）：
 | 2026-10-25 | **Round 2 核心落地**：`ekp_platform` 確定性引擎（文件版本樹/active 規則層/token replay/bigram 檢索/abstain/snapshot 重放）真機 PASS（selftest 49 assertions、單元 14/14、整合 6/6、clippy 零警告）；規則 schema 升 v0.1.1（loop_policy）；`G_ekpi_engine` 接入 eval runner，消融報告硬門檻 H-1..H-6 全部 ok；Round 1 文件 4 處缺陷修正（重排序行、流程層行、盤點計數、A4 放行率=0） | OpenCode (GLM) |
 | 2026-10-25 | **Round 3 落地**：CLI 五旗標（`--declared-rules-schema`／`--params` 參數治理檔／`--export-legalruleml`／`--coverage-report`／`--html`）；LegalRuleML v1.0 compact 匯出（active 19 紀錄→官方構件，匯出自檢 key/ref）；覆蓋率報告 55 案真機（seed 9＋casebook 46；18 active id 全覆蓋＋2 非 active 引用 id 顯式拒答；casebook 實測 46 題修正）；papers.csv ＋9 條（合計 27 全數核實）；cargo test 71 PASS、selftest 49 assertions、clippy 零警告 | OpenCode (GLM) |
 | 2026-10-26 | **全生命週期文件與品質入口**：新增 canonical 文件索引、product／architecture／backend／frontend／contracts／quality／operations／decisions／reviews／traceability 文件；Phase A/B 門檻與生產就緒度（A 未核准、B 受阻）；`scripts/check-docs` 與高信號機密樣式掃描接入 `scripts/check` 與 `gate.ps1`；CI 改為 `validate` matrix + `security`；修正資料庫／WORM／tenant／monitoring／restore 等過度宣稱；`.env.example`、`.gitignore`、`.gitattributes` 對齊實際行為；`gate.ps1 -IncludeSmoke` 12/12 PASS；bundle 還原演練 PASS（`283f83a`，SHA-256 `21D2CD…ED443`） | OpenCode (DeepSeek V4.1) |
+| 2026-10-26 | **知識檢索與固定評測**：`--search` 詞彙檢索＋逐字引用；`--eval --test-set` 固定 24 案回歸門檻（18/18 top-1、6/6 拒答、權限隔離 1.00）；`permissions` 與 `PermissionContext` 為 library 過濾、非授權；`knowledge_search` 審計事件 enum；新增 `platform/tests/search_eval.rs` 6 測試（含 missing-data fail-closed）；platform 測試 212 PASS；docs 契約新增 `CTR-DATA-007`；明確標示 lexical-only、CLI 無身分、非 AI 品質 | OpenCode (DeepSeek V4.1) |

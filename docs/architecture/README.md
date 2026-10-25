@@ -18,22 +18,25 @@ flowchart LR
     Core --> Data[platform/data<br/>docs, rules, processes]
     Core --> Artifacts[report.json / report.md / report.html<br/>snapshots / hard gates / LegalRuleML]
     Web --> Ledger[Append-only hash-chained ledger<br/>%LOCALAPPDATA%\\EKPI\\governance-ledger.jsonl]
+    CLI --> Search[Lexical search + citations<br/>--search / --eval]
+    Search --> EvalSet[Fixed eval set<br/>platform/data/eval/search_eval.json]
     Eval[ekp_eval harness] -.-> CLI
     Eval --> Reports[evaluation reports]
 ```
 
-The dotted `ekp_eval` connection means the platform binary embeds the evaluation runner as a library and emits a comparable `G_ekpi_engine` report. It is not a separate service.
+The dotted `ekp_eval` connection means the platform binary embeds the evaluation runner as a library and emits a comparable `G_ekpi_engine` report. It is not a separate service. `--search` and `--eval` are CLI modes over the same in-process `platform::retrieval` code; they are not a network service and do not add an external dependency.
 
 ## Containers and responsibilities
 
 | Container | Location | Responsibility | Current status |
 | --- | --- | --- | --- |
 | `ekp_eval` library and binary | `eval/` | Case loading, adapters, metrics, reports, self-test | Implemented; offline |
-| `ekp_platform` library | `platform/src/lib.rs` | Deterministic engine, data models, process replay, retrieval, snapshots, export, governance ledger, web routes | Implemented; mixed served/library-only modules |
-| `ekp_platform` CLI | `platform/src/main.rs` | Runs self-test, case evaluation, schema validation, report/coverage/HTML generation and LegalRuleML export | Implemented |
+| `ekp_platform` library | `platform/src/lib.rs` | Deterministic engine, data models, process replay, lexical retrieval, search evaluation harness, snapshots, export, governance ledger, web routes | Implemented; mixed served/library-only modules |
+| `ekp_platform` CLI | `platform/src/main.rs` | Runs self-test, case evaluation, schema validation, report/coverage/HTML generation, LegalRuleML export, lexical search and the fixed retrieval gate | Implemented |
 | `governance_web` binary | `platform/src/bin/governance_web.rs` | Serves the local CSS-first workbench on `127.0.0.1:3000` | Implemented for local, non-sensitive pilot data |
-| Seed data | `platform/data/*.json` | 5 documents / 8 versions, 19 active + 1 draft rule, 3 process models | Synthetic fixture |
+| Seed data | `platform/data/*.json` | 7 documents / 10 versions, 19 active + 1 draft rule, 3 process models | Synthetic fixture |
 | Evaluation corpus | `eval/cases/*.jsonl` | 67 cases (9 seed + 46 casebook + 12 edge) | Synthetic fixture |
+| Search evaluation set | `platform/data/eval/search_eval.json` | 24 retrieval cases (18 answer, 6 refusal) at threshold 0.42 | Synthetic regression fixture |
 | Local ledger | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | Append-only governance events with a SHA-256 chain | Local prototype, not WORM |
 | Generated artifacts | `platform/out/`, `platform/report_out/`, `eval/report_out/` | Reports, snapshots, hard gates, coverage, HTML, LegalRuleML | Generated; not source of truth |
 
@@ -43,7 +46,8 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 
 | Area | Modules | Status |
 | --- | --- | --- |
-| Deterministic core | `docs`, `rules`, `process`, `retrieval`, `evidence`, `snapshot`, `engine`, `causal` | Served by CLI and tests |
+| Deterministic core | `docs`, `rules`, `process`, `retrieval`, `evidence`, `snapshot`, `engine`, `causal` | Served by CLI and tests; `retrieval` is also exposed through `--search`/`--eval` |
+| Search evaluation | `eval` (platform module) | Served by `--eval` and integration tests; the separate `eval/` crate is the case-metrics harness |
 | Configuration and validation | `params`, `validate` | Served by CLI |
 | Output | `export`, `coverage_report` | Served by CLI |
 | Governance workbench | `governance`, `governance_web` | Served by `governance_web` |
@@ -67,6 +71,15 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 4. `snapshot` records the decision inputs and output so the result can be replayed.
 5. `export` emits LegalRuleML; `coverage_report` emits rule coverage; the evaluation runner emits `report.json`, `report.md`, `report.html`, `engine_snapshots.json` and `engine_hard_gates.json`.
 6. `--selftest` asserts the expected verdicts, citations and hard gates; it is the CLI's primary integration check.
+
+### Knowledge search and retrieval evaluation
+
+1. `--search QUERY` loads the same document data, builds a retriever from each document's latest version and ranks sections with a deterministic lexical bigram-cosine score.
+2. The top five sections are returned with `doc_id`, version, section, score and the verbatim text. Text below the threshold yields `insufficient evidence` and a reason instead of a guessed answer.
+3. `--eval --test-set PATH` loads a fixed JSON set (default fixture: 24 cases, threshold 0.42) and runs the same retriever per case.
+4. The gate rejects a run with fewer than 10 cases, any failed case, permission isolation below 1.00, or a missing required category (`general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context`). A failed gate exits non-zero.
+5. The user identity and role list are supplied only by the library/eval `PermissionContext`. The CLI has no login and applies **no** permission filter; `governance_web` does not call retrieval. The `permissions` field is therefore a library-level filter, not an authorization control.
+6. Search is lexical, not semantic or LLM-based. An indirectly phrased question can legitimately return `insufficient evidence`; that is an honest refusal, not a successful answer.
 
 ### Local governance workbench
 
@@ -93,7 +106,7 @@ The research and selection documents may discuss these technologies. They are op
 ## Capacity and performance assumptions
 
 - Workload: a single local operator, synthetic corpus, in-process deterministic computation.
-- Data scale: 5 documents / 8 versions, 20 rule records and 3 process models in the seed fixture; this is not a capacity model.
+- Data scale: 7 documents / 10 versions, 20 rule records and 3 process models in the seed fixture; the search regression set adds 24 cases. This is not a capacity model.
 - No approved latency, throughput, concurrency or memory target exists. `DEC-19` in the [decision register](../governance/08-decision-register.md) requires an owner-approved capacity model before a performance claim.
 - The report records `mean_latency_ms`, but a local mean is not a production SLO. Performance budgets and load tests are Phase B work; see [quality](../quality/README.md).
 
@@ -113,6 +126,8 @@ The research and selection documents may discuss these technologies. They are op
 | ARCH-GAP-04 | Ledger is a local JSONL hash chain, not WORM | Local tamper evidence only; no enterprise retention or external anchoring | Phase B, `DEC-14` |
 | ARCH-GAP-05 | No structured logs, metrics, traces or health endpoint for operations | No SLI/SLO or incident detection | Phase B, `DEC-16` |
 | ARCH-GAP-06 | Many modules are library-only | Repository size and apparent capability exceed served evidence | Tracked in module table; wire only with a spec and integration tests |
+| ARCH-GAP-07 | `permissions` is a library-level retrieval filter, not an authorization boundary | `--search` has no identity and cannot isolate tenants; `governance_web` does not use it | Phase B identity work, `DEC-12` |
+| ARCH-GAP-08 | Search is lexical bigram cosine, not semantic or LLM retrieval | Paraphrased questions can abstain; it is not a natural-language answer system | [AI evaluation](../quality/ai-evaluation.md); future retrieval work needs a new ADR and eval set |
 
 ## Update triggers
 

@@ -42,13 +42,29 @@ Confirm the command succeeds and creates `report.json` and `report.md` under tha
 - Preserve the configurable retrieval threshold and parameter precedence. Invalid parameter files or invalid thresholds must refuse execution.
 - Preserve the declared-rules schema, LegalRuleML export validation, coverage report for the seed and casebook sets, HTML report output, and combined `--out` behavior.
 
-Relevant code: `platform/src/{docs,rules,process,retrieval,engine,snapshot,params,validate,export,coverage_report,main}.rs`; test coverage is in module tests and `platform/tests/integration.rs`.
+Relevant code: `platform/src/{docs,rules,process,retrieval,evidence,eval,engine,snapshot,params,validate,export,coverage_report,main}.rs`; test coverage is in module tests, `platform/tests/integration.rs` and `platform/tests/search_eval.rs`.
 
 Required CI commands: Cargo tests, engine `--selftest`, and `--declared-rules-schema`. Expected CLI refusals are exit code 1 for malformed or tampered params and 2 for `--html` without `--out`. The remaining report/export flags are not separate required CI steps today. Run this focused smoke when touching CLI output, configuration, report, export, or case loading:
 
     cargo run --locked --bin ekp_platform -- --params config/engine-params.json --declared-rules-schema --out target/regression-report --coverage-report --export-legalruleml target/regression-lrml --html
 
 Confirm exit code 0 and that target/regression-report contains `report.json`, `report.md`, `report.html`, `coverage_report.md`, `engine_snapshots.json`, `engine_hard_gates.json`, plus the LegalRuleML export under target/regression-lrml. Also confirm `report.html` is generated from the Markdown report and does not contain executable script elements. For the LegalRuleML export, confirm the artifact is at least 10 KB, has the official `lrml:LegalRuleML` root and namespace, and carries at least 19 `PrescriptiveStatement`, 19 `PenaltyStatement`, 19 `Reparation`, and 16 `LegalSource` elements. `gate.ps1 -IncludeSmoke` enforces these checks so a 14-byte stub cannot pass as a real export.
+
+### Knowledge search and retrieval evaluation
+
+- `--search QUERY` returns at most five ranked sections with `doc_id`, version, section, score and verbatim text; it prints `insufficient evidence` when nothing clears the threshold.
+- Retrieval is lexical bigram cosine. A paraphrase that does not share enough character bigrams may abstain; do not "fix" a test by lowering the threshold without an approved change.
+- `--eval --test-set data/eval/search_eval.json` must exit 0 with 18/18 top-1 answer cases and 6/6 refusals; the gate also requires ≥10 cases, zero failures, permission isolation 1.00 and every required category.
+- A bad expectation must exit 1, `--eval` without `--test-set` must exit 2, and an unreadable data source must exit 1. `platform/tests/search_eval.rs` enforces these fail-closed paths.
+- `permissions` and `PermissionContext` are library/eval filters only. `--search` has no identity and must not be described as access-controlled; `governance_web` does not call retrieval.
+- The fixed set is regression evidence for the lexical retriever, not an LLM/agent quality benchmark. Tool failure remains an open gap (`EVAL-GAP-01`).
+
+Required commands for this area:
+
+    cargo test --locked
+    cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
+
+For a search behavior change, also record one real `--search` command and its citation output in the PR or release evidence.
 
 ## 4. Governance web prototype behavior to preserve
 

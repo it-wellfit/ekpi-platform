@@ -26,7 +26,8 @@ The authoritative entities, states and invariants are in [governance/06](../gove
 | Versioned documents and anchors | `docs`, `engine` | Loads source versions, checks bindings/hashes, resolves clause anchors | Unit and integration tests |
 | Active rules and schema | `rules`, `validate`, `params` | Loads active rules, rejects drafts, validates the declared schema, enforces fail-closed parameter invariants | `--declared-rules-schema`, self-test, tests |
 | Process replay | `process`, `engine` | Replays events, detects forbidden pairs, deadlines, loops and missing state | Seed/edge cases, self-test |
-| Evidence retrieval | `retrieval`, `evidence` | Deterministic retrieval with citations and conservative abstention | Evaluation corpus, hard gates |
+| Evidence retrieval | `retrieval`, `evidence` | Deterministic lexical retrieval with citations and conservative abstention; `PermissionContext` filters by role at library level | Evaluation corpus, hard gates, fixed search set |
+| Knowledge search CLI | `main` (`--search`, `--eval`), `eval` | Ranks document sections, prints verified verbatim citations, and gates a fixed regression set | `platform/tests/search_eval.rs`, CLI run |
 | Decision snapshot | `snapshot` | Records inputs and output for deterministic replay | Self-test, integration tests |
 | Report/export | `export`, `coverage_report` | LegalRuleML, coverage, Markdown/HTML reports | Smoke gate and exporter tests |
 | Governance ledger | `governance` | Append-only JSONL events for projects, evidence, workflows, quality cases, inspections and gate decisions | `governance_web` tests |
@@ -42,6 +43,7 @@ The following modules are compiled and unit-tested but not imported by either se
 | Seed rules | JSON | `platform/data/rules.json` | Validated against `design/rule-schema-v0.1.1.schema.json` |
 | Seed processes | JSON | `platform/data/processes.json` | Read-only fixture |
 | Engine parameters | JSON | `platform/config/engine-params.json` | Fail-closed validation; CLI override for threshold only |
+| Search evaluation set | JSON | `platform/data/eval/search_eval.json` | Versioned fixed set with its own operating threshold; loaded and validated per run |
 | Governance ledger | JSONL, one event per line | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | Append + `sync_data` per event; SHA-256 chain |
 | Reports and exports | JSON/Markdown/HTML/XML | Operator-selected output directory | Regenerated; not transactional |
 
@@ -60,6 +62,8 @@ There is no relational database, ORM, migration engine or multi-process lock. Tw
 The served web app has **no authentication** and **no authorization**. It binds to `127.0.0.1`, uses a same-origin guard for mutations, and sets CSP/frame/referrer/nosniff headers. These are defense-in-depth for a local tool, not an identity control.
 
 `local_auth` contains local password hashing, session expiry and a four-role enum, but it is not wired into `governance_web`. `tenant` contains an in-memory tenant store, but it is not wired. The target identity, role, MFA and tenant requirements are in [governance/07](../governance/07-security-integration-spec-v1.md) and decisions `DEC-02`, `DEC-12` and `DEC-17`.
+
+The `permissions` field on a document and `retrieval::PermissionContext` are a **library-level retrieval filter**, not an authorization decision. `--search` receives no user identity and applies no filter. The fixed `--eval` set can supply roles to prove that a filtered retrieval does not leak a restricted document, but that proves filter behavior, not tenant isolation or access control.
 
 ## API surface
 
@@ -103,6 +107,7 @@ Phase B requires SLI/SLO definitions, structured logs, metrics, traces, alerting
 | BE-GAP-05 | No structured logs, metrics or traces | No operational detection or SLO evidence | Phase B, `DEC-16` |
 | BE-GAP-06 | Library-only modules appear capable but are unwired | Misleading capability claims; maintenance cost | Wire with spec/tests or remove |
 | BE-GAP-07 | No idempotency key for form posts | Double submission creates duplicate events | Phase B |
+| BE-GAP-08 | `--search` has no identity or permission filter, and search is lexical only | Results are not access-controlled and paraphrased questions can abstain | Phase B identity work; new retrieval design needs an ADR and eval update |
 
 ## Update triggers
 

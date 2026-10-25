@@ -10,8 +10,8 @@
 
 This policy covers two different things:
 
-1. **Deterministic evaluation (current):** the engine's verdicts, citations, abstention, process replay and hard gates on a fixed JSONL corpus. No model, prompt, retrieval service or external tool is involved.
-2. **AI/agent evaluation (target):** any future LLM, prompt, retrieval, connector or tool path. None exists in the served code today; `agents` and `pm4py_sidecar` are library-only and not called by the CLI or web app.
+1. **Deterministic evaluation (current):** the engine's verdicts, citations, abstention, process replay and hard gates on a fixed JSONL corpus, plus a fixed lexical-retrieval regression set for `--search`. No model, prompt, external retrieval service or tool is involved.
+2. **AI/agent evaluation (target):** any future LLM, prompt, hosted retrieval, connector or tool path. None exists in the served code today; `agents` and `pm4py_sidecar` are library-only and not called by the CLI or web app.
 
 Do not use deterministic-corpus results to claim AI quality, and do not use an AI evaluation result to claim the deterministic engine is correct. They are separate evidence streams.
 
@@ -23,8 +23,9 @@ Do not use deterministic-corpus results to claim AI quality, and do not use an A
 | `eval/cases/casebook_v3.jsonl` | 46 | Expanded adjudication corpus |
 | `eval/cases/edge_cases.jsonl` | 12 | Boundary, refusal and adversarial cases |
 | **Total** | **67** | Fixed corpus (≥50 target M-12) |
+| `platform/data/eval/search_eval.json` | 24 | Fixed retrieval regression set for `--search`/`--eval` (18 answer, 6 refusal) |
 
-Observed verdict distribution on 2026-10-26: `comply` 28, `violate` 11, `escalate` 10, `insufficient_evidence` 18.
+Observed verdict distribution on 2026-10-26: `comply` 28, `violate` 11, `escalate` 10, `insufficient_evidence` 18. The search set has its own threshold (0.42) and categories; it is not part of the 67-case verdict corpus and must not be counted as one.
 
 The corpus is versioned in Git. Case IDs are stable; expected verdicts may change only with an approved decision and an updated regression test. Never delete a failing case to make a run pass.
 
@@ -34,12 +35,12 @@ The six dimensions below are mandatory for an AI product. For the deterministic 
 
 | Dimension | What it tests | Representative corpus categories | Coverage |
 | --- | --- | --- | --- |
-| Normal | Correct verdict and citations on clear cases | compliant and violation change cases, approval signatures, close-gate cases | Covered |
-| Ambiguous | Conflicting sources, partial evidence, unclear ownership or timing | `conflict_no_override`, `conflict_with_override`, `contradiction`, `partial_pass_note`, `version_conflict`, `unknown_activity_noted` | Covered |
-| Adversarial | Prompt injection, embedded directives, rule poisoning, attempts to bypass a gate | `prompt_injection`, `injection_resisted`, `injection_and_rule_expiry`, `draft_rule_invisible` | Covered |
-| Wrong source | Stale version, wrong appendix, missing cross-document evidence, mismatched pin | `stale_pool_pin_mismatch`, `missing_cross_doc_evidence`, `appendix_binding_mismatch`, `future_rule`, `rule_expired` | Covered |
-| Tool failure | Timeout, unavailable connector, partial tool result, retry exhaustion, sidecar failure | None | **Gap** (`EVAL-GAP-01`) |
-| Insufficient context | Missing events, unregistered rule, no evidence, deadline anchor missing | `missing_evidence`, `unregistered_rule_id`, `deadline_anchor_missing`, `actor_role_mismatch`, `loop_state_missing` | Covered |
+| Normal | Correct verdict and citations on clear cases | compliant and violation change cases, approval signatures, close-gate cases; search `general` | Covered |
+| Ambiguous | Conflicting sources, partial evidence, unclear ownership or timing | `conflict_no_override`, `conflict_with_override`, `contradiction`, `partial_pass_note`, `version_conflict`, `unknown_activity_noted`; search `ambiguous` | Covered |
+| Adversarial | Prompt injection, embedded directives, rule poisoning, attempts to bypass a gate | `prompt_injection`, `injection_resisted`, `injection_and_rule_expiry`, `draft_rule_invisible`; search `adversarial` | Covered |
+| Wrong source | Stale version, wrong appendix, missing cross-document evidence, mismatched pin | `stale_pool_pin_mismatch`, `missing_cross_doc_evidence`, `appendix_binding_mismatch`, `future_rule`, `rule_expired`; search `wrong_source` | Covered |
+| Tool failure | Timeout, unavailable connector, partial tool result, retry exhaustion, sidecar failure | None; the retrieval CLI's missing-data path is covered by a fail-closed test, which is not a tool-failure case | **Gap** (`EVAL-GAP-01`) |
+| Insufficient context | Missing events, unregistered rule, no evidence, deadline anchor missing | `missing_evidence`, `unregistered_rule_id`, `deadline_anchor_missing`, `actor_role_mismatch`, `loop_state_missing`; search `insufficient_context` | Covered |
 
 The category names are the fixture's test categories, not a claim that every real-world variant is covered. The corpus is synthetic.
 
@@ -84,9 +85,12 @@ cd ..\platform
 cargo test --locked
 cargo run --locked --bin ekp_platform -- --selftest
 cargo run --locked --bin ekp_platform -- --declared-rules-schema
+cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
 cargo run --locked --bin ekp_platform -- --params config/engine-params.json `
   --out target/regression-report --coverage-report --html
 ```
+
+The retrieval gate is deterministic and offline. It runs the same lexical retriever as `--search` against 24 fixed cases and fails on any miss, unexpected citation, permission leak or missing category. A green run is regression evidence for that retriever, not an AI quality metric.
 
 For a tool/AI path, add a comparison run for each model/prompt/tool version, record the exact version identifiers and the corpus hash, and compare against the approved baseline. A missing tool must produce an honest failure/abstention, not a fabricated success.
 
@@ -107,7 +111,7 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 
 | ID | Gap | Impact | Next action |
 | --- | --- | --- | --- |
-| EVAL-GAP-01 | No tool-failure cases | A future connector/LLM/tool path has no regression evidence for timeout/partial failure/retry exhaustion | Add cases and a failure-injection harness when a tool is introduced |
+| EVAL-GAP-01 | No tool-failure cases | A future connector/LLM/tool path has no regression evidence for timeout/partial failure/retry exhaustion. The current retrieval CLI calls no tool; its missing-data test is fail-closed evidence only | Add cases and a failure-injection harness when a tool is introduced |
 | EVAL-GAP-02 | No LLM/agent implementation or evaluation | AI quality, hallucination, tool success and cost/latency are unmeasured | `DEC-15`; implement only after provider/data policy approval |
 | EVAL-GAP-03 | No double annotation / κ | Expected labels are not independently validated | Run a two-annotator study for the expanded corpus |
 | EVAL-GAP-04 | Synthetic corpus only | No evidence that the cases represent a real organization | Pilot with authorized non-sensitive cases; keep them separate from the fixed synthetic set |
@@ -116,9 +120,10 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 ## Current status
 
 - Deterministic corpus: 67 cases, fixed and versioned.
+- Search retrieval regression: 24 cases (18 answer, 6 refusal), threshold 0.42; `--eval` gate PASS on the recorded revision. Lexical only; paraphrases can abstain.
 - Hard gates H-1–H-6: exercised by the engine self-test/report pipeline; see the dated regression baseline.
 - AI/agent: not implemented; no quality claim.
-- Tool failure: not covered.
+- Tool failure: not covered for a future connector/LLM/tool path (`EVAL-GAP-01`). The retrieval CLI calls no tool; its missing-data fail-closed test is not a substitute.
 - Annotation agreement: not measured.
 
 ## Update triggers
