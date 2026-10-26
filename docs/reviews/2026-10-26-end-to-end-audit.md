@@ -54,7 +54,7 @@ The audit did not stop at re-reading documents. For each claim it tried to produ
 | `scripts/check-docs.ps1` / `.sh` | 44 required; 457 links in 93 files; exit 0 | Working tree |
 | `scripts/check-secrets.ps1` / `.sh` | 202 files; exit 0 | High-signal patterns only; not a DLP scan |
 | Bundle `198d5f3` | `git bundle verify` okay; SHA-256 `E6EAB351…D903847`; fresh clone reached HEAD | Restore check **BLOCKED** |
-| Canonical `scripts/check.ps1` / `gate.ps1` | **Blocked** | Application Control denies execution from `target` |
+| Canonical `scripts/check.ps1` | **Blocked** at `31fa5a3`: docs, secret scan, eval fmt/clippy/tests/selftest and platform fmt passed; platform Clippy stopped with `can't find crate for axum/maud` after Application Control denied the proc-macro DLLs | Same host restriction; not a code failure and not a PASS |
 
 ## Decision
 
