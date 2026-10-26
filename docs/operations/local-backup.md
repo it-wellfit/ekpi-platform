@@ -1,6 +1,6 @@
 # Local backup and restore procedure
 
-- **Status:** Procedure defined; local restore drill PASS at `283f83a`; later `198d5f3` attempt BLOCKED by host policy; a new drill is required for the current revision
+- **Status:** Procedure defined; local restore drills PASS at `283f83a` and `7f6ab97`; earlier `198d5f3` attempt BLOCKED by host policy and not counted as verification
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
 - **Last reviewed:** 2026-10-26
 - **Evidence log:** [backup-log.md](backup-log.md)

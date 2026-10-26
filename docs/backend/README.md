@@ -26,7 +26,7 @@ The authoritative entities, states and invariants are in [governance/06](../gove
 | Versioned documents and anchors | `docs`, `engine` | Loads source versions, checks bindings/hashes, resolves clause anchors | Unit and integration tests |
 | Active rules and schema | `rules`, `validate`, `params` | Loads active rules, rejects drafts, validates the declared schema, enforces fail-closed parameter invariants | `--declared-rules-schema`, self-test, tests |
 | Process replay | `process`, `engine` | Replays events, detects forbidden pairs, deadlines, loops and missing state | Seed/edge cases, self-test |
-| Evidence retrieval | `retrieval` | Deterministic lexical retrieval with citations and conservative abstention; `PermissionContext` filters by role at library level | Evaluation corpus, hard gates, fixed search set (lexical; the fixed set has no role-restricted fixture) |
+| Evidence retrieval | `retrieval` | Deterministic lexical retrieval with citations and conservative abstention; `PermissionContext` filters by role at library level | Evaluation corpus, hard gates, fixed search set (lexical; 4 role-restricted cases over 2 evaluation-only fixtures, not authentication or tenant isolation) |
 | Knowledge search CLI | `main` (`--search`, `--eval`), `eval` | Ranks document sections, prints verified verbatim citations, and gates a fixed regression set | `platform/tests/search_eval.rs`, CLI run |
 | Decision snapshot | `snapshot` | Records inputs and output for deterministic replay | Self-test, integration tests |
 | Report/export | `export`, `coverage_report` | LegalRuleML, coverage, Markdown/HTML reports | Smoke gate and exporter tests |

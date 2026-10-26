@@ -68,7 +68,7 @@ A merge additionally requires CI success and human approval. A release additiona
 
 Do not describe the prototype as an MVP or a production product on the basis of passing tests alone.
 
-- [Phase A](../quality/phase-gates.md#phase-a-0--1-mvp-gate): current status **not approved**; real-user validation, restore evidence and complete traceability are outstanding.
+- [Phase A](../quality/phase-gates.md#phase-a-0--1-mvp-gate): current status **not approved**; real-user validation and complete pilot-scope traceability are outstanding. Local A4/A8 evidence passes at `7f6ab97`; off-host backup and RPO/RTO remain Phase B.
 - [Phase B](../quality/phase-gates.md#phase-b-mvp--production-grade-gate): current status **blocked**; no deployment target, identity, data policy or operations owner.
 - [Production readiness](../operations/production-readiness.md): current answer **not production ready**.
 

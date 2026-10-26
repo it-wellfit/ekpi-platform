@@ -15,9 +15,19 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 ### 2026-10-26 audit update
 
-- `platform` now has **225 tests**: 193 unit, 2 edge-case, 3 governance web, 8 engine integration, 6 search evaluation and 13 CLI contract. The CLI self-test still reports 49 assertions; the schema command still validates 20 records.
-- The host's Windows Application Control policy blocks execution of some binaries from `target` (`os error 4551`). The suites above were executed from copied harnesses and with crate-local `profile` overrides; the canonical `cargo test --locked` from `target` and the full `gate.ps1` could not run on this host. Treat the canonical full gate as **Blocked**, not PASS, until it runs on an approved host or CI.
-- The CLI argument contract is now enforced before any write: unknown flag, missing/empty value, a flag used as a value, a positional argument, `--test-set` without `--eval`, `--cases`/`--html` without `--out`, `--search` with `--eval`, and a search/eval mode with report-only flags all exit `2`. `--selftest --bogus` runs the self-test and still exits `2`.
+- At the audited revision `8bf2d53`, `platform` had **225 tests**: 193 unit, 2 edge-case, 3 governance web, 8 engine integration, 6 search evaluation and 13 CLI contract. The CLI self-test reported 49 assertions; the schema command validated 20 records.
+- The host's Windows Application Control policy blocked execution of some binaries from `target` (`os error 4551`) at that revision. Those suites were executed from copied harnesses and with crate-local `profile` overrides; the canonical `cargo test --locked` from `target` and the full `gate.ps1` could not run at `8bf2d53`. This is historical and was resolved by the committed build profile in the next bullet.
+- The CLI argument contract is enforced before any write: unknown flag, missing/empty value, a flag used as a value, a positional argument, `--test-set` without `--eval`, `--cases`/`--html` without `--out`, `--search` with `--eval`, and a search/eval mode with report-only flags all exit `2`. `--selftest --bogus` runs the self-test and still exits `2`.
+
+### 2026-10-26 final verification (`7f6ab97`)
+
+- The repo-local `.cargo/config.toml` profile overrides removed the host execution block without changing program semantics. The exact canonical commands now run from a clean `target`:
+  - `cargo test --locked` (platform): **233 tests** — 200 unit, 2 edge-case, 3 governance web, 8 engine integration, 7 search evaluation, 13 CLI contract; 49 self-test assertions; schema 20 records.
+  - `cargo test --locked` (eval): 9 tests; self-test 10 checks.
+  - Both crates: `cargo fmt -- --check` and `cargo clippy --locked --all-targets -- -D warnings` exit 0.
+  - `gate.ps1 -IncludeSmoke`: 13/13 PASS; docs 44 required/488 links in 95 files; secret scan 205 files; smoke `G_ekpi_engine acc=1.000`, H-1–H-6 OK; LegalRuleML 51,026 bytes 19/19/19/16; zero-script HTML.
+  - Search: 28 cases, 20/20 top-1, 8/8 refusals, 4 role-restricted (2 allowed, 2 denied), 0 violations, gate PASS.
+  - Restore: bundle `ekpi-platform-2026-10-26-105233.bundle` (SHA-256 `4D35413B…3192B276`) verified; fresh clone at `7f6ab97` ran `scripts/check.ps1` exit 0. See the [backup log](../operations/backup-log.md).
 
 ### 2026-10-26 regression corrections
 

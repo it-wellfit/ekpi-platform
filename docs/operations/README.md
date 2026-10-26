@@ -18,7 +18,7 @@ There is no approved deployment target. The supported mode is a single local ope
 | [Monitoring](../deployment/monitoring.md) | Current observability and target requirements | Target; no production monitoring |
 | [Backup and recovery](../deployment/backup.md) | Short operator pointer | Current; canonical procedure is `local-backup.md` |
 | [Local backup](local-backup.md) | Git bundle cadence, restore drill and scope | Current |
-| [Backup log](backup-log.md) | Executed backup/restore evidence | Evidence log; local pass and host-blocked attempt recorded 2026-10-26 |
+| [Backup log](backup-log.md) | Executed backup/restore evidence | Evidence log; local PASS drills at `283f83a` and `7f6ab97`; one earlier host-blocked attempt recorded 2026-10-26 |
 | [Off-host backup and RPO/RTO proposal](backup-policy-draft.md) | Draft policy for encrypted off-host copies, RPO/RTO and scheduled restore tests | Proposal; not approved or implemented |
 | [Pilot runbook and ownership proposal](pilot-runbook.md) | One-workflow pilot procedure, evidence record, stop conditions and proposed owners | Draft; not executed; no owner assigned |
 | [Security hardening](../deployment/security.md) | Current controls vs target controls | Current boundary documented |

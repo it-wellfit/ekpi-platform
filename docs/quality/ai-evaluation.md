@@ -122,7 +122,7 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 ## Current status
 
 - Deterministic corpus: 67 cases, fixed and versioned.
-- Search retrieval regression: 28 cases (20 answer, 8 refusal), threshold 0.42; `--eval` gate PASS on the recorded revision with 20/20 top-1 and 8/8 refusals. Lexical only; paraphrases can abstain.
+- Search retrieval regression: 28 cases (20 answer, 8 refusal), threshold 0.42; `--eval` gate PASS at `7f6ab97` with 20/20 top-1 and 8/8 refusals. Lexical only; paraphrases can abstain.
 - Permission coverage in the fixed set: 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00; `EVAL-GAP-06` is closed. The fixtures and roles are synthetic and evaluation-only; this is library-filter evidence, not authenticated authorization or tenant isolation (`S19`, `PR-03`).
 - Hard gates H-1–H-6: exercised by the engine self-test/report pipeline; see the dated regression baseline.
 - AI/agent: not implemented; no quality claim.
