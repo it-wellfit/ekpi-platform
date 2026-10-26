@@ -38,6 +38,7 @@ use ekp_eval::types::{Case, Decision, Ver};
 use ekp_platform::coverage_report::{
     coverage_markdown, default_cases_path, load_cases_at, markdown_to_html,
 };
+use ekp_platform::docs::DocDatabase;
 use ekp_platform::engine::{Platform, DEFAULT_RETRIEVAL_THRESHOLD};
 use ekp_platform::export as lrml;
 use ekp_platform::process::{events_sha256, ReplayEvent};
@@ -272,9 +273,10 @@ fn run(args: &[String]) -> i32 {
         // ── Audit log: record search interaction (privacy-minimized).
         let audit_log_path = flag_value(args, "--audit-log");
         let citation_ids: Vec<String> = match &result {
-            ekp_platform::retrieval::SearchResult::Hits(cits) => {
-                cits.iter().map(|c| format!("{}@{}:{}", c.doc_id, c.version, c.section)).collect()
-            }
+            ekp_platform::retrieval::SearchResult::Hits(cits) => cits
+                .iter()
+                .map(|c| format!("{}@{}:{}", c.doc_id, c.version, c.section))
+                .collect(),
             _ => Vec::new(),
         };
         let result_count = match &result {
@@ -294,10 +296,13 @@ fn run(args: &[String]) -> i32 {
             latency_ms,
         );
         let mut audit_log = ekp_platform::audit::AuditLog::new();
-        let event_id = format!("KS-{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0));
+        let event_id = format!(
+            "KS-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        );
         audit_log.append(
             &event_id,
             ekp_platform::audit::AuditEventType::KnowledgeSearch,
@@ -326,7 +331,10 @@ fn run(args: &[String]) -> i32 {
                 }
             };
             if provider != "mock" {
-                eprintln!("INFO: provider '{}' not yet implemented; using retrieval-only mode", provider);
+                eprintln!(
+                    "INFO: provider '{}' not yet implemented; using retrieval-only mode",
+                    provider
+                );
             }
             let search_citations = match &result {
                 ekp_platform::retrieval::SearchResult::Hits(cits) => cits.clone(),
@@ -336,13 +344,21 @@ fn run(args: &[String]) -> i32 {
                 response: format!(
                     "Based on the retrieved evidence, here is the answer regarding '{}'. [{}]",
                     query,
-                    search_citations.first().map(|c| c.doc_id.clone()).unwrap_or_default()
+                    search_citations
+                        .first()
+                        .map(|c| c.doc_id.clone())
+                        .unwrap_or_default()
                 ),
             };
             let rag = ekp_platform::rag::RagOrchestrator::new(threshold);
             let rag_result = rag.answer(&query, &retriever, &platform.docs, &llm);
             match rag_result {
-                ekp_platform::rag::RagResult::Answer { text, citations: cits, confidence, latency_ms } => {
+                ekp_platform::rag::RagResult::Answer {
+                    text,
+                    citations: cits,
+                    confidence,
+                    latency_ms,
+                } => {
                     println!("\nanswer: {}", text);
                     println!("confidence: {:.2}", confidence);
                     println!("citations: {}", cits.len());
@@ -382,7 +398,9 @@ fn run(args: &[String]) -> i32 {
         let docs_path = data_dir.join("docs.json");
         let mut db = match DocDatabase::load(&docs_path) {
             Ok(d) => d,
-            Err(_) => DocDatabase { documents: Vec::new() },
+            Err(_) => DocDatabase {
+                documents: Vec::new(),
+            },
         };
 
         let import_text = match std::fs::read_to_string(&import_path) {
@@ -402,15 +420,32 @@ fn run(args: &[String]) -> i32 {
 
         let mut count = 0;
         for item in &imported {
-            let doc_id = item.get("doc_id").and_then(|v| v.as_str()).unwrap_or("WELLFIT-UNKNOWN");
+            let doc_id = item
+                .get("doc_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("WELLFIT-UNKNOWN");
             let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let version = item.get("version").and_then(|v| v.as_str()).unwrap_or("1.0");
-            let effective_from = item.get("effective_from").and_then(|v| v.as_str()).unwrap_or("2026-01-01");
-            let verbatim = item.get("verbatim_text").and_then(|v| v.as_str()).unwrap_or("");
+            let version = item
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("1.0");
+            let effective_from = item
+                .get("effective_from")
+                .and_then(|v| v.as_str())
+                .unwrap_or("2026-01-01");
+            let verbatim = item
+                .get("verbatim_text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let section = item.get("section").and_then(|v| v.as_str()).unwrap_or("1");
-            let permissions: Vec<String> = item.get("permissions")
+            let permissions: Vec<String> = item
+                .get("permissions")
                 .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_else(|| vec!["viewer".to_string(), "editor".to_string()]);
 
             if db.doc(doc_id).is_some() {
@@ -440,7 +475,11 @@ fn run(args: &[String]) -> i32 {
             eprintln!("FAIL: save docs: {e}");
             return 1;
         }
-        println!("import-wellfit: {} documents imported into {}", count, docs_path.display());
+        println!(
+            "import-wellfit: {} documents imported into {}",
+            count,
+            docs_path.display()
+        );
         return 0;
     }
 

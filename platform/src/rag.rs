@@ -87,15 +87,26 @@ impl RagOrchestrator {
 
         let citations = match search_result {
             SearchResult::Hits(c) => c,
-            _ => return RagResult::Refused {
-                reason: "no evidence found".to_string(),
-            },
+            _ => {
+                return RagResult::Refused {
+                    reason: "no evidence found".to_string(),
+                }
+            }
         };
 
         let context = citations
             .iter()
             .enumerate()
-            .map(|(i, c)| format!("[{}] {} ({}@{}): {}", i + 1, c.verbatim_text, c.doc_id, c.version, c.section))
+            .map(|(i, c)| {
+                format!(
+                    "[{}] {} ({}@{}): {}",
+                    i + 1,
+                    c.verbatim_text,
+                    c.doc_id,
+                    c.version,
+                    c.section
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -146,9 +157,9 @@ impl RagOrchestrator {
         if citations.is_empty() {
             return false;
         }
-        citations.iter().any(|c| {
-            answer.contains(&c.doc_id) || answer.contains(&c.verbatim_text)
-        })
+        citations
+            .iter()
+            .any(|c| answer.contains(&c.doc_id) || answer.contains(&c.verbatim_text))
     }
 }
 
@@ -185,7 +196,8 @@ mod tests {
         let (db, dv) = make_db();
         let retriever = Retriever::build(&db, &dv, 0.1);
         let llm = MockLlmProvider {
-            response: "Based on [SOP-CHANGE], quality management requires document control.".to_string(),
+            response: "Based on [SOP-CHANGE], quality management requires document control."
+                .to_string(),
         };
         let rag = RagOrchestrator::new(0.1);
         let result = rag.answer("quality management", &retriever, &db, &llm);

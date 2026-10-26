@@ -11,15 +11,15 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DocDatabase {
     pub documents: Vec<Doc>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Doc {
     pub doc_id: String,
     #[serde(default)]
@@ -30,7 +30,7 @@ pub struct Doc {
     pub permissions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DocVersion {
     pub version: String,
     pub effective_from: String,
@@ -146,8 +146,8 @@ impl DocDatabase {
     /// sections (the citation surface). Deterministic within a build.
     /// Save the document database to a JSON file.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("serialize docs: {e}"))?;
+        let json =
+            serde_json::to_string_pretty(self).map_err(|e| format!("serialize docs: {e}"))?;
         std::fs::write(path, json).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(())
     }

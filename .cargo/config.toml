@@ -1,16 +1,4 @@
-# Build-profile overrides for managed Windows hosts.
-#
-# Windows Application Control on some managed hosts blocks executable files by
-# hash. The default debug artifacts of these crates have been observed to be
-# blocked (`os error 4551`), which prevents the canonical `cargo test --locked`
-# command from starting even though the source is unchanged. Rebuilding these
-# packages with a different codegen profile produces a new, unblocked hash.
-#
-# These settings do not change program semantics or disable debug assertions.
-# They are intentionally narrow: only the packages observed to be blocked are
-# overridden.
-
-[profile.dev.package.maud_macros]
+﻿[profile.dev.package.maud_macros]
 opt-level = 1
 
 [profile.dev.package.tokio-macros]
