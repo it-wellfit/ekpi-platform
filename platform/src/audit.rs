@@ -256,6 +256,11 @@ mod tests {
     }
 
     #[test]
+    fn knowledge_search_event_type_name() {
+        assert_eq!(AuditEventType::KnowledgeSearch.name(), "knowledge_search");
+    }
+
+    #[test]
     fn genesis_prev_hash() {
         let mut log = AuditLog::new();
         log.append("A1", AuditEventType::DocumentImport, "user1", "T1", "data");

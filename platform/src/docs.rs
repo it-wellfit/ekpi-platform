@@ -144,6 +144,14 @@ impl DocDatabase {
 
     /// SHA-256 over the canonical JSON rendering of one doc version's
     /// sections (the citation surface). Deterministic within a build.
+    /// Save the document database to a JSON file.
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("serialize docs: {e}"))?;
+        std::fs::write(path, json).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(())
+    }
+
     pub fn content_sha256(&self, doc_id: &str, version: &str) -> Result<String, String> {
         let ver = self
             .binding(doc_id, version)

@@ -44,7 +44,7 @@ use ekp_platform::process::{events_sha256, ReplayEvent};
 use ekp_platform::snapshot::DecisionSnapshot;
 use ekp_platform::{params as params_module, validate};
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY | --eval --test-set PATH]";
+const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] | --eval --test-set PATH\n        | --import-wellfit PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -70,7 +70,7 @@ const BOOLEAN_FLAGS: [&str; 5] = [
     "--eval",
 ];
 
-const VALUE_FLAGS: [&str; 8] = [
+const VALUE_FLAGS: [&str; 10] = [
     "--out",
     "--cases",
     "--data",
@@ -79,6 +79,8 @@ const VALUE_FLAGS: [&str; 8] = [
     "--export-legalruleml",
     "--search",
     "--test-set",
+    "--audit-log",
+    "--import-wellfit",
 ];
 
 /// Flags that only make sense for report generation. `--search` and `--eval`
@@ -262,7 +264,55 @@ fn run(args: &[String]) -> i32 {
         let doc_versions = platform.docs.latest_versions();
         let retriever =
             ekp_platform::retrieval::Retriever::build(&platform.docs, &doc_versions, threshold);
+        let start = std::time::Instant::now();
         let result = retriever.search_with_citations(&query, 5, &platform.docs);
+        let latency_ms = start.elapsed().as_millis() as u64;
+
+        // ── Audit log: record search interaction (privacy-minimized).
+        let audit_log_path = flag_value(args, "--audit-log");
+        let citation_ids: Vec<String> = match &result {
+            ekp_platform::retrieval::SearchResult::Hits(cits) => {
+                cits.iter().map(|c| format!("{}@{}:{}", c.doc_id, c.version, c.section)).collect()
+            }
+            _ => Vec::new(),
+        };
+        let result_count = match &result {
+            ekp_platform::retrieval::SearchResult::Hits(cits) => cits.len(),
+            _ => 0,
+        };
+        let truncated_query = if query.chars().count() > 100 {
+            query.chars().take(100).collect::<String>()
+        } else {
+            query.to_string()
+        };
+        let payload = format!(
+            r#"{{"query":"{}","result_count":{},"citations":{},"latency_ms":{}}}"#,
+            truncated_query.replace('"', "\\\""),
+            result_count,
+            serde_json::to_string(&citation_ids).unwrap_or_else(|_| "[]".to_string()),
+            latency_ms,
+        );
+        let mut audit_log = ekp_platform::audit::AuditLog::new();
+        let event_id = format!("KS-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0));
+        audit_log.append(
+            &event_id,
+            ekp_platform::audit::AuditEventType::KnowledgeSearch,
+            "search-cli",
+            "default",
+            &payload,
+        );
+        if let Some(path) = audit_log_path {
+            let json = serde_json::to_string_pretty(&audit_log).unwrap_or_default();
+            if let Err(e) = std::fs::write(&path, json) {
+                eprintln!("WARN: failed to write audit log: {e}");
+            } else {
+                println!("audit: written to {}", path);
+            }
+        }
+
         if result.has_evidence() {
             if let ekp_platform::retrieval::SearchResult::Hits(citations) = result {
                 println!("search: \"{}\"", query);
@@ -279,6 +329,76 @@ fn run(args: &[String]) -> i32 {
                 println!("reason: {}", reason);
             }
         }
+        return 0;
+    }
+
+    // ── --import-wellfit PATH：匯入 Wellfit MTRIX 輸出為知識文件（Phase 2）。
+    if let Some(import_path) = flag_value(args, "--import-wellfit") {
+        let data_dir = flag_value(args, "--data")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_data_dir);
+        let docs_path = data_dir.join("docs.json");
+        let mut db = match DocDatabase::load(&docs_path) {
+            Ok(d) => d,
+            Err(_) => DocDatabase { documents: Vec::new() },
+        };
+
+        let import_text = match std::fs::read_to_string(&import_path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("FAIL: read {}: {e}", import_path);
+                return 1;
+            }
+        };
+        let imported: Vec<serde_json::Value> = match serde_json::from_str(&import_text) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("FAIL: parse {}: {e}", import_path);
+                return 1;
+            }
+        };
+
+        let mut count = 0;
+        for item in &imported {
+            let doc_id = item.get("doc_id").and_then(|v| v.as_str()).unwrap_or("WELLFIT-UNKNOWN");
+            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let version = item.get("version").and_then(|v| v.as_str()).unwrap_or("1.0");
+            let effective_from = item.get("effective_from").and_then(|v| v.as_str()).unwrap_or("2026-01-01");
+            let verbatim = item.get("verbatim_text").and_then(|v| v.as_str()).unwrap_or("");
+            let section = item.get("section").and_then(|v| v.as_str()).unwrap_or("1");
+            let permissions: Vec<String> = item.get("permissions")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_else(|| vec!["viewer".to_string(), "editor".to_string()]);
+
+            if db.doc(doc_id).is_some() {
+                continue;
+            }
+
+            db.documents.push(ekp_platform::docs::Doc {
+                doc_id: doc_id.to_string(),
+                title: title.to_string(),
+                versions: vec![ekp_platform::docs::DocVersion {
+                    version: version.to_string(),
+                    effective_from: effective_from.to_string(),
+                    effective_to: None,
+                    injection_directive: None,
+                    sections: vec![ekp_platform::docs::Section {
+                        section: section.to_string(),
+                        page: None,
+                        verbatim_text: verbatim.to_string(),
+                    }],
+                }],
+                permissions,
+            });
+            count += 1;
+        }
+
+        if let Err(e) = db.save(&docs_path) {
+            eprintln!("FAIL: save docs: {e}");
+            return 1;
+        }
+        println!("import-wellfit: {} documents imported into {}", count, docs_path.display());
         return 0;
     }
 
