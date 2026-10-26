@@ -259,12 +259,7 @@ fn run(args: &[String]) -> i32 {
                 return 1;
             }
         };
-        let mut doc_versions = std::collections::BTreeMap::new();
-        for doc in &platform.docs.documents {
-            if let Some(ver) = doc.versions.last() {
-                doc_versions.insert(doc.doc_id.clone(), ver.version.clone());
-            }
-        }
+        let doc_versions = platform.docs.latest_versions();
         let retriever =
             ekp_platform::retrieval::Retriever::build(&platform.docs, &doc_versions, threshold);
         let result = retriever.search_with_citations(&query, 5, &platform.docs);
@@ -307,12 +302,6 @@ fn run(args: &[String]) -> i32 {
                 return 1;
             }
         };
-        let mut doc_versions = std::collections::BTreeMap::new();
-        for doc in &platform.docs.documents {
-            if let Some(ver) = doc.versions.last() {
-                doc_versions.insert(doc.doc_id.clone(), ver.version.clone());
-            }
-        }
         let set = match ekp_platform::eval::load_eval_set(Path::new(&test_set_path)) {
             Ok(set) => set,
             Err(e) => {
@@ -320,13 +309,27 @@ fn run(args: &[String]) -> i32 {
                 return 1;
             }
         };
+        let eval_db = match set.database_with_fixtures(&platform.docs) {
+            Ok(db) => db,
+            Err(e) => {
+                eprintln!("FAIL: {e}");
+                return 1;
+            }
+        };
+        if !set.fixtures.is_empty() {
+            println!(
+                "eval fixtures: {} synthetic document(s) merged for this run only",
+                set.fixtures.len()
+            );
+        }
+        let doc_versions = eval_db.latest_versions();
         let eval_threshold = if threshold_explicit {
             threshold
         } else {
             set.threshold.unwrap_or(threshold)
         };
         let metrics =
-            ekp_platform::eval::run_eval(&platform.docs, &doc_versions, &set.cases, eval_threshold);
+            ekp_platform::eval::run_eval(&eval_db, &doc_versions, &set.cases, eval_threshold);
         println!(
             "eval: {} cases (set v{}, threshold {:.2})",
             metrics.total_cases, set.version, eval_threshold
@@ -341,6 +344,13 @@ fn run(args: &[String]) -> i32 {
         );
         println!("  precision@1: {:.2}", metrics.precision_at_1);
         println!("  citation support: {:.2}", metrics.citation_support_rate);
+        println!(
+            "  role-restricted cases: {} (allowed {}, denied {}), violations {}",
+            metrics.permission_cases,
+            metrics.permission_allowed_cases,
+            metrics.permission_denied_cases,
+            metrics.permission_violations
+        );
         println!(
             "  permission isolation: {:.2}",
             metrics.permission_isolation_rate

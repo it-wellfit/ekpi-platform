@@ -2,6 +2,46 @@
   "version": 1,
   "description": "Fixed regression set for the deterministic lexical knowledge-search CLI. Queries are near-verbatim or deliberately unanswerable; this is not an LLM quality benchmark.",
   "threshold": 0.42,
+  "fixtures": [
+    {
+      "doc_id": "EVAL-RESTRICTED-QM",
+      "title": "Evaluation fixture: quality-manager restricted policy",
+      "permissions": ["quality_manager"],
+      "versions": [
+        {
+          "version": "1.0",
+          "effective_from": "2026-01-01",
+          "effective_to": null,
+          "injection_directive": null,
+          "sections": [
+            {
+              "section": "1.1",
+              "verbatim_text": "評測專用條款 ZX-9174：品質經理每年應執行供應商召回演練，並將演練紀錄保存七年。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "doc_id": "EVAL-RESTRICTED-AUDIT",
+      "title": "Evaluation fixture: auditor restricted policy",
+      "permissions": ["auditor"],
+      "versions": [
+        {
+          "version": "1.0",
+          "effective_from": "2026-01-01",
+          "effective_to": null,
+          "injection_directive": null,
+          "sections": [
+            {
+              "section": "2.1",
+              "verbatim_text": "評測稽核代號 ZX-9175：稽核員每季抽查採購單據與訓練簽到表，並將抽查報告保存五年。"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "cases": [
     {
       "id": "GEN-01",
@@ -188,6 +228,40 @@
       "question": "如何申請護照與簽證",
       "expect_refusal": true,
       "min_score": 0.0
+    },
+    {
+      "id": "PERM-01",
+      "category": "permission",
+      "question": "評測專用條款 ZX-9174：品質經理每年應執行供應商召回演練，並將演練紀錄保存七年。",
+      "expected_doc_id": "EVAL-RESTRICTED-QM",
+      "expected_section": "1.1",
+      "min_score": 0.42,
+      "roles": ["quality_manager"]
+    },
+    {
+      "id": "PERM-02",
+      "category": "permission",
+      "question": "評測專用條款 ZX-9174：品質經理每年應執行供應商召回演練，並將演練紀錄保存七年。",
+      "expect_refusal": true,
+      "min_score": 0.0,
+      "roles": ["viewer"]
+    },
+    {
+      "id": "PERM-03",
+      "category": "permission",
+      "question": "評測稽核代號 ZX-9175：稽核員每季抽查採購單據與訓練簽到表，並將抽查報告保存五年。",
+      "expect_refusal": true,
+      "min_score": 0.0,
+      "roles": ["quality_manager"]
+    },
+    {
+      "id": "PERM-04",
+      "category": "permission",
+      "question": "評測稽核代號 ZX-9175：稽核員每季抽查採購單據與訓練簽到表，並將抽查報告保存五年。",
+      "expected_doc_id": "EVAL-RESTRICTED-AUDIT",
+      "expected_section": "2.1",
+      "min_score": 0.42,
+      "roles": ["auditor"]
     }
   ]
 }

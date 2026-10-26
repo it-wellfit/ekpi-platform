@@ -8,17 +8,18 @@
 //! - `sections` 是引擎唯一可引用的條款錨點（section/page/verbatim_text）；
 //! - `injection_directive` 標記文件內嵌指令的存在（H-5：僅偵測、絕不當系統規則）。
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DocDatabase {
     pub documents: Vec<Doc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Doc {
     pub doc_id: String,
     #[serde(default)]
@@ -29,7 +30,7 @@ pub struct Doc {
     pub permissions: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DocVersion {
     pub version: String,
     pub effective_from: String,
@@ -40,7 +41,7 @@ pub struct DocVersion {
     pub sections: Vec<Section>,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct Section {
     pub section: String,
     #[serde(default)]
@@ -53,18 +54,23 @@ impl DocDatabase {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let db: DocDatabase =
             serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-        db.check_shape()?;
+        db.validate_shape()?;
         Ok(db)
     }
 
-    /// Shape check: duplicate (doc_id, version) bindings or empty section ids
-    /// would make engine citations ambiguous; fail loudly at load time.
-    fn check_shape(&self) -> Result<(), String> {
+    /// Shape check: duplicate doc ids, duplicate (doc_id, version) bindings or
+    /// empty section ids would make lookups and citations ambiguous; fail
+    /// loudly at load time.
+    pub fn validate_shape(&self) -> Result<(), String> {
+        let mut doc_ids = std::collections::BTreeSet::new();
         let mut seen: std::collections::BTreeMap<(String, String), ()> =
             std::collections::BTreeMap::new();
         for doc in &self.documents {
             if doc.doc_id.is_empty() {
                 return Err("docs.json: doc_id empty".to_string());
+            }
+            if !doc_ids.insert(doc.doc_id.clone()) {
+                return Err(format!("docs.json: duplicate doc_id {}", doc.doc_id));
             }
             for ver in &doc.versions {
                 let key = (doc.doc_id.clone(), ver.version.clone());
@@ -109,6 +115,20 @@ impl DocDatabase {
             .versions
             .iter()
             .find(|v| v.version == version)
+    }
+
+    /// Latest declared version for every document. This is the binding used
+    /// by the CLI search and eval surfaces; the engine uses case-specific
+    /// `doc_versions` instead.
+    pub fn latest_versions(&self) -> BTreeMap<String, String> {
+        self.documents
+            .iter()
+            .filter_map(|doc| {
+                doc.versions
+                    .last()
+                    .map(|version| (doc.doc_id.clone(), version.version.clone()))
+            })
+            .collect()
     }
 
     /// Case-time validity (ISO date strings compare lexicographically; the
@@ -177,5 +197,41 @@ mod tests {
         let b = db.content_sha256("SOP-CHANGE", "3.2").unwrap();
         assert_eq!(a, b);
         assert_eq!(a.len(), 64);
+    }
+
+    #[test]
+    fn latest_versions_use_the_last_declared_version() {
+        let db = fixture().unwrap();
+        let versions = db.latest_versions();
+        assert_eq!(versions.get("SOP-CHANGE"), Some(&"3.2".to_string()));
+        assert_eq!(versions.get("SOP-PURCH"), Some(&"4.5".to_string()));
+        assert_eq!(versions.len(), db.documents.len());
+    }
+
+    #[test]
+    fn duplicate_doc_id_is_rejected() {
+        let json = r#"{
+            "documents": [
+                {
+                    "doc_id": "DUP",
+                    "versions": [{
+                        "version": "1.0",
+                        "effective_from": "2026-01-01",
+                        "sections": [{"section": "s1", "verbatim_text": "one"}]
+                    }]
+                },
+                {
+                    "doc_id": "DUP",
+                    "versions": [{
+                        "version": "2.0",
+                        "effective_from": "2026-02-01",
+                        "sections": [{"section": "s1", "verbatim_text": "two"}]
+                    }]
+                }
+            ]
+        }"#;
+        let db: DocDatabase = serde_json::from_str(json).unwrap();
+        let error = db.validate_shape().unwrap_err();
+        assert!(error.contains("duplicate doc_id"));
     }
 }
