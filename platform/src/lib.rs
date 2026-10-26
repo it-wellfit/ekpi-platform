@@ -25,6 +25,7 @@ pub mod ocr;
 pub mod params;
 pub mod pm4py_sidecar;
 pub mod process;
+pub mod rag;
 pub mod reranker;
 pub mod retrieval;
 pub mod retrieval_v2;

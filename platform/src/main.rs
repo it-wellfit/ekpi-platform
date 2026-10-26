@@ -70,7 +70,7 @@ const BOOLEAN_FLAGS: [&str; 5] = [
     "--eval",
 ];
 
-const VALUE_FLAGS: [&str; 10] = [
+const VALUE_FLAGS: [&str; 11] = [
     "--out",
     "--cases",
     "--data",
@@ -81,6 +81,7 @@ const VALUE_FLAGS: [&str; 10] = [
     "--test-set",
     "--audit-log",
     "--import-wellfit",
+    "--llm",
 ];
 
 /// Flags that only make sense for report generation. `--search` and `--eval`
@@ -310,6 +311,42 @@ fn run(args: &[String]) -> i32 {
                 eprintln!("WARN: failed to write audit log: {e}");
             } else {
                 println!("audit: written to {}", path);
+            }
+        }
+
+        // ── Optional LLM answer generation (Phase 4).
+        if let Some(llm_spec) = flag_value(args, "--llm") {
+            let parts: Vec<&str> = llm_spec.splitn(2, ':').collect();
+            let (provider, _model) = match parts.as_slice() {
+                [p, m] => (*p, *m),
+                [p] => (*p, "default"),
+                _ => {
+                    eprintln!("FAIL: --llm format is provider:model (e.g., mock:test)");
+                    return 2;
+                }
+            };
+            if provider != "mock" {
+                eprintln!("INFO: provider '{}' not yet implemented; using retrieval-only mode", provider);
+            }
+            let llm = ekp_platform::rag::MockLlmProvider {
+                response: format!(
+                    "Based on the retrieved evidence, here is the answer regarding '{}'. [{}]",
+                    query,
+                    citations.first().map(|c| c.doc_id.clone()).unwrap_or_default()
+                ),
+            };
+            let rag = ekp_platform::rag::RagOrchestrator::new(threshold);
+            let rag_result = rag.answer(&query, &retriever, &platform.docs, &llm);
+            match rag_result {
+                ekp_platform::rag::RagResult::Answer { text, citations: cits, confidence, latency_ms } => {
+                    println!("\nanswer: {}", text);
+                    println!("confidence: {:.2}", confidence);
+                    println!("citations: {}", cits.len());
+                    println!("latency: {}ms", latency_ms);
+                }
+                ekp_platform::rag::RagResult::Refused { reason } => {
+                    println!("\nrefused: {}", reason);
+                }
             }
         }
 
