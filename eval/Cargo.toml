@@ -2,6 +2,7 @@
 name = "ekp_eval"
 version = "0.1.0"
 edition = "2021"
+publish = false
 description = "EKPI ablation evaluation harness (normative implementation)"
 
 [dependencies]
