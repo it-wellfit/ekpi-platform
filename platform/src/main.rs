@@ -328,11 +328,15 @@ fn run(args: &[String]) -> i32 {
             if provider != "mock" {
                 eprintln!("INFO: provider '{}' not yet implemented; using retrieval-only mode", provider);
             }
+            let search_citations = match &result {
+                ekp_platform::retrieval::SearchResult::Hits(cits) => cits.clone(),
+                _ => Vec::new(),
+            };
             let llm = ekp_platform::rag::MockLlmProvider {
                 response: format!(
                     "Based on the retrieved evidence, here is the answer regarding '{}'. [{}]",
                     query,
-                    citations.first().map(|c| c.doc_id.clone()).unwrap_or_default()
+                    search_citations.first().map(|c| c.doc_id.clone()).unwrap_or_default()
                 ),
             };
             let rag = ekp_platform::rag::RagOrchestrator::new(threshold);
@@ -348,6 +352,7 @@ fn run(args: &[String]) -> i32 {
                     println!("\nrefused: {}", reason);
                 }
             }
+            let _ = search_citations;
         }
 
         if result.has_evidence() {
