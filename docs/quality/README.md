@@ -27,7 +27,7 @@ The fixed local entry point is `scripts/check.ps1` (Windows) or `scripts/check.s
 
 ## Current evidence (dated)
 
-The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revisions `4eacf5c`, `f34c0d6` and `c131815` re-ran the same suites plus the search gate (212 platform tests at those revisions). The CLI argument-contract change in the later 2026-10-26 audit adds 13 tests:
+The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revisions `4eacf5c`, `f34c0d6` and `c131815` re-ran the same suites plus the search gate (212 platform tests at those revisions). The latest audited revision `8bf2d53` adds 13 CLI-contract tests (225 platform tests total); its canonical gate is **Blocked** (see below).
 
 - `eval`: 9 Cargo tests; self-test 10 checks.
 - `platform`: 225 Cargo tests (193 unit, 2 edge, 3 governance web, 8 integration, 6 search evaluation, 13 CLI contract); self-test 49 assertions; schema 20 records.
