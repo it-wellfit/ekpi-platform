@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use ekp_platform::governance::{default_ledger_path, Ledger};
 use ekp_platform::governance_web;
+use ekp_platform::local_auth::{AuthStore, Role};
 
 #[tokio::main]
 async fn main() {
@@ -19,7 +20,19 @@ async fn main() {
     println!("本機治理試點資料：{}", path.display());
     println!("安全提示：僅供本機非敏感資料試用，尚未連接企業身分或文件平台。");
 
-    let app = governance_web::router(Arc::new(Mutex::new(ledger)));
+    let ledger_state = Arc::new(Mutex::new(ledger));
+    let auth_state = Arc::new(Mutex::new(AuthStore::new(3600)));
+
+    // Seed a non-sensitive pilot user for the local trial.
+    if let Err(e) = auth_state
+        .lock()
+        .unwrap()
+        .register("pilot", "pilot123", Role::Editor)
+    {
+        eprintln!("種子使用者註冊（可能已存在）：{e}");
+    }
+
+    let app = governance_web::router(ledger_state, auth_state);
     let address = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = match tokio::net::TcpListener::bind(address).await {
         Ok(listener) => listener,

@@ -8,21 +8,24 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Form, Path, Request, State};
-use axum::http::{header, HeaderName, HeaderValue, Method, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use maud::{html, Markup, DOCTYPE};
 use serde::Deserialize;
+use serde_urlencoded;
 use tokio::sync::Semaphore;
 
 use crate::governance::{
     GovernanceSnapshot, Ledger, Project, QualityCheckResult, QualityInspectionInput, Workflow,
     WorkflowDraftInput, QUALITY_CHECKLIST,
 };
+use crate::local_auth::AuthStore;
 
 type SharedLedger = Arc<Mutex<Ledger>>;
+type SharedAuth = Arc<Mutex<AuthStore>>;
 
 const CSS: &str = include_str!("../assets/governance.css");
 const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -39,11 +42,13 @@ static RATE_LIMITED_TOTAL: AtomicU64 = AtomicU64::new(0);
 static REQUEST_LIMIT: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(MAX_CONCURRENT_REQUESTS));
 
-pub fn router(ledger: SharedLedger) -> Router {
+pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
         .route("/", get(dashboard))
+        .route("/login", get(login_page).post(login_post))
+        .route("/logout", post(logout_post))
         .route("/projects", get(projects_page).post(create_project))
         .route("/evidence", get(evidence_page).post(link_evidence))
         .route("/evidence/{id}/review", post(review_evidence))
@@ -58,9 +63,10 @@ pub fn router(ledger: SharedLedger) -> Router {
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
         .route("/assets/governance.css", get(stylesheet))
-        .with_state(ledger)
+        .with_state((ledger, auth))
         .layer(middleware::from_fn(same_origin_guard))
         .layer(middleware::from_fn(request_context))
+        .layer(middleware::from_fn(auth_guard))
 }
 
 async fn healthz() -> Json<serde_json::Value> {
@@ -195,6 +201,139 @@ async fn request_context_with(
     response
 }
 
+/// Auth middleware placeholder: auth checks are performed inline in each mutating handler.
+/// Kept as a no-op layer so the layer stack structure is preserved.
+async fn auth_guard(request: Request, next: Next) -> Response {
+    next.run(request).await
+}
+
+/// Extract and validate the session cookie from headers.
+/// Returns `Some(Response)` if the session is invalid (handler should return it),
+/// or `None` if the session is valid (handler should proceed).
+fn check_session(auth: &SharedAuth, headers: &HeaderMap) -> Option<Response> {
+    let token = headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookie| {
+            cookie.split(';').find_map(|part| {
+                let part = part.trim();
+                part.strip_prefix("ekpi_session=").map(String::from)
+            })
+        });
+
+    match token {
+        Some(t) => {
+            let store = match auth.lock() {
+                Ok(s) => s,
+                Err(_) => {
+                    return Some(
+                        (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response(),
+                    )
+                }
+            };
+            match store.validate_session(&t) {
+                Some(_) => None,
+                None => {
+                    Some((StatusCode::UNAUTHORIZED, "未登入或會話已過期，請先登入").into_response())
+                }
+            }
+        }
+        None => Some((StatusCode::UNAUTHORIZED, "未登入或會話已過期，請先登入").into_response()),
+    }
+}
+
+async fn login_page() -> Response {
+    let html = html! {
+        (DOCTYPE)
+        html lang="zh-Hant" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title { "登入 · EKPI 治理工作台" }
+                link rel="stylesheet" href="/assets/governance.css";
+            }
+            body {
+                div class="auth-page" {
+                    h2 { "本機登入" }
+                    p class="form-hint" { "僅限本機試點使用；尚未連接企業身分平台。" }
+                    form class="form-stack" method="post" action="/login" {
+                        label class="field" { span { "使用者名稱" } input type="text" name="username" required maxlength="80" placeholder="姓名"; }
+                        label class="field" { span { "密碼" } input type="password" name="password" required maxlength="128" placeholder="密碼"; }
+                        button class="button button-primary" type="submit" { "登入" }
+                    }
+                }
+            }
+        }
+    };
+    Html(html.into_string()).into_response()
+}
+
+async fn login_post(
+    State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    Form(form): Form<LoginForm>,
+) -> Response {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let mut store = match auth.lock() {
+        Ok(s) => s,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response();
+        }
+    };
+
+    match store.login(&form.username, &form.password) {
+        Ok(session) => {
+            let max_age = session.expires_at.saturating_sub(now);
+            let mut response = Redirect::to("/").into_response();
+            response.headers_mut().insert(
+                header::SET_COOKIE,
+                HeaderValue::from_str(&format!(
+                    "ekpi_session={}; Path=/; HttpOnly; Max-Age={}",
+                    session.token, max_age
+                ))
+                .unwrap(),
+            );
+            response
+        }
+        Err(_) => (StatusCode::UNAUTHORIZED, "使用者名稱或密碼錯誤").into_response(),
+    }
+}
+
+async fn logout_post(State((_ledger, auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+    let mut store = match auth.lock() {
+        Ok(s) => s,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response();
+        }
+    };
+
+    let token = std::env::var("EKPI_SESSION_TOKEN").ok();
+
+    if let Some(t) = token {
+        store.logout(&t);
+    }
+
+    let mut response = Redirect::to("/login").into_response();
+    response
+        .headers_mut()
+        .insert(
+            header::SET_COOKIE,
+            HeaderValue::from_static("ekpi_session=; Path=/; Max-Age=0"),
+        )
+        .unwrap();
+    response
+}
+
+#[derive(Deserialize)]
+struct LoginForm {
+    username: String,
+    password: String,
+}
+
 fn apply_security_headers(headers: &mut axum::http::HeaderMap, request_id: &str) {
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
@@ -268,14 +407,14 @@ async fn same_origin_guard(request: Request, next: Next) -> Response {
     next.run(request).await
 }
 
-async fn dashboard(State(ledger): State<SharedLedger>) -> Response {
+async fn dashboard(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("工作總覽", "overview", dashboard_content(&data)),
         Err(error) => error_response("overview", &error),
     }
 }
 
-async fn projects_page(State(ledger): State<SharedLedger>) -> Response {
+async fn projects_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("專案登錄", "projects", projects_content(&data, None)),
         Err(error) => error_response("projects", &error),
@@ -283,9 +422,22 @@ async fn projects_page(State(ledger): State<SharedLedger>) -> Response {
 }
 
 async fn create_project(
-    State(ledger): State<SharedLedger>,
-    Form(form): Form<ProjectForm>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: ProjectForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
@@ -312,7 +464,7 @@ async fn create_project(
     }
 }
 
-async fn evidence_page(State(ledger): State<SharedLedger>) -> Response {
+async fn evidence_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("文件與證據", "evidence", evidence_content(&data, None)),
         Err(error) => error_response("evidence", &error),
@@ -320,9 +472,22 @@ async fn evidence_page(State(ledger): State<SharedLedger>) -> Response {
 }
 
 async fn link_evidence(
-    State(ledger): State<SharedLedger>,
-    Form(form): Form<EvidenceForm>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: EvidenceForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
@@ -353,10 +518,23 @@ async fn link_evidence(
 }
 
 async fn review_evidence(
-    State(ledger): State<SharedLedger>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     Path(id): Path<String>,
-    Form(form): Form<ReviewForm>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: ReviewForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
@@ -375,7 +553,7 @@ async fn review_evidence(
     }
 }
 
-async fn workflows_page(State(ledger): State<SharedLedger>) -> Response {
+async fn workflows_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("流程範本", "workflows", workflows_content(&data, None)),
         Err(error) => error_response("workflows", &error),
@@ -383,9 +561,22 @@ async fn workflows_page(State(ledger): State<SharedLedger>) -> Response {
 }
 
 async fn save_workflow(
-    State(ledger): State<SharedLedger>,
-    Form(form): Form<WorkflowForm>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: WorkflowForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let stages: Vec<String> = form
         .stages
         .lines()
@@ -423,10 +614,23 @@ async fn save_workflow(
 }
 
 async fn publish_workflow(
-    State(ledger): State<SharedLedger>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     Path((id, version)): Path<(String, u32)>,
-    Form(form): Form<PublishForm>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: PublishForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
@@ -445,7 +649,7 @@ async fn publish_workflow(
     }
 }
 
-async fn controls_page(State(ledger): State<SharedLedger>) -> Response {
+async fn controls_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("風險與品質事件", "controls", controls_content(&data, None)),
         Err(error) => error_response("controls", &error),
@@ -453,9 +657,22 @@ async fn controls_page(State(ledger): State<SharedLedger>) -> Response {
 }
 
 async fn create_quality_case(
-    State(ledger): State<SharedLedger>,
-    Form(form): Form<QualityCaseForm>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: QualityCaseForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
@@ -485,10 +702,23 @@ async fn create_quality_case(
 }
 
 async fn update_quality_case(
-    State(ledger): State<SharedLedger>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     Path(id): Path<String>,
-    Form(form): Form<QualityCaseUpdateForm>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: QualityCaseUpdateForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
@@ -507,7 +737,7 @@ async fn update_quality_case(
     }
 }
 
-async fn inspections_page(State(ledger): State<SharedLedger>) -> Response {
+async fn inspections_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("品質檢查", "inspections", inspections_content(&data, None)),
         Err(error) => error_response("inspections", &error),
@@ -515,9 +745,22 @@ async fn inspections_page(State(ledger): State<SharedLedger>) -> Response {
 }
 
 async fn record_inspection(
-    State(ledger): State<SharedLedger>,
-    Form(fields): Form<HashMap<String, String>>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let fields: HashMap<String, String> = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     let get = |field: &str| fields.get(field).cloned().unwrap_or_default();
     let results = QUALITY_CHECKLIST
         .iter()
@@ -555,7 +798,7 @@ async fn record_inspection(
     }
 }
 
-async fn lifecycle_page(State(ledger): State<SharedLedger>) -> Response {
+async fn lifecycle_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("階段與關卡", "lifecycle", lifecycle_content(&data, None)),
         Err(error) => error_response("lifecycle", &error),
@@ -563,9 +806,22 @@ async fn lifecycle_page(State(ledger): State<SharedLedger>) -> Response {
 }
 
 async fn record_gate_decision(
-    State(ledger): State<SharedLedger>,
-    Form(form): Form<GateDecisionForm>,
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    request: Request,
 ) -> Response {
+    if let Some(response) = check_session(&auth, request.headers()) {
+        return response;
+    }
+    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        }
+    };
+    let form: GateDecisionForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
     if !["yes", "no"].contains(&form.non_waivable.as_str()) {
         return match snapshot(&ledger) {
             Ok(data) => page_response(
@@ -606,7 +862,7 @@ async fn record_gate_decision(
     }
 }
 
-async fn audit_page(State(ledger): State<SharedLedger>) -> Response {
+async fn audit_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => {
             let integrity = ledger.lock().map(|db| db.verify().is_ok()).unwrap_or(false);

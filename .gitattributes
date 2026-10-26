@@ -1,12 +1,49 @@
-* text=auto
+* text=auto encoding=utf-8
 
-*.sh text eol=lf
-*.ps1 text eol=lf
-*.rs text eol=lf
-*.md text eol=lf
-*.json text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
+*.sh text eol=lf encoding=utf-8
+*.ps1 text eol=lf encoding=utf-8
+*.rs text eol=lf encoding=utf-8
+*.md text eol=lf encoding=utf-8
+*.json text eol=lf encoding=utf-8
+*.yml text eol=lf encoding=utf-8
+*.yaml text eol=lf encoding=utf-8
+
+# Base-N / positional / encoded files — binary, never normalize
+*.base64 binary
+*.b64 binary
+*.base32 binary
+*.base32hex binary
+*.base58 binary
+*.base85 binary
+*.ascii85 binary
+*.base91 binary
+*.z85 binary
+*.base122 binary
+*.hex binary
+*.bin binary
+*.dat binary
+*.oct binary
+*.bcd binary
+
+# Secure encapsulated kit / encrypted envelopes — binary
+*.sek binary
+*.tave binary
+
+# Large data / analytics / AI formats — binary
+*.parquet binary
+*.arrow binary
+*.avro binary
+*.cbor binary
+*.msgpack binary
+*.bson binary
+*.hdf5 binary
+*.nc binary
+*.grib binary
+*.zarr binary
+*.lance binary
+*.safetensors binary
+*.gguf binary
+*.onnx binary
 
 *.bundle binary
 *.png binary

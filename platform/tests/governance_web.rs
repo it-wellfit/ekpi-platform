@@ -8,6 +8,7 @@ use axum::body::Body;
 use axum::http::{header, Method, Request, StatusCode};
 use ekp_platform::governance::{Ledger, QUALITY_CHECKLIST};
 use ekp_platform::governance_web;
+use ekp_platform::local_auth::AuthStore;
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -23,7 +24,8 @@ fn test_path() -> PathBuf {
 
 fn test_app(path: &PathBuf) -> axum::Router {
     let ledger = Ledger::open(path).expect("test ledger opens");
-    governance_web::router(Arc::new(Mutex::new(ledger)))
+    let auth = Arc::new(Mutex::new(AuthStore::new(3600)));
+    governance_web::router(Arc::new(Mutex::new(ledger)), auth)
 }
 
 async fn post_form(app: &axum::Router, uri: &str, body: &str) -> axum::response::Response {

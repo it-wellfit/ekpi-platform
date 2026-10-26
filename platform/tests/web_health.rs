@@ -10,6 +10,7 @@ use axum::body::Body;
 use axum::http::{HeaderName, Request, StatusCode};
 use ekp_platform::governance::Ledger;
 use ekp_platform::governance_web;
+use ekp_platform::local_auth::AuthStore;
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -22,7 +23,8 @@ fn test_app() -> (axum::Router, PathBuf) {
         NEXT_PATH.fetch_add(1, Ordering::Relaxed)
     ));
     let ledger = Ledger::open(&path).expect("test ledger opens");
-    let app = governance_web::router(Arc::new(Mutex::new(ledger)));
+    let auth = Arc::new(Mutex::new(AuthStore::new(3600)));
+    let app = governance_web::router(Arc::new(Mutex::new(ledger)), auth);
     (app, path)
 }
 
