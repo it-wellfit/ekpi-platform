@@ -4,7 +4,7 @@ This checklist records the behavior already present in the local prototype. It i
 
 ## 1. Required automated baseline
 
-Run the exact commands in [quality gates](quality-gates.md) from each independent crate directory. CI runs them on Ubuntu and Windows. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest` and the schema check.
+Run the exact commands in [quality gates](quality-gates.md) from each independent crate directory. CI runs them on Ubuntu and Windows. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest`, the schema check and `platform/tests/cli_contract.rs`.
 
 The full local baseline and representative CLI paths were rerun for this audit (Rust 1.99.1, 2026-10-25):
 
@@ -12,6 +12,12 @@ The full local baseline and representative CLI paths were rerun for this audit (
 - `platform`: format, Clippy, Cargo tests, engine self-test, declared-rules schema, parameterized report/export/coverage/HTML generation, and output artifact checks passed. Cargo reported 183 tests (170 unit including 9 LegalRuleML exporter tests and 3 subject-activity tests, 2 edge-case tests, 3 governance web, 8 engine integration). The CLI self-test reported 49 assertions; the schema command validated 20 records. Malformed params and `--html` without `--out` returned the expected refusal exit codes. The generated HTML had no script element; the LegalRuleML export was 51,026 bytes with 19 `PrescriptiveStatement` elements and validated against the exporter's compact-schema self-check.
 
 These are dated observations. Re-run them for the revision being delivered and attach the new output to the PR.
+
+### 2026-10-26 audit update
+
+- `platform` now has **225 tests**: 193 unit, 2 edge-case, 3 governance web, 8 engine integration, 6 search evaluation and 13 CLI contract. The CLI self-test still reports 49 assertions; the schema command still validates 20 records.
+- The host's Windows Application Control policy blocks execution of some binaries from `target` (`os error 4551`). The suites above were executed from copied harnesses and with crate-local `profile` overrides; the canonical `cargo test --locked` from `target` and the full `gate.ps1` could not run on this host. Treat the canonical full gate as **Blocked**, not PASS, until it runs on an approved host or CI.
+- The CLI argument contract is now enforced before any write: unknown flag, missing/empty value, a flag used as a value, a positional argument, `--test-set` without `--eval`, `--cases`/`--html` without `--out`, `--search` with `--eval`, and a search/eval mode with report-only flags all exit `2`. `--selftest --bogus` runs the self-test and still exits `2`.
 
 ### 2026-10-26 regression corrections
 
@@ -42,9 +48,9 @@ Confirm the command succeeds and creates `report.json` and `report.md` under tha
 - Preserve the configurable retrieval threshold and parameter precedence. Invalid parameter files or invalid thresholds must refuse execution.
 - Preserve the declared-rules schema, LegalRuleML export validation, coverage report for the seed and casebook sets, HTML report output, and combined `--out` behavior.
 
-Relevant code: `platform/src/{docs,rules,process,retrieval,evidence,eval,engine,snapshot,params,validate,export,coverage_report,main}.rs`; test coverage is in module tests, `platform/tests/integration.rs` and `platform/tests/search_eval.rs`.
+Relevant code: `platform/src/{docs,rules,process,retrieval,evidence,eval,engine,snapshot,params,validate,export,coverage_report,main}.rs`; test coverage is in module tests, `platform/tests/integration.rs`, `platform/tests/search_eval.rs` and `platform/tests/cli_contract.rs`.
 
-Required CI commands: Cargo tests, engine `--selftest`, and `--declared-rules-schema`. Expected CLI refusals are exit code 1 for malformed or tampered params and 2 for `--html` without `--out`. The remaining report/export flags are not separate required CI steps today. Run this focused smoke when touching CLI output, configuration, report, export, or case loading:
+Required CI commands: Cargo tests, engine `--selftest`, and `--declared-rules-schema`. Expected CLI refusals are exit code 1 for malformed or tampered params and 2 for `--html` without `--out`, plus the argument-validation matrix in [the CLI contract](../contracts/cli.md#argument-validation). The remaining report/export flags are not separate required CI steps today. Run this focused smoke when touching CLI output, configuration, report, export, or case loading:
 
     cargo run --locked --bin ekp_platform -- --params config/engine-params.json --declared-rules-schema --out target/regression-report --coverage-report --export-legalruleml target/regression-lrml --html
 
@@ -57,6 +63,7 @@ Confirm exit code 0 and that target/regression-report contains `report.json`, `r
 - `--eval --test-set data/eval/search_eval.json` must exit 0 with 18/18 top-1 answer cases and 6/6 refusals; the gate also requires ≥10 cases, zero failures, permission isolation 1.00 and every required category.
 - A bad expectation must exit 1, `--eval` without `--test-set` must exit 2, and an unreadable data source must exit 1. `platform/tests/search_eval.rs` enforces these fail-closed paths.
 - `permissions` and `PermissionContext` are library/eval filters only. `--search` has no identity and must not be described as access-controlled; `governance_web` does not call retrieval.
+- The fixed set's `permission isolation 1.00` is **vacuous**: no case declares `roles` and every fixture document has `permissions: []`. The library unit tests `search_respects_permissions` and `eval_permission_isolation` are the only filter evidence (`EVAL-GAP-06`, IMP-009).
 - The fixed set is regression evidence for the lexical retriever, not an LLM/agent quality benchmark. Tool failure remains an open gap (`EVAL-GAP-01`).
 
 Required commands for this area:

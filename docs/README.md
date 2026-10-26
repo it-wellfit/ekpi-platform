@@ -95,6 +95,7 @@ These files are retained but are not the current source of truth:
 - `docs/risk-model.md` — an early threat summary. Canonical: `docs/architecture/threat-model.md` for the current system and `docs/governance/07-security-integration-spec-v1.md` for target controls.
 - `docs/operations/final-validation-report.md` — a dated 2026-10-25 snapshot. Current evidence: `docs/development/regression-checklist.md`, this repository's gate output, and review reports under `docs/reviews/`.
 - `docs/tech-selection-round1.md` — a research and selection record. Current implementation facts: `docs/architecture/README.md`. Target technologies mentioned there are not implementation claims.
+- `docs/research-framework-v1.md` — a historical research/target-state framework dated 2026-10-25. Mentions of WORM, tenant isolation, enterprise auth or manifest hash chains are targets, not current capabilities. Canonical current facts: `docs/architecture/README.md`, `docs/architecture/threat-model.md`.
 - `docs/deployment/` — concise operator pages; canonical procedures live in `docs/operations/`.
 
 ## Verification

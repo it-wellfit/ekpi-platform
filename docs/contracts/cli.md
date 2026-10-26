@@ -27,27 +27,39 @@ cargo run --locked --bin ekp_platform -- --selftest
 
 | Flag | Argument | Behavior | Default |
 | --- | --- | --- | --- |
-| `--selftest` | none | Runs the engine integration self-test and exits. Takes precedence over other flags. | — |
-| `--out` | directory | Generates the evaluation report and snapshots in the directory. | — |
-| `--cases` | file path | Overrides the case file used by the report runner. | Seed cases |
+| `--selftest` | none | Runs the engine integration self-test. Other arguments are still validated afterwards: a malformed argument makes the process exit `2` even when the self-test passed. | — |
+| `--out` | directory | Generates the evaluation report and snapshots in the directory. A missing value is a usage error; the default directory is **not** substituted. | — |
+| `--cases` | file path | Overrides the case file used by the report runner. Requires `--out`. | Seed cases |
 | `--data` | directory | Overrides the seed data directory. | `platform/data` |
 | `--threshold` | float in `[0,1]` | Overrides `retrieval_threshold`; invalid values are refused. | Loaded config or engine default |
 | `--params` | file path | Loads the governance parameter file; invalid/tampered invariants fail closed. | `config/engine-params.json` when present |
-| `--declared-rules-schema` | none | Validates all declared rules against the rule schema and exits. | — |
+| `--declared-rules-schema` | none | Validates all declared rules against the rule schema. It may run alone (success exits `0`) or before another mode; a violation exits `1` before search/eval/report work. | — |
 | `--export-legalruleml` | directory | Exports active rules as LegalRuleML 1.0 compact XML. | — |
 | `--coverage-report` | none | Runs seed + casebook coverage and writes `coverage_report.md`; with `--out`, writes it inside the output directory. | — |
 | `--html` | none | With `--out`, renders `report.md` to `report.html`. Without `--out`, refused with exit code 2. | — |
-| `--search` | query string | Lexical search over every document's latest version. Prints up to five verified verbatim citations, or `insufficient evidence` with a reason. This mode does not receive a user identity and therefore applies **no permission filter**. | — |
-| `--eval` | none | Runs a fixed retrieval regression set. Requires `--test-set`. Exits `1` if any case or coverage gate fails. | — |
-| `--test-set` | file path | JSON evaluation set (`{ "version", "threshold", "cases": [...] }` or a bare array). The set may declare its own operating threshold; an explicit `--threshold` overrides it. | — |
+| `--search` | query string | Lexical search over every document's latest version. Prints up to five verified verbatim citations, or `insufficient evidence` with a reason. This mode does not receive a user identity and therefore applies **no permission filter**. Cannot be combined with `--eval` or report-only flags. | — |
+| `--eval` | none | Runs a fixed retrieval regression set. Requires `--test-set`. Exits `1` if any case or coverage gate fails. Cannot be combined with `--search` or report-only flags. | — |
+| `--test-set` | file path | JSON evaluation set (`{ "version", "threshold", "cases": [...] }` or a bare array). The set may declare its own operating threshold; an explicit `--threshold` overrides it. Requires `--eval`. | — |
 
-`--selftest` is the primary integration check. `--declared-rules-schema` may be run alone and returns success after validating all records. `--html` is not a standalone mode. `--search` and `--eval` are standalone modes; combining them with `--out` does not generate a report.
+`--selftest` is the primary integration check. `--declared-rules-schema` may be run alone and returns success after validating all records; when combined with another mode it validates first and the mode continues. `--html` is not a standalone mode. `--search` and `--eval` are standalone modes: combining either with `--out`, `--cases`, `--html`, `--coverage-report` or `--export-legalruleml` is rejected with exit code `2` instead of silently ignoring the flag.
+
+### Argument validation
+
+Before any data load, report write or filesystem side effect, the CLI scans the whole argument list:
+
+- an unknown flag (including `--bogus` after a valid flag) is a usage error;
+- a value flag without a value, with an empty value, or followed by another flag (`--out --html`) is a usage error — the value is never taken from a default;
+- a bare positional argument is a usage error;
+- `--test-set` without `--eval`, `--cases` without `--out`, and `--html` without `--out` are usage errors;
+- `--search` and `--eval` are mutually exclusive, and neither accepts report/export flags.
+
+A usage error prints the message and usage text to stderr and exits `2`. Validation runs before the self-test's result is returned, so `--selftest --bogus` runs the self-test and then exits `2`, preventing a typo from being reported as success.
 
 ### Search evaluation set
 
 The fixed set is [platform/data/eval/search_eval.json](../../platform/data/eval/search_eval.json) (`CTR-DATA-007`). It contains 24 cases across `general`, `ambiguous`, `adversarial`, `wrong_source` and `insufficient_context`; six cases expect an honest refusal. `tool_failure` is not a case category because retrieval calls no external tool; the CLI's missing-data path is covered by a fail-closed integration test instead.
 
-The gate is `metrics.gate_failures()` in `platform/src/eval.rs`: at least 10 cases, zero failed cases, permission isolation 1.00, and at least one case in every required category. A green run at threshold `0.42` is retrieval regression evidence, not an LLM or production-quality claim.
+The gate is `metrics.gate_failures()` in `platform/src/eval.rs`: at least 10 cases, zero failed cases, permission isolation 1.00, and at least one case in every required category. The current set declares no `roles`, and every fixture document has `permissions: []`; the reported permission isolation is therefore 1.00 by construction and is a no-leak regression check, not permission coverage (`EVAL-GAP-06`). A green run at threshold `0.42` is retrieval regression evidence, not an LLM or production-quality claim.
 
 ### Exit codes
 
@@ -55,7 +67,7 @@ The gate is `metrics.gate_failures()` in `platform/src/eval.rs`: at least 10 cas
 | --- | --- |
 | `0` | Success; requested checks/artifacts completed |
 | `1` | Fail-closed failure: invalid/tampered parameters, invariant mismatch, schema rejection, export/report IO failure, self-test failure, missing/unreadable data source, failed evaluation gate |
-| `2` | Usage or argument error: unknown flag, missing value, invalid threshold, `--html` without `--out`, `--eval` without `--test-set` |
+| `2` | Usage or argument error: unknown flag, unexpected positional argument, missing/empty value, a flag used as another flag's value, invalid threshold, `--html`/`--cases` without `--out`, `--eval` without `--test-set`, `--test-set` without `--eval`, `--search` with `--eval`, or a search/eval mode combined with a report-only flag |
 
 An exit code of `0` means the requested operation completed; it does not mean the target product is validated or production-ready.
 
@@ -137,6 +149,7 @@ Run from `eval/`.
 ## Verification
 
 - `cargo test --locked` in both crates.
+- `platform/tests/cli_contract.rs` runs the real binary for the rejection paths: unknown flag (alone and after a valid flag), missing/empty value, flag-as-value, unexpected positional argument, `--test-set`/`--cases`/`--html` prerequisites, `--search` + `--eval`, report flags with eval, and self-test precedence. It asserts exit `2` and that no report output is written.
 - `--selftest` in both crates.
 - `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json` in `platform/`.
 - `gate.ps1 -IncludeSmoke` for report/export/coverage/HTML and structural LegalRuleML checks.

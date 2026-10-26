@@ -1,6 +1,6 @@
 # Reviews and improvements
 
-- **Status:** Active; one bootstrap retrospective completed
+- **Status:** Active; one bootstrap retrospective and one end-to-end audit completed
 - **Owner:** Engineering + QA
 - **Last reviewed:** 2026-10-26
 - **Quality gates:** [Quality gates](../development/quality-gates.md)
@@ -23,7 +23,7 @@ Three records are kept separate:
 
 | ID | Date | Scope | Reviewer | Result | Report |
 | --- | --- | --- | --- | --- | --- |
-| — | — | No completed review report yet | — | — | — |
+| AUDIT-0001 | 2026-10-26 | End-to-end code, contract, test, documentation, backup and claims audit | Engineering + QA (self-audit) | 11 findings: 4 high, 5 medium, 2 low; locally fixable items fixed; canonical gate and restore remain Blocked | [2026-10-26-end-to-end-audit.md](2026-10-26-end-to-end-audit.md) |
 
 Add a report when a review covers more than a single PR comment thread, or when a release, incident or gate decision needs a durable record. Use the PR template for ordinary code review; do not duplicate it here.
 
@@ -47,8 +47,10 @@ Every accepted improvement gets an ID, an owner, a due trigger and a link. “Im
 | IMP-006 | RETRO-0001 | Add tool-failure cases and a failure-injection harness when a tool/agent path is introduced | QA | Medium | `quality/ai-evaluation.md` `EVAL-GAP-01` | Open; retrieval missing-data fail-closed test does **not** close it |
 | IMP-007 | RETRO-0001 | Delete or implement the placeholder `api.rs` before any HTTP API work | Backend | Medium | `architecture` `ARCH-GAP-01` | Open (blocked by no approved API scope) |
 | IMP-008 | RETRO-0001 | Assign product, security, operations and data owners | Product / Security / Ops | High | `operations/production-readiness.md` | Blocked |
+| IMP-009 | 2026-10-26 audit | Replace the vacuous permission metric: add a restricted fixture and positive/negative role cases to the fixed search set (or remove the metric from the gate) | QA | High | `quality/ai-evaluation.md` `EVAL-GAP-06`; `platform/data/eval/search_eval.json` | Open |
+| IMP-010 | 2026-10-26 audit | Enforce the published CLI argument contract and test it: unknown flags, missing/empty values, flag-as-value, positional arguments and incompatible modes exit `2` before any write | Engineering | High | `platform/src/main.rs` `validate_args`; `platform/tests/cli_contract.rs`; `contracts/cli.md` | Done (local tests 13/13; full canonical gate blocked by host) |
 
-Status vocabulary: `Open`, `In progress`, `Done`, `Blocked`, `Deferred`. `Done` requires linked evidence, not a self-assertion. IMP-001–004 are closed by the 2026-10-26 gate and restore drill; see [backup log](../operations/backup-log.md) and [traceability register](../traceability/register.md). The search work at `9d0d793` adds a fixed 24-case retrieval gate, but it does not close IMP-006: a deterministic lexical retrieval function calls no tool, so tool timeout, partial result and retry-exhaustion behavior remain unevaluated.
+Status vocabulary: `Open`, `In progress`, `Done`, `Blocked`, `Deferred`. `Done` requires linked evidence, not a self-assertion. IMP-001–004 are closed by the 2026-10-26 gate and restore drill; see [backup log](../operations/backup-log.md) and [traceability register](../traceability/register.md). The search work at `9d0d793` adds a fixed 24-case retrieval gate, but it does not close IMP-006: a deterministic lexical retrieval function calls no tool, so tool timeout, partial result and retry-exhaustion behavior remain unevaluated. IMP-009 records that the set's `permission isolation 1.00` is vacuous because no case declares roles and every fixture document is unrestricted. IMP-010 is implemented and covered by `platform/tests/cli_contract.rs`; the canonical `cargo test --locked` could not run on this host because Windows Application Control blocked the test harness, so the evidence is from copied harnesses and the full gate remains **Blocked**.
 
 ## Rules for review findings
 

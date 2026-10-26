@@ -90,7 +90,7 @@ cargo run --locked --bin ekp_platform -- --params config/engine-params.json `
   --out target/regression-report --coverage-report --html
 ```
 
-The retrieval gate is deterministic and offline. It runs the same lexical retriever as `--search` against 24 fixed cases and fails on any miss, unexpected citation, permission leak or missing category. A green run is regression evidence for that retriever, not an AI quality metric.
+The retrieval gate is deterministic and offline. It runs the same lexical retriever as `--search` against 24 fixed cases and fails on any miss, unexpected citation, missing required category, or a permission-isolation score below 1.00. A green run is regression evidence for that retriever, not an AI quality metric. The permission metric is currently vacuous: no case declares `roles` and every fixture document has `permissions: []`, so no restricted document exists to leak (`EVAL-GAP-06`). Real filter behavior is covered only by the library unit tests `search_respects_permissions` and `eval_permission_isolation`.
 
 For a tool/AI path, add a comparison run for each model/prompt/tool version, record the exact version identifiers and the corpus hash, and compare against the approved baseline. A missing tool must produce an honest failure/abstention, not a fabricated success.
 
@@ -116,11 +116,13 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 | EVAL-GAP-03 | No double annotation / κ | Expected labels are not independently validated | Run a two-annotator study for the expanded corpus |
 | EVAL-GAP-04 | Synthetic corpus only | No evidence that the cases represent a real organization | Pilot with authorized non-sensitive cases; keep them separate from the fixed synthetic set |
 | EVAL-GAP-05 | No automated drift/version comparison report | Model/prompt/data changes could regress silently | Add a versioned baseline and comparison report before AI use |
+| EVAL-GAP-06 | Fixed search set has no role-restricted case | The `permission isolation 1.00` gate is 1.00 by construction (no case declares `roles`, all fixture documents are unrestricted), so it cannot detect a filter regression at the set level. Library unit tests cover the filter but are not an end-to-end permission test | Add at least one restricted fixture and a positive/negative case pair with a non-empty `roles` allow-list; keep the metric meaningful or remove it from the gate |
 
 ## Current status
 
 - Deterministic corpus: 67 cases, fixed and versioned.
 - Search retrieval regression: 24 cases (18 answer, 6 refusal), threshold 0.42; `--eval` gate PASS on the recorded revision. Lexical only; paraphrases can abstain.
+- Permission coverage in the fixed set: none. All cases omit `roles` and all fixture documents are unrestricted, so `permission isolation 1.00` is vacuous (`EVAL-GAP-06`). The passing result is a no-leak regression check, not permission coverage.
 - Hard gates H-1–H-6: exercised by the engine self-test/report pipeline; see the dated regression baseline.
 - AI/agent: not implemented; no quality claim.
 - Tool failure: not covered for a future connector/LLM/tool path (`EVAL-GAP-01`). The retrieval CLI calls no tool; its missing-data fail-closed test is not a substitute.

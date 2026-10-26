@@ -26,14 +26,14 @@ The authoritative entities, states and invariants are in [governance/06](../gove
 | Versioned documents and anchors | `docs`, `engine` | Loads source versions, checks bindings/hashes, resolves clause anchors | Unit and integration tests |
 | Active rules and schema | `rules`, `validate`, `params` | Loads active rules, rejects drafts, validates the declared schema, enforces fail-closed parameter invariants | `--declared-rules-schema`, self-test, tests |
 | Process replay | `process`, `engine` | Replays events, detects forbidden pairs, deadlines, loops and missing state | Seed/edge cases, self-test |
-| Evidence retrieval | `retrieval`, `evidence` | Deterministic lexical retrieval with citations and conservative abstention; `PermissionContext` filters by role at library level | Evaluation corpus, hard gates, fixed search set |
+| Evidence retrieval | `retrieval` | Deterministic lexical retrieval with citations and conservative abstention; `PermissionContext` filters by role at library level | Evaluation corpus, hard gates, fixed search set (lexical; the fixed set has no role-restricted fixture) |
 | Knowledge search CLI | `main` (`--search`, `--eval`), `eval` | Ranks document sections, prints verified verbatim citations, and gates a fixed regression set | `platform/tests/search_eval.rs`, CLI run |
 | Decision snapshot | `snapshot` | Records inputs and output for deterministic replay | Self-test, integration tests |
 | Report/export | `export`, `coverage_report` | LegalRuleML, coverage, Markdown/HTML reports | Smoke gate and exporter tests |
 | Governance ledger | `governance` | Append-only JSONL events for projects, evidence, workflows, quality cases, inspections and gate decisions | `governance_web` tests |
 | Governance web | `governance_web` | Server-rendered forms and read views; same-origin guard and security headers | Route/integration tests |
 
-The following modules are compiled and unit-tested but not imported by either served binary: `api`, `local_auth`, `tenant`, `audit`, `worm`, `agents`, `benchmark`, `formal_verification`, `runtime_verification`, `multimodal`, `ocr`, `pm4py_sidecar`, `reranker`, `retrieval_v2`, `vector_search`, `xes_import`, `bpmn`, `fulltext`, `knowledge_graph`. See the [architecture module table](../architecture/README.md#module-boundaries). Do not describe them as delivered capabilities.
+The following modules are compiled and unit-tested but not wired into any served request path: `api`, `local_auth`, `tenant`, `audit`, `worm`, `agents`, `benchmark`, `formal_verification`, `runtime_verification`, `multimodal`, `ocr`, `pm4py_sidecar`, `reranker`, `retrieval_v2`, `vector_search`, `xes_import`, `bpmn`, `fulltext`, `knowledge_graph`. `evidence` is not referenced outside its own module. `causal` is different: `engine.rs` calls `CausalAnalyzer::analyze` and stores `EngineOutcome.causal_results`, but no CLI, report or snapshot consumer reads that field, so it is not a user-visible capability. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs`; no served path constructs a `TenantContext`. See the [architecture module table](../architecture/README.md#module-boundaries). Do not describe these as delivered capabilities.
 
 ## Persistence and data stores
 
@@ -63,7 +63,7 @@ The served web app has **no authentication** and **no authorization**. It binds 
 
 `local_auth` contains local password hashing, session expiry and a four-role enum, but it is not wired into `governance_web`. `tenant` contains an in-memory tenant store, but it is not wired. The target identity, role, MFA and tenant requirements are in [governance/07](../governance/07-security-integration-spec-v1.md) and decisions `DEC-02`, `DEC-12` and `DEC-17`.
 
-The `permissions` field on a document and `retrieval::PermissionContext` are a **library-level retrieval filter**, not an authorization decision. `--search` receives no user identity and applies no filter. The fixed `--eval` set can supply roles to prove that a filtered retrieval does not leak a restricted document, but that proves filter behavior, not tenant isolation or access control.
+The `permissions` field on a document and `retrieval::PermissionContext` are a **library-level retrieval filter**, not an authorization decision. `--search` receives no user identity and applies no filter. The evaluation schema can declare a role list, but the current fixed set declares no roles and every fixture document is unrestricted; its `permission isolation` metric is a no-leak regression check, not evidence that restricted documents are protected. See `EVAL-GAP-06` in [AI evaluation](../quality/ai-evaluation.md#known-gaps).
 
 ## API surface
 
@@ -71,7 +71,7 @@ There is no production JSON API. The only HTTP surface is the local HTML form ap
 
 `platform/src/api.rs` defines `/health`, `/api/v1/cases/:id/decide` and `/api/v1/cases/:id/snapshot`, but:
 
-- it is not imported by `ekp_platform` or `governance_web`;
+- it is declared in the library but never mounted by the `ekp_platform` CLI or the `governance_web` router;
 - `adjudicate_case` returns a fixed `comply` with no citations or rule IDs;
 - `get_snapshot` returns `not_found`.
 

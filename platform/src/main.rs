@@ -62,9 +62,116 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
         .cloned()
 }
 
+const BOOLEAN_FLAGS: [&str; 5] = [
+    "--selftest",
+    "--declared-rules-schema",
+    "--coverage-report",
+    "--html",
+    "--eval",
+];
+
+const VALUE_FLAGS: [&str; 8] = [
+    "--out",
+    "--cases",
+    "--data",
+    "--threshold",
+    "--params",
+    "--export-legalruleml",
+    "--search",
+    "--test-set",
+];
+
+/// Flags that only make sense for report generation. `--search` and `--eval`
+/// return before the report path, so accepting these together would silently
+/// ignore the flag; treat that as a usage error instead.
+const REPORT_ONLY_FLAGS: [&str; 5] = [
+    "--out",
+    "--cases",
+    "--html",
+    "--coverage-report",
+    "--export-legalruleml",
+];
+
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|a| a == flag)
+}
+
+/// Rejects unknown flags and malformed values before any file or report work.
+/// The previous implementation silently ignored unknown flags and treated a
+/// trailing `--out` as "use the default directory", which contradicted the
+/// published CLI contract.
+fn validate_args(args: &[String]) -> Result<(), String> {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if !arg.starts_with("--") {
+            return Err(format!("unexpected argument `{arg}`"));
+        }
+        if BOOLEAN_FLAGS.contains(&arg.as_str()) {
+            index += 1;
+            continue;
+        }
+        if VALUE_FLAGS.contains(&arg.as_str()) {
+            match args.get(index + 1) {
+                Some(value) if !value.is_empty() && !value.starts_with("--") => index += 2,
+                Some(value) => {
+                    return Err(format!("flag `{arg}` requires a value, found `{value}`"));
+                }
+                None => return Err(format!("flag `{arg}` requires a value")),
+            }
+            continue;
+        }
+        return Err(format!("unknown flag `{arg}`"));
+    }
+
+    if has_flag(args, "--test-set") && !has_flag(args, "--eval") {
+        return Err("`--test-set` requires `--eval`".to_string());
+    }
+    if has_flag(args, "--cases") && !has_flag(args, "--out") {
+        return Err("`--cases` requires `--out`".to_string());
+    }
+    if has_flag(args, "--html") && !has_flag(args, "--out") {
+        return Err("`--html` requires `--out`".to_string());
+    }
+
+    let search = has_flag(args, "--search");
+    let eval = has_flag(args, "--eval");
+    if search && eval {
+        return Err("`--search` and `--eval` are mutually exclusive".to_string());
+    }
+    if search || eval {
+        let mode = if search { "--search" } else { "--eval" };
+        for flag in REPORT_ONLY_FLAGS {
+            if has_flag(args, flag) {
+                return Err(format!("`{flag}` cannot be combined with `{mode}`"));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn run(args: &[String]) -> i32 {
-    if args.iter().any(|a| a == "--selftest") {
-        return selftest();
+    if has_flag(args, "--selftest") {
+        // The self-test keeps precedence over other modes, but malformed
+        // arguments are still rejected so that a typo is never silently
+        // ignored.
+        let code = selftest();
+        if code != 0 {
+            return code;
+        }
+        return match validate_args(args) {
+            Ok(()) => 0,
+            Err(message) => {
+                eprintln!("FAIL: {message}");
+                2
+            }
+        };
+    }
+
+    if let Err(message) = validate_args(args) {
+        eprintln!("FAIL: {message}");
+        eprintln!("{USAGE}");
+        return 2;
     }
 
     let data_dir = flag_value(args, "--data")
@@ -259,12 +366,7 @@ fn run(args: &[String]) -> i32 {
         return 0;
     }
 
-    if want_html && !args.iter().any(|a| a == "--out") {
-        eprintln!("FAIL: --html requires --out");
-        return 2;
-    }
-
-    if !args.iter().any(|a| a == "--out") {
+    if !has_flag(args, "--out") {
         // 獨立模式：--export-legalruleml / --coverage-report / 純 schema 校驗。
         if export_dir.is_none() && !want_coverage {
             if schema_flag {

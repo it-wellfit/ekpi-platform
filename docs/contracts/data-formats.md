@@ -78,7 +78,7 @@ Rules:
 - An answer case must name `expected_doc_id` and `expected_section`. A refusal case sets `expect_refusal: true` and omits both.
 - `min_score` is the minimum top-1 score for an expected hit. `threshold` and `min_score` are in `[0,1]`.
 - The fixed set is retrieval regression evidence only. It does not test an LLM, prompt, agent tool or production authorization.
-- The gate requires at least 10 cases, zero failed cases, permission isolation 1.00 and at least one case in each required category.
+- The gate requires at least 10 cases, zero failed cases, permission isolation 1.00 and at least one case in each required category. The current set declares no `roles` and all fixture documents are unrestricted, so the 1.00 permission metric is satisfied by construction; it is a no-leak regression check, not permission coverage (`EVAL-GAP-06`).
 
 ## Rules
 

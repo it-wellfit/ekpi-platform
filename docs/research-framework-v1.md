@@ -1,5 +1,8 @@
 # ISO/SOP/CAPA/內控/稽核系統技術研究框架
 
+> **Status:** Historical research framework / target-state analysis (2026-10-25). Not implementation evidence.
+> **Status（中文）:** 歷史研究框架與目標狀態分析，不是實作證據。文中 WORM、租戶隔離、企業身分驗證、Decision snapshot/manifest hash 等均為 target 或研究構想，現行能力以 [architecture](architecture/README.md) 與 [threat model](architecture/threat-model.md) 為準。
+>
 > 截至 2026 年 10 月 25 日可核實的公開資料為限。
 > 本框架不宣稱已遍歷所有研究；所有技術主張均附來源與驗證狀態。
 

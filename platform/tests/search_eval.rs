@@ -15,6 +15,15 @@ fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn platform_bin() -> PathBuf {
+    // Application Control on some managed hosts blocks execution from the
+    // Cargo target directory. The override lets the same test binary run
+    // against a copied, executable-equivalent build.
+    std::env::var_os("EKP_PLATFORM_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_ekp_platform")))
+}
+
 fn latest_versions(db: &DocDatabase) -> BTreeMap<String, String> {
     let mut versions = BTreeMap::new();
     for doc in &db.documents {
@@ -57,7 +66,7 @@ fn fixed_search_eval_set_passes_gate() {
 
 #[test]
 fn eval_cli_passes_fixed_set() {
-    let output = Command::new(env!("CARGO_BIN_EXE_ekp_platform"))
+    let output = Command::new(platform_bin())
         .args(["--eval", "--test-set", "data/eval/search_eval.json"])
         .current_dir(manifest_dir())
         .output()
@@ -84,7 +93,7 @@ fn eval_cli_fails_closed_on_wrong_expectation() {
         }
     ]"#;
     std::fs::write(&path, body).expect("write bad eval set");
-    let output = Command::new(env!("CARGO_BIN_EXE_ekp_platform"))
+    let output = Command::new(platform_bin())
         .args([
             "--eval",
             "--test-set",
@@ -109,7 +118,7 @@ fn search_cli_fails_closed_when_data_source_is_missing() {
             .map(|d| d.as_secs())
             .unwrap_or(0)
     ));
-    let output = Command::new(env!("CARGO_BIN_EXE_ekp_platform"))
+    let output = Command::new(platform_bin())
         .args([
             "--search",
             "任何事情",
@@ -125,7 +134,7 @@ fn search_cli_fails_closed_when_data_source_is_missing() {
 
 #[test]
 fn eval_cli_requires_a_test_set() {
-    let output = Command::new(env!("CARGO_BIN_EXE_ekp_platform"))
+    let output = Command::new(platform_bin())
         .args(["--eval"])
         .current_dir(manifest_dir())
         .output()

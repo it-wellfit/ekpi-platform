@@ -27,14 +27,15 @@ The fixed local entry point is `scripts/check.ps1` (Windows) or `scripts/check.s
 
 ## Current evidence (dated)
 
-The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revisions `283f83a` and `9d0d793` re-ran the same suites plus the search gate:
+The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline; the 2026-10-26 verified revisions `4eacf5c`, `f34c0d6` and `c131815` re-ran the same suites plus the search gate (212 platform tests at those revisions). The CLI argument-contract change in the later 2026-10-26 audit adds 13 tests:
 
 - `eval`: 9 Cargo tests; self-test 10 checks.
-- `platform`: 212 Cargo tests (193 unit, 2 edge, 3 governance web, 8 integration, 6 search evaluation); self-test 49 assertions; schema 20 records.
-- Search: `--eval --test-set data/eval/search_eval.json` 24 cases, 18/18 top-1, 6/6 refusals, permission isolation 1.00, gate PASS. Lexical only.
+- `platform`: 225 Cargo tests (193 unit, 2 edge, 3 governance web, 8 integration, 6 search evaluation, 13 CLI contract); self-test 49 assertions; schema 20 records.
+- Search: `--eval --test-set data/eval/search_eval.json` 24 cases, 18/18 top-1, 6/6 refusals, gate PASS. Lexical only. The reported permission isolation is 1.00 by construction: no case declares roles and all fixture documents are unrestricted (`EVAL-GAP-06`).
 - Smoke: `G_ekpi_engine acc=1.000`, hard gates H-1–H-6 all OK; LegalRuleML 51,026 bytes with 19/19/19/16 structure; `report.html` zero script.
 - Dependencies: `cargo audit` on both lockfiles 2026-10-26, 0 vulnerabilities; no SBOM and no CI execution yet.
 - 2026-10-26 only: documentation check 44 required files / 445 links in 92 files; high-signal secret scan 200 files on a clean tree; `gate.ps1 -IncludeSmoke` 13/13 at `c131815`; restore drill PASS at `283f83a`; the later `198d5f3` bundle restore is **BLOCKED** by host Application Control (`os error 4551`), recorded as blocked in the [backup log](../operations/backup-log.md).
+- 2026-10-26 audit: the CLI argument-contract fix and its 13 tests passed from copied test binaries; the canonical `cargo test --locked` and `gate.ps1` could not run end-to-end because Windows Application Control blocked execution from `target` (`os error 4551`). The same working tree passed `scripts/check-docs.ps1`/`.sh` (44 required, 457 links in 93 files) and the high-signal secret scan (202 files). Treat the full gate for the new revision as **Blocked** until it runs on an approved host or CI. See [troubleshooting](../deployment/troubleshooting.md#windows-application-control-blocks-target-binaries).
 
 These are dated observations, not a permanent claim. Re-run the gate for the revision being delivered and attach the output to the PR/release. Do not copy a test count from a README as current evidence without a run.
 

@@ -42,17 +42,18 @@ The dotted `ekp_eval` connection means the platform binary embeds the evaluation
 
 ## Module boundaries
 
-The two binaries define the served surface. Modules that are compiled and unit-tested but not imported by either binary are **library-only experiments**. They must not be described as product capabilities until they are wired and have integration evidence.
+The two binaries define the served surface. Modules that are compiled and unit-tested but not wired into either binary's request path are **library-only experiments**. They must not be described as product capabilities until they are wired and have integration evidence.
 
 | Area | Modules | Status |
 | --- | --- | --- |
-| Deterministic core | `docs`, `rules`, `process`, `retrieval`, `evidence`, `snapshot`, `engine`, `causal` | Served by CLI and tests; `retrieval` is also exposed through `--search`/`--eval` |
+| Deterministic core | `docs`, `rules`, `process`, `retrieval`, `snapshot`, `engine` | Served by CLI and tests; `retrieval` is also exposed through `--search`/`--eval` |
 | Search evaluation | `eval` (platform module) | Served by `--eval` and integration tests; the separate `eval/` crate is the case-metrics harness |
 | Configuration and validation | `params`, `validate` | Served by CLI |
 | Output | `export`, `coverage_report` | Served by CLI |
 | Governance workbench | `governance`, `governance_web` | Served by `governance_web` |
 | Placeholder HTTP API | `api` | **Not served.** `api.rs` returns a fixed `comply` placeholder for `/api/v1/cases/:id/decide`; it is not a contract and must not be exposed |
-| Identity and tenancy | `local_auth`, `tenant` | Library-only; **not wired**; no enterprise authentication or tenant enforcement |
+| Evidence and causal analysis | `evidence`, `causal` | Library-only: `evidence` is not referenced outside its module; `causal` is called by `engine` and its result is stored in `EngineOutcome.causal_results`, but no CLI/report/snapshot consumer reads it |
+| Identity and tenancy | `local_auth`, `tenant` | Library-only; **not wired**; no enterprise authentication or tenant enforcement. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs` |
 | Audit/WORM | `audit`, `worm` | Library-only; the served ledger has its own hash chain but is not WORM |
 | Verification and analysis | `formal_verification`, `runtime_verification`, `benchmark` | Library-only |
 | Retrieval v2 cluster | `retrieval_v2`, `fulltext`, `reranker`, `vector_search` | Library-only; `retrieval_v2` is not imported by the served path |
@@ -67,7 +68,7 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 
 1. The CLI reads `platform/data/docs.json`, `rules.json` and `processes.json`, or a directory passed with `--data`.
 2. It optionally loads `config/engine-params.json`; invalid or tampered invariants fail closed.
-3. `engine` resolves the applicable active rules and document versions, replays process events, retrieves evidence with citations, and produces a decision.
+3. `engine` resolves the applicable active rules and document versions, replays process events, binds clause citations, and produces a decision.
 4. `snapshot` records the decision inputs and output so the result can be replayed.
 5. `export` emits LegalRuleML; `coverage_report` emits rule coverage; the evaluation runner emits `report.json`, `report.md`, `report.html`, `engine_snapshots.json` and `engine_hard_gates.json`.
 6. `--selftest` asserts the expected verdicts, citations and hard gates; it is the CLI's primary integration check.
@@ -77,7 +78,7 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 1. `--search QUERY` loads the same document data, builds a retriever from each document's latest version and ranks sections with a deterministic lexical bigram-cosine score.
 2. The top five sections are returned with `doc_id`, version, section, score and the verbatim text. Text below the threshold yields `insufficient evidence` and a reason instead of a guessed answer.
 3. `--eval --test-set PATH` loads a fixed JSON set (default fixture: 24 cases, threshold 0.42) and runs the same retriever per case.
-4. The gate rejects a run with fewer than 10 cases, any failed case, permission isolation below 1.00, or a missing required category (`general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context`). A failed gate exits non-zero.
+4. The gate rejects a run with fewer than 10 cases, any failed case, a missing required category (`general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context`), or permission isolation below 1.00. The current 24 cases declare no roles and all fixture documents are unrestricted, so the permission metric is 1.00 by construction and is a no-leak regression check, not permission coverage (`EVAL-GAP-06`). A failed gate exits non-zero.
 5. The user identity and role list are supplied only by the library/eval `PermissionContext`. The CLI has no login and applies **no** permission filter; `governance_web` does not call retrieval. The `permissions` field is therefore a library-level filter, not an authorization control.
 6. Search is lexical, not semantic or LLM-based. An indirectly phrased question can legitimately return `insufficient evidence`; that is an honest refusal, not a successful answer.
 
