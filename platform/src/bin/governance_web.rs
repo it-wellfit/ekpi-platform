@@ -29,8 +29,18 @@ async fn main() {
         }
     };
     println!("治理工作台已在 http://{address} 啟動；按 Ctrl+C 停止。");
-    if let Err(error) = axum::serve(listener, app).await {
+    if let Err(error) = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+    {
         eprintln!("治理工作台停止：{error}");
         std::process::exit(1);
+    }
+}
+
+async fn shutdown_signal() {
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => println!("收到停止訊號，正在完成進行中的請求。"),
+        Err(error) => eprintln!("無法註冊停止訊號：{error}"),
     }
 }

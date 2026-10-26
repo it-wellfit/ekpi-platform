@@ -14,8 +14,18 @@
 - Ledger path: `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl`, or `EKP_GOVERNANCE_DATA` if set.
 - Rendering: server-side Maud HTML, CSS only, zero JavaScript.
 - Authentication: **none**. Authorization: **none**. Do not expose this server beyond the local machine.
-- Security middleware: same-origin guard on non-GET/HEAD requests; CSP, `X-Content-Type-Options`, `Referrer-Policy` and `X-Frame-Options` on responses.
+- Request middleware: same-origin guard on non-GET/HEAD requests; per-request `x-request-id` validation/echo/generation; 15-second request timeout; at most 64 concurrent requests (excess requests receive `429` with `Retry-After`); one JSON access-log line per request on stdout (request id, method, path, status, duration; no actor or body data).
+- Security headers on every response: CSP, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Cache-Control: no-store`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy`.
 - Request body format: `application/x-www-form-urlencoded` for POST routes.
+
+## Operational routes
+
+| Method | Path | Purpose | Response | Test evidence |
+| --- | --- | --- | --- | --- |
+| GET | `/healthz` | Liveness only; does not claim readiness or dependency health | JSON: status, service, version, `scope: local-only`, `readiness: liveness-only` | `web_health.rs` |
+| GET | `/metrics` | Prometheus text counters for requests, 4xx/5xx, in-flight, concurrency refusals and duration | `text/plain; version=0.0.4` | `web_health.rs` |
+
+These endpoints are unauthenticated and aggregate-only. They must stay on the loopback listener. They do not provide a dashboard, alerting, trace export, SLO, error budget or capacity model.
 
 ## Read routes
 
@@ -53,7 +63,8 @@ The field list is the current HTML form contract. Server-side validation is auth
 - A rejected mutation must not append an event. Route tests assert this for foreign-origin requests.
 - A foreign `Origin` on a POST returns `403` with a plain-text Chinese message. A request without an `Origin` header is currently allowed by the guard.
 - Ledger read/validation errors render an error page; they do not expose secrets or stack traces.
-- There is no JSON response mode, pagination, filtering API, ETag, cache-control policy or rate limit.
+- There is no JSON response mode for domain data, pagination, filtering API, ETag or versioned public API. `/healthz` is a liveness JSON document; `/metrics` is aggregate Prometheus text. Neither exposes ledger content or identity.
+- The concurrency bound is a local overload guard, not an identity-aware rate limit.
 
 ## Not part of this contract
 
@@ -72,10 +83,10 @@ The field list is the current HTML form contract. Server-side validation is auth
 
 ```powershell
 cd platform
-cargo test --locked
+cargo test --locked --test governance_web --test web_health
 ```
 
-The route tests cover the read pages, mutation flows, audit chain, foreign-origin rejection and presentation constraints. Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
+The route tests cover the read pages, mutation flows, audit chain, foreign-origin rejection and presentation constraints. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics. Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
 
 ## Update triggers
 

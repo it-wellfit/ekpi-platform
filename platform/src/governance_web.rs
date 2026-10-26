@@ -3,16 +3,19 @@
 //! CSS-first, server-rendered local pilot workbench.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Form, Path, Request, State};
-use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::http::{header, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use axum::Router;
+use axum::{Json, Router};
 use maud::{html, Markup, DOCTYPE};
 use serde::Deserialize;
+use tokio::sync::Semaphore;
 
 use crate::governance::{
     GovernanceSnapshot, Ledger, Project, QualityCheckResult, QualityInspectionInput, Workflow,
@@ -22,9 +25,24 @@ use crate::governance::{
 type SharedLedger = Arc<Mutex<Ledger>>;
 
 const CSS: &str = include_str!("../assets/governance.css");
+const REQUEST_ID_HEADER: &str = "x-request-id";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const MAX_CONCURRENT_REQUESTS: usize = 64;
+static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static REQUESTS_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RESPONSES_4XX_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RESPONSES_5XX_TOTAL: AtomicU64 = AtomicU64::new(0);
+static REQUESTS_IN_FLIGHT: AtomicU64 = AtomicU64::new(0);
+static REQUEST_DURATION_MICROS_TOTAL: AtomicU64 = AtomicU64::new(0);
+static REQUEST_DURATION_COUNT_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RATE_LIMITED_TOTAL: AtomicU64 = AtomicU64::new(0);
+static REQUEST_LIMIT: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(MAX_CONCURRENT_REQUESTS));
 
 pub fn router(ledger: SharedLedger) -> Router {
     Router::new()
+        .route("/healthz", get(healthz))
+        .route("/metrics", get(metrics))
         .route("/", get(dashboard))
         .route("/projects", get(projects_page).post(create_project))
         .route("/evidence", get(evidence_page).post(link_evidence))
@@ -41,17 +59,143 @@ pub fn router(ledger: SharedLedger) -> Router {
         .route("/audit", get(audit_page))
         .route("/assets/governance.css", get(stylesheet))
         .with_state(ledger)
-        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(same_origin_guard))
+        .layer(middleware::from_fn(request_context))
+}
+
+async fn healthz() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "ekpi-governance-web",
+        "version": env!("CARGO_PKG_VERSION"),
+        "scope": "local-only",
+        "readiness": "liveness-only",
+    }))
+}
+
+async fn metrics() -> impl IntoResponse {
+    let requests = REQUESTS_TOTAL.load(Ordering::Relaxed);
+    let responses_4xx = RESPONSES_4XX_TOTAL.load(Ordering::Relaxed);
+    let responses_5xx = RESPONSES_5XX_TOTAL.load(Ordering::Relaxed);
+    let in_flight = REQUESTS_IN_FLIGHT.load(Ordering::Relaxed);
+    let rate_limited = RATE_LIMITED_TOTAL.load(Ordering::Relaxed);
+    let duration_seconds =
+        REQUEST_DURATION_MICROS_TOTAL.load(Ordering::Relaxed) as f64 / 1_000_000.0;
+    let duration_count = REQUEST_DURATION_COUNT_TOTAL.load(Ordering::Relaxed);
+    let body = format!(
+        "# HELP ekpi_http_requests_total Total HTTP requests handled by the local workbench.\n\
+         # TYPE ekpi_http_requests_total counter\n\
+         ekpi_http_requests_total {requests}\n\
+         # HELP ekpi_http_responses_4xx_total Responses with a 4xx status.\n\
+         # TYPE ekpi_http_responses_4xx_total counter\n\
+         ekpi_http_responses_4xx_total {responses_4xx}\n\
+         # HELP ekpi_http_responses_5xx_total Responses with a 5xx status.\n\
+         # TYPE ekpi_http_responses_5xx_total counter\n\
+         ekpi_http_responses_5xx_total {responses_5xx}\n\
+         # HELP ekpi_http_requests_in_flight Requests currently being handled.\n\
+         # TYPE ekpi_http_requests_in_flight gauge\n\
+         ekpi_http_requests_in_flight {in_flight}\n\
+         # HELP ekpi_http_rate_limited_total Requests refused by the concurrency bound.\n\
+         # TYPE ekpi_http_rate_limited_total counter\n\
+         ekpi_http_rate_limited_total {rate_limited}\n\
+         # HELP ekpi_http_request_duration_seconds_sum Total request handling time.\n\
+         # TYPE ekpi_http_request_duration_seconds_sum counter\n\
+         ekpi_http_request_duration_seconds_sum {duration_seconds}\n\
+         # HELP ekpi_http_request_duration_seconds_count Requests included in the duration sum.\n\
+         # TYPE ekpi_http_request_duration_seconds_count counter\n\
+         ekpi_http_request_duration_seconds_count {duration_count}\n"
+    );
+    (
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        body,
+    )
 }
 
 async fn stylesheet() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], CSS)
 }
 
-async fn security_headers(request: Request, next: Next) -> Response {
-    let mut response = next.run(request).await;
-    let headers = response.headers_mut();
+async fn request_context(request: Request, next: Next) -> Response {
+    request_context_with(request, next, REQUEST_TIMEOUT, &REQUEST_LIMIT).await
+}
+
+async fn request_context_with(
+    request: Request,
+    next: Next,
+    timeout: Duration,
+    limit: &Semaphore,
+) -> Response {
+    let request_id = request
+        .headers()
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| valid_request_id(value))
+        .map(str::to_owned)
+        .unwrap_or_else(generate_request_id);
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let started = Instant::now();
+
+    REQUESTS_TOTAL.fetch_add(1, Ordering::Relaxed);
+    REQUESTS_IN_FLIGHT.fetch_add(1, Ordering::Relaxed);
+    let permit = limit.try_acquire();
+
+    let mut response = if permit.is_err() {
+        RATE_LIMITED_TOTAL.fetch_add(1, Ordering::Relaxed);
+        let mut response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many concurrent requests\n",
+        )
+            .into_response();
+        response
+            .headers_mut()
+            .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
+        response
+    } else {
+        match tokio::time::timeout(timeout, next.run(request)).await {
+            Ok(response) => response,
+            Err(_) => {
+                let mut response =
+                    (StatusCode::GATEWAY_TIMEOUT, "request timed out\n").into_response();
+                response
+                    .headers_mut()
+                    .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
+                response
+            }
+        }
+    };
+    drop(permit);
+
+    let elapsed = started.elapsed();
+    let micros = elapsed.as_micros().min(u64::MAX as u128) as u64;
+    REQUEST_DURATION_MICROS_TOTAL.fetch_add(micros, Ordering::Relaxed);
+    REQUEST_DURATION_COUNT_TOTAL.fetch_add(1, Ordering::Relaxed);
+    REQUESTS_IN_FLIGHT.fetch_sub(1, Ordering::Relaxed);
+    if response.status().is_server_error() {
+        RESPONSES_5XX_TOTAL.fetch_add(1, Ordering::Relaxed);
+    } else if response.status().is_client_error() {
+        RESPONSES_4XX_TOTAL.fetch_add(1, Ordering::Relaxed);
+    }
+
+    apply_security_headers(response.headers_mut(), &request_id);
+    println!(
+        "{}",
+        serde_json::json!({
+            "event": "http_request",
+            "request_id": request_id,
+            "method": method.as_str(),
+            "path": path,
+            "status": response.status().as_u16(),
+            "duration_ms": elapsed.as_secs_f64() * 1000.0,
+        })
+    );
+    response
+}
+
+fn apply_security_headers(headers: &mut axum::http::HeaderMap, request_id: &str) {
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
@@ -67,7 +211,39 @@ async fn security_headers(request: Request, next: Next) -> Response {
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-    response
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    headers.insert(
+        HeaderName::from_static("cross-origin-opener-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
+    if let Ok(value) = HeaderValue::from_str(request_id) {
+        headers.insert(HeaderName::from_static(REQUEST_ID_HEADER), value);
+    }
+}
+
+fn generate_request_id() -> String {
+    let sequence = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("ekpi-{}-{nanos:x}-{sequence:x}", std::process::id())
+}
+
+fn valid_request_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
 async fn same_origin_guard(request: Request, next: Next) -> Response {
@@ -1290,5 +1466,70 @@ mod tests {
         let latest = latest_workflows(&versions);
         assert_eq!(latest.len(), 1);
         assert_eq!(latest[0].version, 2);
+    }
+}
+
+#[cfg(test)]
+mod request_limits_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::routing::get;
+    use tower::ServiceExt;
+
+    static TEST_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
+
+    #[tokio::test]
+    async fn timeout_returns_gateway_timeout() {
+        let app = Router::new()
+            .route(
+                "/slow",
+                get(|| async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    "late"
+                }),
+            )
+            .layer(middleware::from_fn(|request, next| async move {
+                request_context_with(request, next, Duration::from_millis(25), &REQUEST_LIMIT).await
+            }));
+
+        let response = app
+            .oneshot(
+                Request::get("/slow")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("router responds");
+
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok()),
+            Some("1")
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrency_bound_returns_too_many_requests() {
+        let permit = TEST_LIMIT.acquire().await.expect("test permit");
+        let app = Router::new()
+            .route("/ok", get(|| async { "ok" }))
+            .layer(middleware::from_fn(|request, next| async move {
+                request_context_with(request, next, Duration::from_secs(1), &TEST_LIMIT).await
+            }));
+
+        let response = app
+            .oneshot(
+                Request::get("/ok")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("router responds");
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        drop(permit);
     }
 }
