@@ -60,10 +60,10 @@ Confirm exit code 0 and that target/regression-report contains `report.json`, `r
 
 - `--search QUERY` returns at most five ranked sections with `doc_id`, version, section, score and verbatim text; it prints `insufficient evidence` when nothing clears the threshold.
 - Retrieval is lexical bigram cosine. A paraphrase that does not share enough character bigrams may abstain; do not "fix" a test by lowering the threshold without an approved change.
-- `--eval --test-set data/eval/search_eval.json` must exit 0 with 18/18 top-1 answer cases and 6/6 refusals; the gate also requires ≥10 cases, zero failures, permission isolation 1.00 and every required category.
-- A bad expectation must exit 1, `--eval` without `--test-set` must exit 2, and an unreadable data source must exit 1. `platform/tests/search_eval.rs` enforces these fail-closed paths.
+- `--eval --test-set data/eval/search_eval.json` must exit 0 with 20/20 top-1 answer cases, 8/8 refusals and a non-vacuous permission result: 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00. The gate also requires ≥10 cases, zero failures and every required category.
+- A bad expectation must exit 1, `--eval` without `--test-set` must exit 2, and an unreadable data source must exit 1. `platform/tests/search_eval.rs` enforces these fail-closed paths and asserts that evaluation-only fixtures are invisible to ordinary `--search`.
 - `permissions` and `PermissionContext` are library/eval filters only. `--search` has no identity and must not be described as access-controlled; `governance_web` does not call retrieval.
-- The fixed set's `permission isolation 1.00` is **vacuous**: no case declares `roles` and every fixture document has `permissions: []`. The library unit tests `search_respects_permissions` and `eval_permission_isolation` are the only filter evidence (`EVAL-GAP-06`, IMP-009).
+- The fixed set now has two evaluation-only restricted fixtures and four role cases; `permission isolation 1.00` has a real denominator (`EVAL-GAP-06`, IMP-009). This still does not prove authentication, authorization or tenant isolation: the role list is supplied by the test harness, not an identity provider.
 - The fixed set is regression evidence for the lexical retriever, not an LLM/agent quality benchmark. Tool failure remains an open gap (`EVAL-GAP-01`).
 
 Required commands for this area:

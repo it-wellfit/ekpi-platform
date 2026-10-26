@@ -23,7 +23,7 @@ Do not use deterministic-corpus results to claim AI quality, and do not use an A
 | `eval/cases/casebook_v3.jsonl` | 46 | Expanded adjudication corpus |
 | `eval/cases/edge_cases.jsonl` | 12 | Boundary, refusal and adversarial cases |
 | **Total** | **67** | Fixed corpus (≥50 target M-12) |
-| `platform/data/eval/search_eval.json` | 24 | Fixed retrieval regression set for `--search`/`--eval` (18 answer, 6 refusal) |
+| `platform/data/eval/search_eval.json` | 28 | Fixed retrieval regression set for `--search`/`--eval` (20 answer, 8 refusal; 2 evaluation-only restricted fixtures and 4 permission cases) |
 
 Observed verdict distribution on 2026-10-26: `comply` 28, `violate` 11, `escalate` 10, `insufficient_evidence` 18. The search set has its own threshold (0.42) and categories; it is not part of the 67-case verdict corpus and must not be counted as one.
 
@@ -41,6 +41,7 @@ The six dimensions below are mandatory for an AI product. For the deterministic 
 | Wrong source | Stale version, wrong appendix, missing cross-document evidence, mismatched pin | `stale_pool_pin_mismatch`, `missing_cross_doc_evidence`, `appendix_binding_mismatch`, `future_rule`, `rule_expired`; search `wrong_source` | Covered |
 | Tool failure | Timeout, unavailable connector, partial tool result, retry exhaustion, sidecar failure | None; the retrieval CLI's missing-data path is covered by a fail-closed test, which is not a tool-failure case | **Gap** (`EVAL-GAP-01`) |
 | Insufficient context | Missing events, unregistered rule, no evidence, deadline anchor missing | `missing_evidence`, `unregistered_rule_id`, `deadline_anchor_missing`, `actor_role_mismatch`, `loop_state_missing`; search `insufficient_context` | Covered |
+| Permission (deterministic supplement) | Role-restricted allow/deny and cross-role isolation in the retrieval filter | Two evaluation-only fixtures with disjoint roles; search `permission` (2 allowed, 2 denied) | Library filter covered; authentication and tenant isolation are not |
 
 The category names are the fixture's test categories, not a claim that every real-world variant is covered. The corpus is synthetic.
 
@@ -90,7 +91,7 @@ cargo run --locked --bin ekp_platform -- --params config/engine-params.json `
   --out target/regression-report --coverage-report --html
 ```
 
-The retrieval gate is deterministic and offline. It runs the same lexical retriever as `--search` against 24 fixed cases and fails on any miss, unexpected citation, missing required category, or a permission-isolation score below 1.00. A green run is regression evidence for that retriever, not an AI quality metric. The permission metric is currently vacuous: no case declares `roles` and every fixture document has `permissions: []`, so no restricted document exists to leak (`EVAL-GAP-06`). Real filter behavior is covered only by the library unit tests `search_respects_permissions` and `eval_permission_isolation`.
+The retrieval gate is deterministic and offline. It runs the same lexical retriever as `--search` against 28 fixed cases and fails on any miss, unexpected citation, missing required category, fewer than two role-restricted cases, a missing allowed or denied permission case, or any permission violation. A green run is regression evidence for that retriever, not an AI quality metric. The set has two evaluation-only restricted fixtures with disjoint roles and four permission cases: two expect an allowed citation, two expect an honest refusal. The metric therefore has a real denominator (4 cases, 0 violations). Fixtures are merged into a clone only for `--eval`; ordinary `--search` cannot see them, and an integration test asserts that. This closes `EVAL-GAP-06` as fixed-set coverage, but still does not prove authenticated authorization or tenant isolation: the role list comes from the test harness, not an identity provider.
 
 For a tool/AI path, add a comparison run for each model/prompt/tool version, record the exact version identifiers and the corpus hash, and compare against the approved baseline. A missing tool must produce an honest failure/abstention, not a fabricated success.
 
@@ -116,13 +117,13 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 | EVAL-GAP-03 | No double annotation / κ | Expected labels are not independently validated | Run a two-annotator study for the expanded corpus |
 | EVAL-GAP-04 | Synthetic corpus only | No evidence that the cases represent a real organization | Pilot with authorized non-sensitive cases; keep them separate from the fixed synthetic set |
 | EVAL-GAP-05 | No automated drift/version comparison report | Model/prompt/data changes could regress silently | Add a versioned baseline and comparison report before AI use |
-| EVAL-GAP-06 | Fixed search set has no role-restricted case | The `permission isolation 1.00` gate is 1.00 by construction (no case declares `roles`, all fixture documents are unrestricted), so it cannot detect a filter regression at the set level. Library unit tests cover the filter but are not an end-to-end permission test | Add at least one restricted fixture and a positive/negative case pair with a non-empty `roles` allow-list; keep the metric meaningful or remove it from the gate |
+| EVAL-GAP-06 (closed 2026-10-26) | Fixed search set had no role-restricted case | The old `permission isolation 1.00` was true by construction, so it could not detect a filter regression. The set now has two evaluation-only restricted fixtures, two allowed cases and two denied cases; the metric denominator is the four role-restricted cases | Closed by the fixture and permission-case change. Authenticated authorization, tenant isolation and the identity source remain outside this eval harness (`S19`, `PR-03`) |
 
 ## Current status
 
 - Deterministic corpus: 67 cases, fixed and versioned.
-- Search retrieval regression: 24 cases (18 answer, 6 refusal), threshold 0.42; `--eval` gate PASS on the recorded revision. Lexical only; paraphrases can abstain.
-- Permission coverage in the fixed set: none. All cases omit `roles` and all fixture documents are unrestricted, so `permission isolation 1.00` is vacuous (`EVAL-GAP-06`). The passing result is a no-leak regression check, not permission coverage.
+- Search retrieval regression: 28 cases (20 answer, 8 refusal), threshold 0.42; `--eval` gate PASS on the recorded revision with 20/20 top-1 and 8/8 refusals. Lexical only; paraphrases can abstain.
+- Permission coverage in the fixed set: 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00; `EVAL-GAP-06` is closed. The fixtures and roles are synthetic and evaluation-only; this is library-filter evidence, not authenticated authorization or tenant isolation (`S19`, `PR-03`).
 - Hard gates H-1–H-6: exercised by the engine self-test/report pipeline; see the dated regression baseline.
 - AI/agent: not implemented; no quality claim.
 - Tool failure: not covered for a future connector/LLM/tool path (`EVAL-GAP-01`). The retrieval CLI calls no tool; its missing-data fail-closed test is not a substitute.

@@ -1,6 +1,6 @@
 # Local backup and restore procedure
 
-- **Status:** Procedure defined; local restore drill PASS at `283f83a`; later `198d5f3` attempt BLOCKED by host policy
+- **Status:** Procedure defined; local restore drill PASS at `283f83a`; later `198d5f3` attempt BLOCKED by host policy; a new drill is required for the current revision
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
 - **Last reviewed:** 2026-10-26
 - **Evidence log:** [backup-log.md](backup-log.md)
@@ -61,7 +61,7 @@ Add one row per backup. `Restore result` is `PASS`, `FAIL` or `NOT RUN`; never l
 
 ## Production gap
 
-The local drill does not provide off-host encrypted backup, approved RPO/RTO, scheduled restore testing, integrity monitoring or a named backup owner. Those are Phase B requirements (`DEC-14`). See [production readiness](production-readiness.md).
+The local drill does not provide off-host encrypted backup, approved RPO/RTO, scheduled restore testing, integrity monitoring or a named backup owner. Those are Phase B requirements (`DEC-14`). See [production readiness](production-readiness.md) and the unapproved [off-host backup and RPO/RTO proposal](backup-policy-draft.md).
 
 ## Update triggers
 

@@ -36,7 +36,7 @@ The dotted `ekp_eval` connection means the platform binary embeds the evaluation
 | `governance_web` binary | `platform/src/bin/governance_web.rs` | Serves the local CSS-first workbench on `127.0.0.1:3000` | Implemented for local, non-sensitive pilot data |
 | Seed data | `platform/data/*.json` | 7 documents / 10 versions, 19 active + 1 draft rule, 3 process models | Synthetic fixture |
 | Evaluation corpus | `eval/cases/*.jsonl` | 67 cases (9 seed + 46 casebook + 12 edge) | Synthetic fixture |
-| Search evaluation set | `platform/data/eval/search_eval.json` | 24 retrieval cases (18 answer, 6 refusal) at threshold 0.42 | Synthetic regression fixture |
+| Search evaluation set | `platform/data/eval/search_eval.json` | 28 retrieval cases (20 answer, 8 refusal) at threshold 0.42, plus 2 evaluation-only restricted fixtures | Synthetic regression fixture |
 | Local ledger | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | Append-only governance events with a SHA-256 chain | Local prototype, not WORM |
 | Generated artifacts | `platform/out/`, `platform/report_out/`, `eval/report_out/` | Reports, snapshots, hard gates, coverage, HTML, LegalRuleML | Generated; not source of truth |
 
@@ -77,8 +77,8 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 
 1. `--search QUERY` loads the same document data, builds a retriever from each document's latest version and ranks sections with a deterministic lexical bigram-cosine score.
 2. The top five sections are returned with `doc_id`, version, section, score and the verbatim text. Text below the threshold yields `insufficient evidence` and a reason instead of a guessed answer.
-3. `--eval --test-set PATH` loads a fixed JSON set (default fixture: 24 cases, threshold 0.42) and runs the same retriever per case.
-4. The gate rejects a run with fewer than 10 cases, any failed case, a missing required category (`general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context`), or permission isolation below 1.00. The current 24 cases declare no roles and all fixture documents are unrestricted, so the permission metric is 1.00 by construction and is a no-leak regression check, not permission coverage (`EVAL-GAP-06`). A failed gate exits non-zero.
+3. `--eval --test-set PATH` loads a fixed JSON set (default fixture: 28 cases, threshold 0.42) and runs the same retriever per case.
+4. The gate rejects a run with fewer than 10 cases, any failed case, a missing required category (`general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context`, `permission`), fewer than two role-restricted cases, no allowed or no denied permission case, or any permission violation. The current 28-case set adds two evaluation-only synthetic fixtures with disjoint roles and four permission cases (two allowed, two denied); it reports 4 role-restricted cases, 2 allowed, 2 denied, 0 violations and isolation 1.00. Fixtures are merged into a clone for `--eval` only and are not present in `docs.json`, so ordinary `--search` cannot see them. This is still a library-level retrieval filter, not authentication or tenant authorization; `EVAL-GAP-06` is closed as fixed-set coverage, while S19 remains `Partial`. A failed gate exits non-zero.
 5. The user identity and role list are supplied only by the library/eval `PermissionContext`. The CLI has no login and applies **no** permission filter; `governance_web` does not call retrieval. The `permissions` field is therefore a library-level filter, not an authorization control.
 6. Search is lexical, not semantic or LLM-based. An indirectly phrased question can legitimately return `insufficient evidence`; that is an honest refusal, not a successful answer.
 
@@ -107,7 +107,7 @@ The research and selection documents may discuss these technologies. They are op
 ## Capacity and performance assumptions
 
 - Workload: a single local operator, synthetic corpus, in-process deterministic computation.
-- Data scale: 7 documents / 10 versions, 20 rule records and 3 process models in the seed fixture; the search regression set adds 24 cases. This is not a capacity model.
+- Data scale: 7 documents / 10 versions, 20 rule records and 3 process models in the seed fixture; the search regression set adds 28 cases and two evaluation-only fixtures. This is not a capacity model.
 - No approved latency, throughput, concurrency or memory target exists. `DEC-19` in the [decision register](../governance/08-decision-register.md) requires an owner-approved capacity model before a performance claim.
 - The report records `mean_latency_ms`, but a local mean is not a production SLO. Performance budgets and load tests are Phase B work; see [quality](../quality/README.md).
 

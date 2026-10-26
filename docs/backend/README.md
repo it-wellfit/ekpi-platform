@@ -63,7 +63,7 @@ The served web app has **no authentication** and **no authorization**. It binds 
 
 `local_auth` contains local password hashing, session expiry and a four-role enum, but it is not wired into `governance_web`. `tenant` contains an in-memory tenant store, but it is not wired. The target identity, role, MFA and tenant requirements are in [governance/07](../governance/07-security-integration-spec-v1.md) and decisions `DEC-02`, `DEC-12` and `DEC-17`.
 
-The `permissions` field on a document and `retrieval::PermissionContext` are a **library-level retrieval filter**, not an authorization decision. `--search` receives no user identity and applies no filter. The evaluation schema can declare a role list, but the current fixed set declares no roles and every fixture document is unrestricted; its `permission isolation` metric is a no-leak regression check, not evidence that restricted documents are protected. See `EVAL-GAP-06` in [AI evaluation](../quality/ai-evaluation.md#known-gaps).
+The `permissions` field on a document and `retrieval::PermissionContext` are a **library-level retrieval filter**, not an authorization decision. `--search` receives no user identity and applies no filter. The fixed `--eval` set now has four role-restricted cases and two evaluation-only restricted fixtures, with 2 allowed cases, 2 denied cases and 0 violations; this proves the filter's allow/deny behavior. The fixtures are merged only for the evaluation run and are not in `docs.json`, so `--search` cannot see them. Authentication, authorization policy and tenant isolation remain unimplemented (`PR-03`, `PR-04`, `S19`). See `EVAL-GAP-06` in [AI evaluation](../quality/ai-evaluation.md#known-gaps).
 
 ## API surface
 

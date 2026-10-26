@@ -39,8 +39,8 @@ Rules:
 - `doc_id` + `version` + `section` identify a clause anchor.
 - `effective_from`/`effective_to` bound the valid-time window. A version outside its window is not applicable.
 - `injection_directive` is a synthetic adversarial field used to prove that embedded instructions do not become system rules. It is never an instruction to the operator.
-- `permissions` is an optional role-name list. An empty list means public to all roles. It is a **library-level filter**, not an authenticated authorization decision: the CLI `--search` mode has no user identity and applies no permission filter, and `governance_web` does not use it. `PermissionContext` is exercised by `retrieval`/`eval` unit tests only.
-- The fixture contains 7 documents and 10 versions. Do not add real customer content.
+- `permissions` is an optional role-name list. An empty list means public to all roles. It is a **library-level filter**, not an authenticated authorization decision: the CLI `--search` mode has no user identity and applies no permission filter, and `governance_web` does not use it. `PermissionContext` is exercised by `retrieval` unit tests and by the synthetic role cases in `--eval`.
+- The production fixture contains 7 documents and 10 versions. Evaluation-only restricted documents live in the fixed set's `fixtures` array, not in this file. Do not add real customer content.
 
 ## Search evaluation set
 
@@ -50,6 +50,22 @@ Rules:
 {
   "version": 1,
   "threshold": 0.42,
+  "fixtures": [
+    {
+      "doc_id": "EVAL-RESTRICTED-QM",
+      "title": "Evaluation fixture: quality-manager restricted policy",
+      "permissions": ["quality_manager"],
+      "versions": [
+        {
+          "version": "1.0",
+          "effective_from": "2026-01-01",
+          "sections": [
+            {"section": "1.1", "verbatim_text": "..."}
+          ]
+        }
+      ]
+    }
+  ],
   "cases": [
     {
       "id": "GEN-01",
@@ -59,6 +75,15 @@ Rules:
       "expected_section": "4.3",
       "min_score": 0.42,
       "roles": []
+    },
+    {
+      "id": "PERM-01",
+      "category": "permission",
+      "question": "...",
+      "expected_doc_id": "EVAL-RESTRICTED-QM",
+      "expected_section": "1.1",
+      "min_score": 0.42,
+      "roles": ["quality_manager"]
     },
     {
       "id": "IC-01",
@@ -74,11 +99,14 @@ Rules:
 Rules:
 
 - A bare JSON array is also accepted for backward compatibility; the object form is preferred because it carries `version` and an operating `threshold`.
-- `id` is unique; `category` is one of `general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context` (additional categories are allowed but do not satisfy the required coverage gate).
+- `id` is unique; required categories are `general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context` and `permission` (additional categories are allowed but do not satisfy the required coverage gate).
 - An answer case must name `expected_doc_id` and `expected_section`. A refusal case sets `expect_refusal: true` and omits both.
 - `min_score` is the minimum top-1 score for an expected hit. `threshold` and `min_score` are in `[0,1]`.
-- The fixed set is retrieval regression evidence only. It does not test an LLM, prompt, agent tool or production authorization.
-- The gate requires at least 10 cases, zero failed cases, permission isolation 1.00 and at least one case in each required category. The current set declares no `roles` and all fixture documents are unrestricted, so the 1.00 permission metric is satisfied by construction; it is a no-leak regression check, not permission coverage (`EVAL-GAP-06`).
+- `fixtures` is optional. Each fixture uses the `docs.json` document shape and is merged into a clone of the production database for `--eval` only. Fixture ids must not collide with production ids, every fixture must be referenced by a case's `expected_doc_id`, and fixtures are never written to `docs.json`. The ordinary `--search` path never loads them; an integration test asserts that fixture text stays invisible to `--search`.
+- A case with a non-empty `roles` array exercises `PermissionContext`; an empty array means no permission filter. A role case with `expect_refusal: false` is an allowed-retrieval case; one with `expect_refusal: true` is a denial case.
+- The permission isolation metric counts only role-restricted cases. The gate requires at least two role-restricted cases, at least one allowed and one denied case, and zero permission violations. Public-only cases do not make the metric pass.
+- The fixed set is retrieval regression evidence only. It does not test an LLM, prompt, agent tool or production authorization. The role cases prove the library filter can allow and deny synthetic roles; they do not prove authenticated identity or tenant isolation.
+- The current set has 28 cases (20 answer, 8 refusal), two evaluation-only fixtures and four role-restricted cases. `EVAL-GAP-06` is closed as fixed-set coverage; the broader authorization boundary remains a documented gap.
 
 ## Rules
 

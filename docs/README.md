@@ -21,7 +21,7 @@ This is the entry point for repository documentation. It answers three questions
 | Risk tiers, required checks and merge gates | [Quality gates](development/quality-gates.md) | Individual specs |
 | Phase A/B exit criteria and production readiness | [Phase gates](quality/phase-gates.md) and [production readiness](operations/production-readiness.md) | Release notes |
 | Test strategy, AI evaluation and current evidence | [Quality](quality/README.md), [AI evaluation](quality/ai-evaluation.md), and [regression checklist](development/regression-checklist.md) | README counts |
-| Installation, configuration, backup, monitoring and incidents | [Operations](operations/README.md) | Deployment summaries |
+| Installation, configuration, backup, monitoring, incidents and pilot handoff | [Operations](operations/README.md), including the [pilot runbook](operations/pilot-runbook.md) and [off-host backup proposal](operations/backup-policy-draft.md) | Deployment summaries |
 | Engineering and business decisions | [ADR index](decisions/README.md), [ADR-0001](adr/0001-engineering-delivery-workflow.md), and [decision register](governance/08-decision-register.md) | Specs and contracts |
 | Requirement-to-evidence chain | [Traceability rules](traceability/README.md) and [register](traceability/register.md) | PR descriptions only |
 | Reviews, retrospectives and improvement tracking | [Reviews](reviews/README.md) | Release notes |

@@ -62,6 +62,8 @@ Set-Location ..
 
 The integration suite exercises governance web routes and main lifecycle paths. Keep new behavior covered at the narrowest useful layer and add an end-to-end test when a user journey crosses module boundaries.
 
+The repository-root `.cargo/config.toml` contains narrow codegen overrides for packages that Windows Application Control has blocked by hash on this managed host. Cargo applies them automatically, so the commands above remain canonical and were executed without extra flags on the final 2026-10-26 revision. The overrides do not change program semantics or disable debug assertions. If a host still blocks a harness, follow [troubleshooting](../deployment/troubleshooting.md#windows-application-control-blocks-target-binaries) and record `Blocked` rather than weakening the gate.
+
 CI calls the same `scripts/check` entry point on Ubuntu and Windows, and a separate security job runs the high-signal secret scan plus `cargo audit` on both lockfiles. CI has not executed yet because this checkout has no remote; do not claim a green CI run until it exists.
 
 ## Local pre-PR gate

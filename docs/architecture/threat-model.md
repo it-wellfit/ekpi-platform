@@ -37,7 +37,7 @@ If any assumption changes, this model is invalid and must be revised before depl
 3. **Process ↔ filesystem:** the CLI reads and writes operator-chosen paths. The ledger writes to a local path. Path and permission handling depend on the host.
 4. **Repository ↔ external supply chain:** Cargo dependencies, GitHub Actions and agent skills are external inputs. They are reviewed by version pinning and CI, not by a formal SBOM process yet.
 5. **Data ↔ external services:** none in the served path. Source references are manual; the platform does not call Microsoft, Google, an LLM or PM4Py.
-6. **Search corpus ↔ search caller:** the retrieval filter is a library API. `--search` runs as the local operator with no identity, so it cannot enforce document permissions. The fixed `--eval` set supplies a synthetic `PermissionContext`, but all 24 cases omit `roles` and every fixture document has `permissions: []`; its `permission isolation` metric is a no-leak regression check, not permission coverage.
+6. **Search corpus ↔ search caller:** the retrieval filter is a library API. `--search` runs as the local operator with no identity, so it cannot enforce document permissions. The fixed `--eval` set now supplies a synthetic `PermissionContext` for four role-restricted cases and two evaluation-only fixtures with disjoint roles; it reports 2 allowed, 2 denied and 0 violations. The fixtures are merged only for `--eval` and are not in `docs.json`, so `--search` cannot see them. This proves the library filter's allow/deny behavior, not authentication or tenant authorization.
 
 ## Threats and controls
 
@@ -76,7 +76,7 @@ Do not claim any of the following on the basis of this repository:
 - “Tenant isolated” — the tenant module is not wired.
 - “Authenticated” — the web app has no login; `local_auth` is library-only.
 - “Prompt-injection proof” — deterministic cases pass, but no LLM/agent path exists or has been evaluated.
-- “Permission-aware search” as a user-facing authorization claim — `PermissionContext` is a library API only; `--search` has no identity, `governance_web` does not call retrieval, and the fixed eval set has no role-restricted case. The current `permission isolation 1.00` is a no-leak regression check, not permission coverage (`EVAL-GAP-06`).
+- “Permission-aware search” as a user-facing authorization claim — `PermissionContext` is a library API only; `--search` has no identity and `governance_web` does not call retrieval. The fixed eval set now exercises four synthetic role-restricted cases (2 allowed, 2 denied, 0 violations), which proves the library filter's allow/deny behavior, not authentication or tenant authorization (`EVAL-GAP-06` closed as fixed-set coverage; `S19`, `PR-03` remain open).
 - “Semantic search” — retrieval is lexical bigram cosine and abstains on paraphrases it cannot match.
 - “Penetration tested”, “ASVS compliant” or “certified” — no such assessment has been performed.
 
