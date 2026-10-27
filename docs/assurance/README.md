@@ -3,7 +3,7 @@
 - **Status:** Active; Phase A **not approved**, Phase B **blocked**
 - **Owner:** QA + Engineering (accountable business, security and operations roles are `UNASSIGNED`)
 - **Last reviewed:** 2026-10-27
-- **Evidence baseline:** code `6ae6134`; final evidence revision `6ed236d` (clean-clone canonical PASS and automatic restore PASS, 2026-10-27); current evidence bundle `499e0d1` (automatic restore PASS, docs 657/105, platform 277); previous assurance bundle `41beaea`
+- **Evidence baseline:** code `6ae6134`; current working-tree canonical revision `604a2a5` (canonical PASS, docs 660 links in 115 files, platform 277); final evidence revision `6ed236d` (clean-clone canonical PASS and automatic restore PASS, 2026-10-27); current evidence bundle `499e0d1` (automatic restore PASS, docs 657/105, platform 277); previous assurance bundle `41beaea`
 - **Canonical gates:** [Phase A/B gates](../quality/phase-gates.md), [production readiness](../operations/production-readiness.md)
 
 This directory is the cross-phase assurance record. It does not replace the canonical requirements, contracts or runbooks. It records what was actually executed, what failed or was blocked, and what cannot be claimed without an external owner, environment or approval.

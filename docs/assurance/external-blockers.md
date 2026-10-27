@@ -171,7 +171,7 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Unlock steps | 1. Capture the exact blocked path and policy ID. 2. Request a scoped exception or runner. 3. Re-run `scripts/check.ps1` on the target revision. 4. Restore the final bundle in a fresh clone and run the restored check. 5. Record the result with the policy/runner identifier. |
 | Acceptance criteria | Canonical check exit 0 on the target revision; final bundle restore check exit 0; no gate lowered or test skipped. |
 | Work that can continue now | Release-profile coverage, docs/secrets checks, bundle creation/verification, manual clone inspection. |
-| Status / evidence | `PARTIAL` — the `6ed236d` clean clone passed the canonical check and the automatic restore drill; the `4697aa1`, `718db57` and `32f2b36` working trees also passed. Earlier working-tree runs (`41beaea`, `6ae6134`) were `BLOCKED` at the CLI contract spawns (`os error 4551`). No named policy owner or CI runner exists, so recurrence is not prevented. E-001/E-007/E-019/E-020/E-023/E-024/E-025/E-026; policy observed as `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` on this host. |
+| Status / evidence | `PARTIAL` — the `6ed236d` clean clone passed the canonical check and the automatic restore drill; the `4697aa1`, `718db57`, `32f2b36` and `604a2a5` working trees also passed. Earlier working-tree runs (`41beaea`, `6ae6134`) were `BLOCKED` at the CLI contract spawns (`os error 4551`). No named policy owner or CI runner exists, so recurrence is not prevented. E-001/E-007/E-019/E-020/E-023/E-024/E-025/E-026/E-028; policy observed as `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` on this host. |
 
 ## B-12 Legal, privacy and compliance scope
 
