@@ -86,10 +86,11 @@ mod tests {
 
     #[test]
     fn disagreement_is_negative() {
-        let r1 = vec!["comply", "comply", "comply"];
-        let r2 = vec!["violate", "violate", "violate"];
+        // Perfectly opposed, balanced raters: p_o = 0, p_e = 0.5, kappa = -1.
+        let r1 = vec!["comply", "comply", "violate", "violate"];
+        let r2 = vec!["violate", "violate", "comply", "comply"];
         let k = cohens_kappa(&r1, &r2).unwrap();
-        assert!(k < 0.0);
+        assert!((k + 1.0).abs() < 1e-9);
         assert_eq!(kappa_interpretation(k), "Poor (less than chance)");
     }
 
@@ -108,11 +109,13 @@ mod tests {
     }
 
     #[test]
-    fn single_label_all_agree_is_one() {
+    fn single_label_all_agree_is_undefined() {
+        // With one observed class, p_e = 1 and kappa has a zero denominator.
+        // Returning None is deliberate; calling this 1.0 would overstate
+        // agreement and is not a valid kappa result.
         let r1 = vec!["comply", "comply", "comply"];
         let r2 = vec!["comply", "comply", "comply"];
-        let k = cohens_kappa(&r1, &r2).unwrap();
-        assert!((k - 1.0).abs() < 1e-9);
+        assert!(cohens_kappa(&r1, &r2).is_none());
     }
 
     #[test]
