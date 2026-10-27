@@ -14,21 +14,16 @@
 
 Observed on a managed Windows host (2026-10-26): Windows Application Control blocks specific **file hashes and paths** under `target`, not all execution. A fresh `hello.exe` and a fresh proc-macro DLL ran, while `maud_macros` and `tokio_macros` DLLs from the Cargo cache and several test harnesses were denied. The error is `os error 4551` ("Application Control policy has blocked this file"). `rustc` can then report a misleading secondary error such as `can't find crate for axum` because the proc-macro failed to load.
 
-The repository now carries a narrow, committed [`.cargo/config.toml`](../../.cargo/config.toml) profile override for the packages observed to be blocked (`maud_macros`, `tokio-macros`, `tokio` and `ekp_platform`). It changes codegen settings only; it does not disable debug assertions, edit the lockfile, vendor different source or bypass the host policy. The canonical commands now run from a clean `target`:
+The repository carries a narrow, committed [`.cargo/config.toml`](../../.cargo/config.toml) profile override for the packages observed to be blocked (`maud_macros`, `tokio-macros`, `tokio` and `ekp_platform`). It changes codegen settings only; it does not disable debug assertions, edit the lockfile, vendor different source or bypass the host policy. It allowed the canonical commands to pass from `7f6ab97` through `b2bae3e`, but the block returned at `23b8996`: a freshly rebuilt `platform\target\debug\ekp_platform.exe` was denied (`os error 4551`), so `scripts/check.ps1` failed at the platform test even though the source compiled. Do not assume the canonical command will run on this host; verify the exact revision and record the actual result.
 
-```powershell
-cd platform
-cargo test --locked
-cd ..
-powershell -ExecutionPolicy Bypass -File gate.ps1 -IncludeSmoke
-```
+At `23b8996` the release profile was executable and passed the same behavior: `cargo test --release --locked` (platform 270, eval 12), `--selftest` (49 assertions), schema (20 records) and the 28-case search evaluation all exited 0. This is equivalent coverage, **not** a canonical `scripts/check.ps1` PASS.
 
-If the denial still occurs:
+If the denial occurs:
 
 1. Confirm the error is `os error 4551`, not a Rust compile error.
-2. Remove the stale `target` directory and retry the canonical command so Cargo rebuilds with the committed profile.
-3. If only a diagnostic harness is blocked, copy it out of `target` and run the copy. For CLI contract tests, set `EKP_PLATFORM_BIN` to a copied, executable `ekp_platform.exe`; the tests use it only as a diagnostic override and product behavior is unchanged. Example: `EKP_PLATFORM_BIN=%TEMP%\ekpi-run\ekp_platform.exe %TEMP%\ekpi-run\cli_contract.exe`.
-4. If a harness still cannot run, change only that crate's test profile to produce a different binary and retry. Do not change the product behavior to make a harness pass.
+2. Remove the stale `target` directory and retry the canonical command so Cargo rebuilds with the committed profile. If the denial persists, record the check as `Blocked`; do not lower the gate.
+3. If only a diagnostic harness is blocked, copy it out of `target` and run the copy. For CLI contract tests, `EKP_PLATFORM_BIN` can point at an executable build (for example the release binary). It changes only which binary the tests launch; it does not make a blocked canonical run a PASS, and a blocked `cargo run -- --selftest` is still blocked.
+4. If a harness still cannot run, change only that crate's test profile to produce a different binary and retry. Do not change product behavior to make a harness pass.
 
 Rules:
 

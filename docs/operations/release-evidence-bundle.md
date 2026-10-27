@@ -9,7 +9,7 @@
 - **Status:** Local verification record; Phase A **not approved**, Phase B **blocked**
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Verification revision:** `b2bae3e` (code, scripts and benchmark artifact); `3ee2ee2` (documentation re-check and restore drill)
+- **Verification revision:** `b2bae3e` (last canonical `gate.ps1 -IncludeSmoke` PASS); `23b8996` (latest delivery revision: release-profile suite, blocked canonical check); `3ee2ee2` (documentation re-check and restore drill)
 - **Environment:** One managed Windows host, Windows PowerShell 5.1, Rust stable from `rust-toolchain.toml`; local loopback only
 - **Repository state:** `main`, no remote, no CI execution
 - **Phase gates:** [phase-gates.md](../quality/phase-gates.md)
@@ -25,7 +25,7 @@
 
 ## Verification results
 
-Executed at `b2bae3e` on 2026-10-27 unless the row states another revision.
+Executed at `b2bae3e` on 2026-10-27 unless the row states another revision. Rows marked `23b8996` used the release profile because the debug binary was blocked; they are not a canonical `scripts/check.ps1` PASS.
 
 | Check | Command | Working directory | Result | Evidence |
 |---|---|---|---|---|
@@ -46,6 +46,25 @@ Executed at `b2bae3e` on 2026-10-27 unless the row states another revision.
 | Canonical check (docs re-check) | `scripts/check.ps1` | Repo root | PASS, 506 links in 106 files; 220 secret-scan files; eval 12, platform 261, schema 20, search 28 cases | `3ee2ee2` |
 
 `platform` test split at `b2bae3e`: 217 unit, 13 CLI contract, 2 edge-case, 10 governance web, 8 integration, 7 search evaluation, 4 web health. The `governance_web` binary has `test = false` in `platform/Cargo.toml` because the host's Application Control intermittently blocks freshly built test harnesses; route coverage is provided by `platform/tests/governance_web.rs` and `platform/tests/web_health.rs`.
+
+### CLI contract hardening at `23b8996`
+
+The canonical debug binary could not be started on this host, so the checks below used the release profile. They are equivalent behavioral coverage, not a canonical `scripts/check.ps1` PASS.
+
+| Check | Command | Result |
+|---|---|---|
+| Format | `cargo fmt -- --check` (both crates) | PASS |
+| Clippy | `cargo clippy --locked --all-targets -- -D warnings` (both crates) | PASS, zero warnings |
+| Tests | `cargo test --release --locked` (platform) | PASS, **270** tests: 217 unit, 22 CLI contract, 2 edge-case, 10 governance web, 8 integration, 7 search evaluation, 4 web health |
+| Tests | `cargo test --release --locked` (eval) | PASS, 12 tests |
+| Self-test | `cargo run --release --locked --bin ekp_platform -- --selftest` | PASS, 49 assertions |
+| Schema | `cargo run --release --locked --bin ekp_platform -- --declared-rules-schema` | PASS, 20 records |
+| Search evaluation | `cargo run --release --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json` | PASS, 28 cases, 20/20 top-1, 8/8 refusals, 4 role-restricted (2 allowed, 2 denied), 0 violations |
+| Documentation | `scripts/check-docs.ps1` | PASS, 44 required, 507 links in 106 files at the time of the code run (the evidence update reports 508; a fresh clone checks 96 tracked files) |
+| Secret scan | `scripts/check-secrets.ps1` | PASS, 220 files |
+| Canonical check | `scripts/check.ps1` | **BLOCKED**: exit 1 at `platform` test. All 22 CLI contract tests failed to start `target\debug\ekp_platform.exe` with `os error 4551` (Windows Application Control). `EKP_PLATFORM_BIN` pointing at the release binary made the 270 tests pass, but the following `cargo run --locked --bin ekp_platform -- --selftest` was still denied (`FAIL: platform selftest`) |
+
+The new contract behavior: `--llm` requires `--search` and accepts only `mock` (other providers exit `2` before data load or audit write); the output is labeled `mock-answer` and must carry an exact `[doc_id@version]` citation. `--audit-log` requires `--search`, writes one local `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`) and replaces the target file; it is not an authenticated or append-only service. `--import-wellfit` is standalone, fails closed on an unreadable `docs.json` and validates imported documents before saving.
 
 ### Smoke and export details
 
@@ -111,7 +130,7 @@ These drills prove that committed history can be restored and checked locally. T
 ## Traceability
 
 - Register: [traceability/register.md](../traceability/register.md). Rows name the specification, code, contract, test evidence and release revision.
-- S1–S21, A-05 and A-06 are recorded; A-06 is `Implemented` with local session evidence, not enterprise identity.
+- S1–S26, A-05 and A-06 are recorded; A-06 is `Implemented` with local session evidence, not enterprise identity. S23/S26 evidence is release-profile only at `23b8996`, where the canonical check was blocked.
 - `Verified` means a test proves conformance. No row is `Validated`: no representative user or named pilot owner has confirmed fitness for real use.
 - Phase A remains `Not approved` because A1 (real user value) is `Not met` and the pilot-scope rows are `Partial`.
 - Phase B remains `Blocked` on an approved deployment target, enterprise identity, data policy, tenant model, off-host backup and operational ownership.
@@ -125,7 +144,7 @@ These drills prove that committed history can be restored and checked locally. T
 5. **No production observability** — local JSON access log, correlation id, aggregate `/metrics` and liveness `/healthz`; no SLO, traces, alerting, on-call or readiness probe (`DEC-16`).
 6. **No AI/LLM capability** — retrieval is deterministic lexical; `--llm` accepts only `mock` and labels output `mock-answer`; no model quality claim (`EVAL-GAP-01`).
 7. **No independent review** — the threat model, audit and this pack are self-assessments; no penetration test or certification.
-8. **Host policy risk** — Windows Application Control intermittently blocks freshly built executables (`os error 4551`). The automatic TEMP drill for `3ee2ee2` was blocked at `edge_cases`; a manual fresh clone of the identical bundle then passed. A blocked run is recorded as `Blocked`, never `PASS`.
+8. **Host policy risk** — Windows Application Control intermittently blocks freshly built executables (`os error 4551`). At `23b8996` the canonical `scripts/check.ps1` was blocked at the platform test because the debug binary could not start; the release profile passed the same 270 tests. The automatic TEMP drill for `3ee2ee2` was blocked at `edge_cases`; a manual fresh clone of the identical bundle then passed. A blocked run is recorded as `Blocked`, never `PASS`.
 
 ## Sign-off
 

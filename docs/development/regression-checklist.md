@@ -44,6 +44,14 @@ These are dated observations. Re-run them for the revision being delivered and a
 - Restore: bundles `7fd0c0b` (SHA-256 `EBFD373C…34A2FF`) and `56a944f` (SHA-256 `23EA4401…CE6421`) both passed a fresh-clone check. The `56a944f` run also passed an `age` encrypt/decrypt drill; it remains local-simulated, not off-host.
 - Benchmark at `56a944f`: eval p50/p95 17.432/23.319 ms; loopback `/healthz` p50/p95 19.010/24.069 ms; 5,369.21 req/s. One host only; not a capacity model.
 
+### 2026-10-27 CLI contract hardening (`23b8996`)
+
+- `platform` has **270 tests** in the release profile: 217 unit, 22 CLI contract, 2 edge-case, 10 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records.
+- `--llm` requires `--search` and accepts only the `mock` provider; any other provider exits `2` before data load or audit write. The response is labeled `mock-answer`, states `provider: mock (no external model)` and must carry an exact `[doc_id@version]` citation. This is a deterministic fixture, not an LLM integration or AI-quality evidence.
+- `--audit-log` requires `--search` and writes one local `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`) to the named file, replacing any existing content. It is not an authenticated or append-only audit service.
+- `--import-wellfit` is a legacy local import. It cannot be combined with `--search`, `--eval` or report/export flags; it fails closed when an existing `docs.json` cannot be loaded and validates the merged documents before saving.
+- **Canonical check Blocked at `23b8996`:** `scripts/check.ps1` exited 1 because Windows Application Control denied the freshly rebuilt `platform\target\debug\ekp_platform.exe` (`os error 4551`), so all 22 CLI contract tests failed to start it. Setting `EKP_PLATFORM_BIN` to the release binary let the 270 tests pass, but `cargo run --locked --bin ekp_platform -- --selftest` was still denied (`FAIL: platform selftest`). The canonical result is therefore `Blocked`, never `PASS`. Release-profile `cargo test --release --locked` (platform 270, eval 12), `--selftest` (49 assertions), schema (20 records) and search evaluation (28 cases) all exited 0 as equivalent coverage.
+
 ## 2. `eval/` behavior to preserve
 
 - Parse seed/evaluation cases and preserve warnings/errors for malformed input.

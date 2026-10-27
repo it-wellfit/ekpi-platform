@@ -35,6 +35,8 @@ The script:
 
 A backup is verified only if the restored clone passes the drill. Do not mark it verified from the bundle's existence or size.
 
+On a managed host the automatic `%TEMP%` drill can fail because Windows Application Control denies a freshly built binary (`os error 4551`). Do not edit the check or bypass the policy. Record the automatic run as **Blocked**, then perform the manual equivalent: clone the same bundle to a path under the user profile, run the restored `scripts/check.ps1` there and record both results. If the manual clone passes, the bundle is restore-verified; the blocked automatic run is still not a PASS.
+
 ## Encrypted off-host drill (Windows, `age`)
 
 `scripts/backup-offhost.ps1` wraps the local drill, encrypts the new bundle with
@@ -82,8 +84,8 @@ never mistaken for success).
 2. In the clone, run `scripts/check.ps1` (Windows) or `scripts/check.sh` (POSIX).
 3. If the change touches report/export/HTML/data, also run `gate.ps1 -IncludeSmoke` in the clone.
 4. Restore the ledger separately if required; verify the audit chain.
-5. Record date, bundle path, result, operator and any limitation in [backup-log.md](backup-log.md).
-6. If the drill fails, block the release, preserve the failing output and fix the cause. Do not lower the drill.
+5. Record date, bundle path, result, operator and any limitation in [backup-log.md](backup-log.md). If the automatic drill was blocked by host policy, record that as `BLOCKED` and the manual clone separately as `PASS`; never merge the two into one unqualified PASS.
+6. If the drill fails for a code or data reason, block the release, preserve the failing output and fix the cause. Do not lower the drill.
 
 ## Record format
 

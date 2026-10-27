@@ -90,20 +90,22 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 powershell -ExecutionPolicy Bypass -File gate.ps1 -IncludeSmoke
 ```
 
-逐項命令與 **2026-10-26 真機數據**（不是永久常數；交付修訂版需重跑）：
+逐項命令與 **2026-10-27 最新證據**（不是永久常數；交付修訂版需重跑）。本機 canonical `scripts/check.ps1` 於 `23b8996` 被 Windows Application Control 阻擋（`os error 4551`，debug binary 無法啟動），因此下列 platform 數字來自 release profile；**不得**把它描述成 canonical PASS。最後一次 canonical `gate.ps1 -IncludeSmoke` PASS 是 `b2bae3e`。
 
 ```powershell
 cd eval
-cargo run --locked -- --selftest        # 10/10 檢查通過（2026-10-26, rustc 1.99.1）
+cargo run --locked -- --selftest        # 10/10 檢查通過
 cargo run --locked -- --out report_out  # 產出 report.json + report.md（含逐案例失敗分析）
 
 cd ..\platform
 cargo clippy --locked --all-targets -- -D warnings              # 零警告
-cargo test --locked                                             # 193 lib + 2 edge_cases + 3 governance_web + 8 integration + 6 search_eval = 212 PASS
-cargo run --locked --bin ekp_platform -- --selftest             # 49 assertions PASS：9/9 案例判定+引用集合、H-1..H-6、draft 規則拒收
-cargo run --locked --bin ekp_platform -- --declared-rules-schema    # 20 records validated clean（19 active＋1 draft_ai）
+cargo test --locked                                             # canonical；b2bae3e 為 261 PASS；23b8996 在本機被 host policy 阻擋
+cargo test --release --locked                                   # 23b8996 替代證據：270 PASS（217 unit + 22 CLI contract + 2 edge + 10 web + 8 integration + 7 search_eval + 4 web_health）
+cargo run --locked --bin ekp_platform -- --selftest             # canonical；23b8996 被阻擋
+cargo run --release --locked --bin ekp_platform -- --selftest   # 23b8996 替代證據：49 assertions PASS（9/9 判定+引用集合、H-1..H-6、draft 規則拒收）
+cargo run --release --locked --bin ekp_platform -- --declared-rules-schema    # 20 records validated clean（19 active＋1 draft_ai）
 cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄"  # 逐字引用，低於門檻則誠實回報證據不足
-cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json         # 24 案：18/18 top-1、6/6 拒答、gate PASS
+cargo run --release --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json         # 28 案：20/20 top-1、8/8 拒答、4 role-restricted、0 violations、gate PASS
 cargo run --locked --bin ekp_platform -- --export-legalruleml out\lrml  # LegalRuleML v1.0 compact（19 PrescriptiveStatement、51,026 bytes、匯出自檢）
 cargo run --locked --bin ekp_platform -- --coverage-report      # 55 案（seed 9＋casebook 46）真機統計
 cargo run --locked --bin ekp_platform -- --out out --coverage-report --export-legalruleml out\lrml --html
@@ -165,3 +167,5 @@ platform 引擎已接入同一 runner（adapter `G_ekpi_engine`）：
 | 2026-10-25 | **Round 3 落地**：CLI 五旗標（`--declared-rules-schema`／`--params` 參數治理檔／`--export-legalruleml`／`--coverage-report`／`--html`）；LegalRuleML v1.0 compact 匯出（active 19 紀錄→官方構件，匯出自檢 key/ref）；覆蓋率報告 55 案真機（seed 9＋casebook 46；18 active id 全覆蓋＋2 非 active 引用 id 顯式拒答；casebook 實測 46 題修正）；papers.csv ＋9 條（合計 27 全數核實）；cargo test 71 PASS、selftest 49 assertions、clippy 零警告 | OpenCode (GLM) |
 | 2026-10-26 | **全生命週期文件與品質入口**：新增 canonical 文件索引、product／architecture／backend／frontend／contracts／quality／operations／decisions／reviews／traceability 文件；Phase A/B 門檻與生產就緒度（A 未核准、B 受阻）；`scripts/check-docs` 與高信號機密樣式掃描接入 `scripts/check` 與 `gate.ps1`；CI 改為 `validate` matrix + `security`；修正資料庫／WORM／tenant／monitoring／restore 等過度宣稱；`.env.example`、`.gitignore`、`.gitattributes` 對齊實際行為；`gate.ps1 -IncludeSmoke` 12/12 PASS；bundle 還原演練 PASS（`283f83a`，SHA-256 `21D2CD…ED443`） | OpenCode (DeepSeek V4.1) |
 | 2026-10-26 | **知識檢索與固定評測**：`--search` 詞彙檢索＋逐字引用；`--eval --test-set` 固定 24 案回歸門檻（18/18 top-1、6/6 拒答、權限隔離 1.00）；`permissions` 與 `PermissionContext` 為 library 過濾、非授權；`knowledge_search` 審計事件 enum；新增 `platform/tests/search_eval.rs` 6 測試（含 missing-data fail-closed）；platform 測試 212 PASS；docs 契約新增 `CTR-DATA-007`；明確標示 lexical-only、CLI 無身分、非 AI 品質 | OpenCode (DeepSeek V4.1) |
+| 2026-10-27 | **本機 session auth、備份與供應鏈證據**：`governance_web` 全面要求 Viewer session（公開路徑僅 `/healthz`、`/metrics`、`/login`、`/assets/*`），Editor/Approver 分權，PBKDF2-HMAC-SHA256 600k、CSPRNG token、登入鎖定、64 KiB body 上限、same-origin 檢查；仍非企業 IdP/MFA/tenant isolation。`scripts/backup.ps1`／`backup-offhost.ps1` 修復 native stderr 與 `.NET` SHA-256；bundle 還原 drill PASS；SBOM 重建。canonical gate 於 `b2bae3e` 13/13 PASS，platform 261 tests | OpenCode (DeepSeek V4.1) |
+| 2026-10-27 | **CLI 契約硬化**：`--llm` 只接受 `mock` 且必須搭配 `--search`，其他 provider 在寫入 audit 前 exit 2，輸出標示 `mock-answer` 並要求 `[doc_id@version]` 引用；`--audit-log` 必須搭配 `--search`，只寫單一 local `KnowledgeSearch` event（非 authenticated/append-only）；legacy `--import-wellfit` 獨立使用，讀不到 `docs.json` 或匯入資料不合法時 fail closed。release-profile platform 270 tests、eval 12、selftest 49、schema 20、search 28 全 PASS；**canonical `scripts/check.ps1` 於 `23b8996` 被 host Application Control 阻擋（`os error 4551`），記錄為 Blocked，不是 PASS** | OpenCode (DeepSeek V4.1) |
