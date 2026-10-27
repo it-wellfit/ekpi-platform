@@ -69,7 +69,7 @@ The canonical IDs are retained. The assurance column records the current evidenc
 | TH-04 | Unauthorized local user reads/changes data | Loopback, host permissions, local session, Viewer/Editor/Approver checks on data routes | 10 route tests + 11 local-auth unit tests | Local process-memory identity; no IdP/MFA/recovery/access review; local admin can read memory |
 | TH-05 | Tenant data leaks across records | No tenant context is constructed by the CLI/web app; `tenant` is library-only | Library `PermissionContext` tests and synthetic role cases | No tenant isolation or tenant-scoped storage; do not claim tenant isolation |
 | TH-06 | Secret or sensitive data committed | `.env` ignored, secret scan, docs prohibit real data, placeholders only, no password logging | E-005 secret scan (220 files); `.env.example` review | Ledger/reports can contain operator-entered sensitive text; no DLP; process env holds the password |
-| TH-07 | Backup missing or cannot be restored | Local bundle + restore drill; `age` drill | E-007 (blocked final), E-008 (last PASS), E-009 (simulated) | Final revision not restore-verified; no off-host copy, RPO/RTO or scheduled restore |
+| TH-07 | Backup missing or cannot be restored | Local bundle + restore drill; `age` drill | E-007 (earlier blocked), E-008 (earlier PASS), E-009 (simulated), E-020 (`41beaea` restore + clean-clone canonical PASS) | No off-host copy, approved RPO/RTO, key custody or scheduled drill; working-tree canonical still blocked |
 | TH-08 | Malformed/tampered rule/config changes behavior | Schema validation, fail-closed invariants, draft rejection, tests | Unit/integration tests; schema 20 records | No signature/provenance for data files |
 | TH-09 | Supply-chain compromise | Lockfiles, pinned toolchain, audit/deny, secret scan, SBOM | E-006; E-010 | Actions tag-pinned, CI never run, SBOM not signed; no provenance service |
 | TH-10 | Placeholder API exposed and returns false `comply` | `api.rs` not imported by either binary; docs label it placeholder | Architecture review; no route test can expose it because it is not served | A future wiring mistake could expose it; delete or implement with engine-backed contract tests |
@@ -83,8 +83,8 @@ The canonical IDs are retained. The assurance column records the current evidenc
 
 | ID | Threat | Why it matters here | Current mitigation | Residual risk / target |
 | --- | --- | --- | --- | --- |
-| AST-01 | Host Application Control blocks build/test execution | Prevents canonical acceptance and final restore; could tempt a team to lower the gate | Recorded as `BLOCKED`; release-profile coverage retained; no gate change | Availability/assurance risk until a scoped exception or clean runner exists |
-| AST-02 | A blocked check is misreported as PASS | Would invalidate the entire evidence chain | Status vocabulary; matrix separates `PASS`/`BLOCKED`/`NOT RUN`; no row claims final canonical PASS | Requires reviewer discipline and automated link/claim checks |
+| AST-01 | Host Application Control blocks build/test execution | Interfered with canonical acceptance and earlier restores; could tempt a team to lower the gate | Recorded as `BLOCKED`; release-profile coverage retained; the `41beaea` clean clone passed the canonical check; no gate change | Working-tree canonical and earlier restores remain blocked until a scoped exception or clean runner exists |
+| AST-02 | A blocked check is misreported as PASS | Would invalidate the entire evidence chain | Status vocabulary; matrix separates `PASS`/`BLOCKED`/`NOT RUN`; no row claims a working-tree or CI canonical PASS | Requires reviewer discipline and automated link/claim checks |
 | AST-03 | Local admin rewrites ledger and backup | The ledger is not WORM; a bundle can be replaced | Hash chain detects accidental edits; backup log records hashes | No external anchor, signature, object lock or separation of duties |
 | AST-04 | Real data enters a synthetic-data workflow | Privacy/legal exposure and invalid evaluation | Docs prohibit real data; env/data path is operator-controlled | No DLP or classification enforcement; B8 blocked |
 | AST-05 | AI provider leaks or retains restricted data | Future LLM path could send sensitive content externally | No provider is configured; `--llm` is mock-only | Requires provider/data policy, redaction, retention terms and tests before enabling |
@@ -99,7 +99,7 @@ These ratings are meaningful only for the local, synthetic-data, single-user pro
 | Risk | Likelihood | Impact | Rating | Basis |
 | --- | --- | --- | --- | --- |
 | Local admin tampering with ledger/backup | Medium | High | **High** | No WORM, no external anchor, local disk |
-| Final backup unrecoverable | Medium | High | **High** | Final restore `BLOCKED`; no off-host copy |
+| Final backup unrecoverable | Medium | High | **High** | `41beaea` restores locally; the earlier `28b68cc` restore is `BLOCKED`; no off-host copy |
 | Secret/sensitive text in ledger or report | Medium | Medium | **Medium** | Operator-entered content; no DLP |
 | Password guessing on local login | Low | Medium | **Medium** | 600k PBKDF2 + lockout; no MFA |
 | Supply-chain compromise | Low | High | **Medium** | Lockfiles/audit/SBOM, but CI/SHA pinning absent |

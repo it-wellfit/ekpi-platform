@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070` (`main`)
-- **Working tree during the re-run:** clean at each named revision; `947cd27` and `a2ba7de` differ from `6ae6134` only in documentation and the required-document list, so the code-level checks remain attributed to `6ae6134`
+- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd` (`main`)
+- **Working tree during the re-run:** clean at each named revision; `947cd27`, `a2ba7de` and `41beaea` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -21,7 +21,7 @@
 | E-005 | LOCAL | Secret pattern scan | `6ae6134` | 0 | PASS: 220 files |
 | E-006 | LOCAL | Supply-chain check | `6ae6134` | 0 | PASS: platform 72 deps, eval 12 deps, 0 vulnerabilities; `cargo deny` advisories/bans/licenses/sources OK |
 | E-007 | LOCAL | Final bundle verify/clone/restore | `28b68cc` | verify 0; restore blocked | Bundle verifies, clone reaches `28b68cc`; restored check `BLOCKED` at `eval` Clippy (`os error 4551`) |
-| E-008 | HISTORICAL LOCAL | Last verified restore | `3ee2ee2` | 0 | PASS: fresh clone; restored `scripts/check.ps1` exit 0 |
+| E-008 | HISTORICAL LOCAL | Earlier verified restore | `3ee2ee2` | 0 | PASS: fresh clone; restored `scripts/check.ps1` exit 0 (superseded by E-020 for `41beaea`) |
 | E-009 | SIMULATED | `age` encrypted backup drill | `56a944f` | 0 | PASS for encryption/decryption/byte comparison; destination class `local-simulated-off-host` |
 | E-010 | HISTORICAL LOCAL | SBOM generation | `a826472` | 0 | platform 67 components; eval 11 components; hashes recorded |
 | E-011 | HISTORICAL LOCAL | Full gate `gate.ps1 -IncludeSmoke` | `b2bae3e` | 0 | 13/13 PASS (historical; not current) |
@@ -32,6 +32,9 @@
 | E-016 | LOCAL | Documentation check (assurance commit) | `947cd27` | 0 | PASS: 53 required documents, 652 links in 115 files |
 | E-017 | LOCAL | Secret pattern scan (assurance commit) | `947cd27` | 0 | PASS: 229 files |
 | E-018 | LOCAL | Documentation and secret checks (evidence-record commit) | `a2ba7de` | 0 | PASS: 53 required documents, 655 links in 115 files; 229 secret-scan files |
+| E-019 | LOCAL | Canonical `scripts/check.ps1` (working tree) | `41beaea` | 1 | `BLOCKED` at platform test: 22 CLI contract tests cannot start the existing debug binary (`os error 4551`); docs 53/656/115, secrets 229 and eval 12 passed first |
+| E-020 | LOCAL | Final bundle restore + clean-clone canonical check | `41beaea` | 0 | PASS: bundle verifies, clone HEAD `41beaea`; automatic restore drill and direct canonical check exit 0 (platform 270, eval 12, self-test 49, schema 20, search 28, docs 653/105, secrets 229) |
+| E-021 | LOCAL | Final docs/secrets check (working tree) | `41beaea` | 0 | PASS: 53 required documents, 656 links in 115 files; 229 secret-scan files |
 
 ## E-001: canonical check (blocked)
 
@@ -185,9 +188,9 @@ Tool versions: `cargo-audit 0.22.2`, `cargo-deny 0.20.2`; the advisory database 
 - Restored `scripts/check.ps1`: `BLOCKED` at `eval` Clippy; `proc-macro2` build script denied (`os error 4551`)
 - Automatic `%TEMP%` drill: `BLOCKED` at `eval` Clippy; `proc-macro2` and `serde_core` build scripts denied
 
-This is **not** a restore PASS. The last verified restore is E-008.
+This is **not** a restore PASS. At the time of this row, the last verified restore was E-008; E-020 now supersedes it for `41beaea`.
 
-## E-008: last verified restore (`3ee2ee2`)
+## E-008: earlier verified restore (`3ee2ee2`)
 
 - Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-125701.bundle`
 - SHA-256: `7E21EEEE456F36DE79056508BE718705D6294525D98E39C5F1C80C585C73FE19`
@@ -196,7 +199,7 @@ This is **not** a restore PASS. The last verified restore is E-008.
 - Manual fresh clone: `%USERPROFILE%\EKPI-restore-drill-3ee2ee2`; restored `scripts/check.ps1` exit 0
 - Restored check result: docs 503 links in 96 tracked files; secrets 220; eval 12; platform 261 (217 unit, 13 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health); self-test 49; schema 20; search 28 (20/20, 8/8, 4 role, 0 violations)
 
-This is the last restore-verified local revision. It does not transfer to `28b68cc`.
+This was the last restore-verified local revision before `41beaea`. It does not transfer to `28b68cc`. The current local restore evidence is E-020 (`41beaea`).
 
 ## E-009: local-simulated `age` drill (`56a944f`)
 
@@ -290,6 +293,62 @@ exit 0
 
 The three additional links are the assurance references in the S27 row. The file count is unchanged. This remains existence/link evidence; it does not establish content truth or a phase approval. The bundle created after this commit is recorded in the [backup log](../operations/backup-log.md).
 
+## E-019: canonical check in the working tree at `41beaea` (blocked)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-10-27 at `41beaea`:
+
+```text
+PASS: required documents present (53)
+PASS: relative Markdown links resolve (656 links in 115 files)
+PASS: no high-signal secret patterns in 229 file(s)
+PASS: eval fmt / clippy / test (12) / selftest
+PASS: platform fmt / clippy
+test result: ok. 217 passed; 0 failed
+test result: FAILED. 0 passed; 22 failed
+FAIL: platform test
+exit 1
+```
+
+The 22 failures are again process-creation failures for the existing `platform\target\debug\ekp_platform.exe` (`os error 4551`). This is a working-tree block, not an assertion failure.
+
+## E-020: final bundle restore and clean-clone canonical check (`41beaea`)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/backup.ps1
+# then, in the restored clone:
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-10-27:
+
+- Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-140645.bundle`
+- SHA-256: `7C5B337A44EB9EA8A791522A107F5FA136299E1BB5CE32755F14448150623B3C`
+- Size: 808,250 bytes
+- `git bundle verify`: okay; refs `refs/heads/main` and `HEAD` both at `41beaea`; complete history
+- Automatic restore drill: clone to `%TEMP%\ekpi-restore-drill`, HEAD `41beaea`; restored `scripts/check.ps1` exit 0; `RESTORE DRILL PASSED`
+- Direct canonical run in the clone: exit 0; `ALL CHECKS PASSED`
+- Clone check counts: docs 53 required/653 links in 105 tracked files; secrets 229; eval 12 + 10 self-test checks; platform 270 (217 unit, 22 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health); self-test 49 assertions; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations)
+
+This is a **local restore PASS** and a **revision-bound canonical PASS** in a fresh clone. It is not CI, staging, production or off-host evidence.
+
+## E-021: final docs/secrets check
+
+At clean `41beaea` in the working tree:
+
+```text
+PASS: required documents present (53)
+PASS: relative Markdown links resolve (656 links in 115 files)
+Documentation check PASSED
+PASS: no high-signal secret patterns in 229 file(s)
+exit 0
+```
+
+The fresh clone checks 105 tracked files (653 links); the working tree also contains ignored local pages, so it reports 115 files (656 links). Both runs cover all 53 required documents.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -305,4 +364,5 @@ The three additional links are the assurance references in the S27 row. The file
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the final `28b68cc` revision can be restored and checked on this host.
+- It does not show that the canonical check is reproducible in the working tree on this host; it passes in the fresh clone and remains blocked in the working tree.
+- It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.

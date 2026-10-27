@@ -96,7 +96,7 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Unlock steps | 1. Approve target and RPO/RTO ([proposal](../operations/backup-policy-draft.md)). 2. Configure encryption and key custody. 3. Transfer a bundle and ledger copy; record SHA-256 manifest. 4. Retrieve from off-host and restore into an isolated environment. 5. Verify `git bundle verify`, clone, restored check, ledger hash chain and measured RTO. 6. Schedule recurring drills and missed-run escalation. |
 | Acceptance criteria | At least one off-host artifact retrieved and restored; RPO/RTO met; key recovery tested without the operator holding the only key; result logged in [backup log](../operations/backup-log.md). |
 | Work that can continue now | Local bundle/restore, ledger copy procedure, local `age` drill, manifest and failure-message hardening. |
-| Status / evidence | `BLOCKED` / `UNASSIGNED`; B7 `Partial`; E-007/E-008/E-009 in [test-evidence.md](test-evidence.md). |
+| Status / evidence | `BLOCKED` / `UNASSIGNED`; B7 `Partial`; local A8 `Met` at `41beaea` (E-020); off-host evidence E-009 is `SIMULATED` only. |
 
 ## B-07 Security and operations owners
 
@@ -171,7 +171,7 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Unlock steps | 1. Capture the exact blocked path and policy ID. 2. Request a scoped exception or runner. 3. Re-run `scripts/check.ps1` on `6ae6134` or the target revision. 4. Restore the final bundle in a fresh clone and run the restored check. 5. Record the result with the policy/runner identifier. |
 | Acceptance criteria | Canonical check exit 0 on the target revision; final bundle restore check exit 0; no gate lowered or test skipped. |
 | Work that can continue now | Release-profile coverage, docs/secrets checks, bundle creation/verification, manual clone inspection. |
-| Status / evidence | `BLOCKED`; E-001/E-007; policy observed as `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` on this host. |
+| Status / evidence | `PARTIAL` — the `41beaea` clean clone passed the canonical check and the automatic restore drill; the working-tree canonical run is still `BLOCKED` at the 22 CLI contract tests. E-001/E-007/E-019/E-020; policy observed as `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` on this host. |
 
 ## B-12 Legal, privacy and compliance scope
 
@@ -190,7 +190,7 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 
 ## Priority and sequencing
 
-1. **B-11** unlocks A4 and A8 evidence on the current host; do this first if the host is the delivery environment.
+1. **B-11** still limits working-tree reproducibility; the clean-clone canonical and restore path now passes at `41beaea`, so A4/A8 are `Met` on that scope. Obtain an exception or CI runner for the working-tree path.
 2. **B-02** unlocks CI/branch-protection evidence and gives a clean canonical runner, reducing dependence on the managed host.
 3. **B-01** unlocks A1/A7 and the pilot-scope rows; it is the decisive Phase A gap.
 4. **B-08** unlocks independent review and the κ study.

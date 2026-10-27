@@ -13,9 +13,9 @@ This analysis separates a code defect from a test-environment block, a missing c
 
 | ID | Symptom | Root cause | Class | Fix / verification | Remaining risk |
 | --- | --- | --- | --- | --- | --- |
-| RC-01 | Canonical `scripts/check.ps1` exits 1 at the platform test | Windows Application Control blocks the freshly built unsigned debug `ekp_platform.exe` (`os error 4551`); 22 CLI contract tests cannot spawn it | Environment / host policy | Release-profile suite runs the same 22 tests (270 total, exit 0); canonical remains `BLOCKED` | No canonical PASS on this host; CI/another runner needed |
-| RC-02 | Final `28b68cc` restore fails in a fresh clone | Application Control blocks fresh-clone build scripts (`proc-macro2`, `serde_core`, `serde`, `quote`, `zmij`) at `eval` Clippy | Environment / host policy | Bundle verifies and clone reaches `28b68cc`; docs/secrets pass; restore check `BLOCKED` | Final revision not restore-verified; off-host/RPO/RTO absent |
-| RC-03 | CLI flags were silently ignored or combined | Permissive argument parsing treated missing values and unrelated flags as defaults or no-ops | Code defect | `23b8996` hardened the contract; 22 CLI contract tests pass in release profile | Canonical execution blocked by RC-01 |
+| RC-01 | Canonical `scripts/check.ps1` exits 1 in the working tree at the platform test | Windows Application Control blocks the existing unsigned debug `ekp_platform.exe` (`os error 4551`); 22 CLI contract tests cannot spawn it | Environment / host policy | Release-profile suite runs the same 22 tests (270 total, exit 0); at `41beaea` a fresh clone ran the canonical check to exit 0; the working-tree run remains `BLOCKED` | Working-tree reproducibility requires an exception or CI runner |
+| RC-02 | The `28b68cc` restore failed in a fresh clone | Application Control blocked fresh-clone build scripts (`proc-macro2`, `serde_core`, `serde`, `quote`, `zmij`) at `eval` Clippy | Environment / host policy | `28b68cc` stays `BLOCKED`; the `41beaea` final bundle verifies, clones and passes the automatic restore drill with canonical check exit 0 | Earlier revision remains unverified; off-host/RPO/RTO absent |
+| RC-03 | CLI flags were silently ignored or combined | Permissive argument parsing treated missing values and unrelated flags as defaults or no-ops | Code defect | `23b8996` hardened the contract; 22 CLI contract tests pass in release profile and in the `41beaea` clean-clone canonical run | Working-tree canonical execution blocked by RC-01 |
 | RC-04 | `--llm` could imply a model capability that did not exist | No provider adapter; a mock was the only implementation, and the output needed explicit labeling | Code/contract and scope | `--llm` accepts only `mock`, requires `--search`, labels output `mock-answer`, requires `[doc_id@version]`; other providers exit 2 before data/audit | No AI quality claim; no real provider |
 | RC-05 | `--audit-log` could be mistaken for an append-only audit service | The CLI writes one local JSON event and replaces the target file; no authenticated actor or durable audit store | Scope / documentation | Contract states the local-only behavior; `--audit-log` requires `--search`; actor is `search-cli` | Not an audit service; ledger is not WORM |
 | RC-06 | Legacy `--import-wellfit` could overwrite unreadable data or mix modes | The importer did not fail closed on an unreadable `docs.json` and could be combined with unrelated modes | Code defect | `--import-wellfit` is standalone; unreadable input exits 1 without overwrite; imported documents go through `validate_shape()` | Legacy path remains a local migration tool |
@@ -51,9 +51,11 @@ PLATFORM_EXIT=0
 
 `eval` has 12 tests in both profiles; self-test, schema and the 28-case search gate pass in release.
 
+At `41beaea`, the automatic restore drill built a fresh debug binary in a clean clone and the canonical `scripts/check.ps1` exited 0 (docs 653/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). A second direct canonical run in the same clone also exited 0. The working tree at the same revision still exited 1 at the 22 CLI contract tests because its existing `platform\target\debug\ekp_platform.exe` was denied. The pass is therefore clean-clone/local, not working-tree or CI evidence.
+
 ### Root cause
 
-The debug test harness is a newly created, unsigned executable. The host's Application Control policy denies it at process creation (`ERROR_VIRUS_INFECTED` / code 4551 is used here as the host's denial code). The failure occurs before the test body runs, so it is not an assertion failure or a product regression. The release binary is executable, which is why the same tests pass with `--release`.
+The host's Application Control policy can deny a newly created or existing unsigned debug executable at process creation (`ERROR_VIRUS_INFECTED` / code 4551 is used here as the host's denial code). The denial is path/artifact-specific: the working-tree binary was denied while a freshly built clone binary was allowed. The failure occurs before the test body runs, so it is not an assertion failure or a product regression. The release binary and the clone build were executable, which is why the same tests pass there.
 
 ### Why this was not "fixed" by changing the gate
 
@@ -70,25 +72,36 @@ The existing `scripts/check.ps1` already fails non-zero and prints the failing c
 
 ### Observed evidence
 
+Earlier blocked attempt:
+
 - Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-132905.bundle`
 - SHA-256: `B9E398CAF38DCC0311DFE371E735846021D573D58312C8F9A8D0613392031C58`
 - `git bundle verify`: okay, complete history
 - Manual clone `%USERPROFILE%\EKPI-restore-drill-28b68cc`: HEAD `28b68cc`; docs 505 links in 96 tracked files PASS; secrets 220 PASS
 - Restored `scripts/check.ps1`: failed at `eval` Clippy with `proc-macro2` build-script denial (`os error 4551`)
 
+Final assurance bundle:
+
+- Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-140645.bundle`
+- SHA-256: `7C5B337A44EB9EA8A791522A107F5FA136299E1BB5CE32755F14448150623B3C`
+- `git bundle verify`: okay, complete history, HEAD `41beaea`
+- Automatic TEMP drill: clone HEAD `41beaea`; restored `scripts/check.ps1` exit 0; `RESTORE DRILL PASSED`
+- Direct clean-clone canonical rerun: exit 0; platform 270, eval 12, self-test 49, schema 20, search 28, docs 653/105, secrets 229
+
 ### Root cause
 
-A fresh clone has no prebuilt `target/` artifacts. Cargo must compile and execute build scripts (proc-macro crates). Application Control denies those newly built, unsigned executables. This is the same policy as RC-01, applied at a different stage. The bundle is not corrupt and the revision is present; the environment cannot execute the build.
+A fresh clone has no prebuilt `target/` artifacts. Cargo must compile and execute build scripts (proc-macro crates). Application Control can deny those newly built, unsigned executables. This is the same policy as RC-01, applied at a different stage. The bundle was not corrupt and the revision was present; the environment intermittently refused to execute the build. At `41beaea` the policy allowed the build and the restored check completed.
 
 ### Why `3ee2ee2` passed and `28b68cc` did not
 
-The policy is intermittent and path/artifact dependent. `3ee2ee2` was restore-verified by a manual clone on the same host before the policy began denying the relevant build scripts. That historical PASS does not transfer to `28b68cc`. The earlier `7fd0c0b` and `56a944f` drills also passed. The later `c77fec4`, `bc7671a` and `28b68cc` restores are all `BLOCKED`.
+The policy is intermittent and path/artifact dependent. `3ee2ee2` was restore-verified by a manual clone before the policy began denying the relevant build scripts; `28b68cc` was blocked later. `41beaea` then passed automatically. Historical PASSes and blocks do not transfer across revisions. The `c77fec4`, `bc7671a` and `28b68cc` rows remain `BLOCKED` and are not counted; `41beaea` is the current verified restore.
 
 ### Correct handling
 
-- Keep the `28b68cc` row `BLOCKED`, not PASS.
-- Keep the last verified restore revision at `3ee2ee2` and link it explicitly as historical.
-- Re-run the final restore after an approved host-policy exception or on a clean approved runner; record the new result in the [backup log](../operations/backup-log.md).
+- Keep the `28b68cc` row `BLOCKED`, not PASS; keep the `41beaea` row as a local automatic-restore PASS.
+- Record `41beaea` as the current restore-verified revision; keep `3ee2ee2` as the previous verified revision.
+- Keep the working-tree canonical block visible; the clean-clone PASS does not transfer to the working-tree path.
+- Re-run the restore in an approved environment and record each new result in the [backup log](../operations/backup-log.md).
 - Do not rewrite the bundle, reset history or bypass the check to manufacture a pass.
 
 ## RC-03: CLI contract hardening
@@ -110,7 +123,7 @@ Commit `23b8996` (`feat(cli): enforce the mock-only LLM and local audit contract
 - `--import-wellfit` is standalone; it fails closed on an unreadable `docs.json`, does not overwrite it, and validates the imported documents before saving.
 - Missing flag values, unknown flags and mixed modes are usage errors (exit `2`), and do not create report output.
 
-The 22 tests pass in the release profile at `6ae6134` (E-002). The canonical run remains blocked by RC-01, so the same tests are not a canonical PASS.
+The 22 tests pass in the release profile at `6ae6134` (E-002) and in the `41beaea` clean-clone canonical run (E-020). The working-tree canonical run remains blocked by RC-01, so that path is not a canonical PASS. The clean-clone PASS is local and revision-bound, not CI.
 
 ## RC-04/RC-05/RC-06: mock LLM, local audit and legacy import boundaries
 

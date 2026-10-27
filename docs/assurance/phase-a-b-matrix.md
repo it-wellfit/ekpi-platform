@@ -3,7 +3,7 @@
 - **Status:** Active; Phase A **not approved**, Phase B **blocked**
 - **Owner:** Product + QA + Engineering; business, security, operations, data and independent-review roles are `UNASSIGNED`
 - **Last reviewed:** 2026-10-27
-- **Evidence baseline:** `6ae6134` (2026-10-27), plus the historical revision named in each row
+- **Evidence baseline:** `6ae6134` (2026-10-27) for code, and `41beaea` (2026-10-27) for the final clean-clone canonical and restore evidence
 - **Canonical gate:** [Phase A/B gates](../quality/phase-gates.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
 
@@ -11,33 +11,33 @@ This matrix expands the canonical gate into the fields required for an auditable
 
 ## Status rules
 
-- `PASS` requires the named command or drill to run on the named revision and exit 0. No row in this matrix is `PASS` at `6ae6134`.
-- A release-profile result is not a canonical `scripts/check.ps1` pass.
+- `PASS` requires the named command or drill to run on the named revision and exit 0. At `6ae6134` no row is `PASS`; at `41beaea`, A4 is `MET` on the clean-clone canonical run and A8 is `MET` on the local restore drill.
+- A release-profile result is not a canonical `scripts/check.ps1` pass. A clean-clone canonical pass is revision-bound and is not CI, staging or production evidence.
 - A local clone is not CI. A simulated `age` drill is not an off-host backup. A self-review is not independent review.
 - A row is `PARTIAL` when some evidence exists but the full condition is unmet; it is `BLOCKED` when an external owner, environment or approval is required; it is `NOT MET` when the required condition is absent.
 - The overall phase result follows the weakest mandatory row, not the majority.
 
 ## Phase A summary
 
-| ID | Dimension | Status at `6ae6134` | Strongest current evidence | Decisive remaining gap |
+| ID | Dimension | Status at `41beaea` (code baseline `6ae6134`) | Strongest current evidence | Decisive remaining gap |
 | --- | --- | --- | --- | --- |
 | A1 | User value | `NOT MET` | Prepared [pilot runbook](../operations/pilot-runbook.md) and synthetic workflow tests | No named pilot owner or representative user; no real workflow record |
 | A2 | Functional correctness | `PARTIAL` | 67-case corpus, unit/integration tests, self-test, search gate | Target acceptance cases AT-01–AT-31 are `NOT RUN`; pilot workflow not exercised |
 | A3 | Data correctness | `PARTIAL` | Version binding, rule activity, state, replay and schema tests | No real-workflow dataset, no independent review, no database transaction semantics |
-| A4 | Engineering quality | `PARTIAL` | Release profile: platform 270, eval 12, self-test 49, schema 20, search 28; fmt/Clippy PASS | Canonical `scripts/check.ps1` exits 1 because host policy blocks the debug binary (`os error 4551`) |
+| A4 | Engineering quality | `MET` (local clean clone) | Fresh clone at `41beaea`: canonical `scripts/check.ps1` exit 0, platform 270, eval 12, self-test 49, schema 20, search 28; working-tree run still blocked | Working-tree canonical remains `BLOCKED` by host policy; no CI |
 | A5 | Security | `PARTIAL` | Local PBKDF2 session, Viewer/Editor/Approver, CSRF guard, CSP, body cap, boundary tests | No enterprise IdP, MFA, recovery, persistent identity, access review or tenant isolation |
 | A6 | Maintainability | `PARTIAL` | Install, configuration, troubleshooting, runbook and evidence pages | No named operator, no independent handoff dry run |
 | A7 | Traceability | `PARTIAL` | Requirement → spec → code → test → release rows in the register | No pilot run ID, no validated row, no real-user acceptance |
-| A8 | Backup and restore | `PARTIAL` | `3ee2ee2` local fresh-clone restore PASS; `28b68cc` bundle verifies and clones | Final `28b68cc` restore check is `BLOCKED` at `eval` Clippy by host policy |
+| A8 | Backup and restore | `MET` (local) | `41beaea` bundle verifies, clones and the automatic restore drill exits 0; logged | No off-host copy, approved RPO/RTO, key custody or scheduled drill (B7) |
 | A9 | AI quality | `PARTIAL` | Fixed 67-case verdict corpus and 28-case lexical retrieval gate | No LLM/agent/tool path; tool-failure dimension absent; mock output is not AI quality |
 | A10 | Documentation and handoff | `PARTIAL` | Canonical docs map, commands, limits and evidence pages | No pilot handoff record or new-operator acceptance |
 | A11 | Review and improvement | `PARTIAL` | Local review, retro template, improvement register | No independent reviewer, no second annotator, no signed review |
 
-**Phase A decision:** `NOT APPROVED`. A1 is `NOT MET`; A2/A3/A5/A6/A7/A8/A9/A10/A11 are `PARTIAL`; A4 is `PARTIAL` because the canonical check is blocked. A passing release-profile suite cannot waive A1 or the pilot-scope gaps.
+**Phase A decision:** `NOT APPROVED`. A1 is `NOT MET`; A2/A3/A5/A6/A7/A9/A10/A11 are `PARTIAL`; A4 and A8 are `MET` on the local clean-clone/restore scope. A passing canonical clone and restore drill cannot waive A1 or the unmet pilot, security, AI and independent-review scope.
 
 ## Phase B summary
 
-| ID | Dimension | Status at `6ae6134` | Strongest current evidence | Decisive remaining gap |
+| ID | Dimension | Status at `41beaea` | Strongest current evidence | Decisive remaining gap |
 | --- | --- | --- | --- | --- |
 | B1 | Security and governance | `BLOCKED` | Local threat model, boundary tests, secret scan, SBOM, dependency audit | No security owner, IdP/MFA, tenant model, approved data policy or production target |
 | B2 | Reliability and observability | `PARTIAL` | Request timeout, concurrency bound, JSON access log, correlation id, `/metrics`, liveness `/healthz` | No SLI/SLO, error budget, traces, alerting, retry/backoff, circuit breaker or fault drill |
@@ -75,7 +75,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | Primary use cases and high-risk boundary cases pass for the approved scope. |
-| Actual state | `PARTIAL`. Release-profile tests pass at `6ae6134`; the canonical debug-profile run is blocked. The target acceptance matrix AT-01–AT-31 is not executed. |
+| Actual state | `PARTIAL`. Release-profile tests pass at `6ae6134`; the clean-clone canonical check also passes at `41beaea`; the working-tree canonical run is blocked. The target acceptance matrix AT-01–AT-31 is not executed. |
 | Defect and root cause | Scope gap and host policy. The current synthetic 67-case corpus covers the prototype; the target acceptance cases require approved workflows and a runnable canonical environment. |
 | Impact and risk | A regression outside the synthetic corpus or target cases could ship unnoticed. A blocked canonical run prevents a single-command acceptance claim. |
 | Fix / next action | Execute the target acceptance cases on the approved scope; add regression tests for every accepted case; restore a host/CI path that can run the canonical check. |
@@ -84,7 +84,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 | External role / environment | QA owner; pilot workflow; canonical host or CI runner. |
 | Evidence | E-002, E-003, E-004 in [test-evidence.md](test-evidence.md); [regression checklist](../development/regression-checklist.md). |
 | Owner | QA (role) + Engineering; named QA owner `UNASSIGNED` |
-| Final status / blocker | `PARTIAL` — AT-01–AT-31 not run; canonical check blocked. |
+| Final status / blocker | `PARTIAL` — AT-01–AT-31 not run; the working-tree canonical run is blocked (the clean clone passes). |
 
 ### A3 — Data correctness
 
@@ -107,16 +107,16 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | Format, Clippy with warnings denied, unit/integration tests and self-tests pass through the canonical entry point. |
-| Actual state | `PARTIAL`. At `6ae6134`, `scripts/check.ps1` exits 1 at the platform test: all 22 CLI contract tests cannot start `platform\target\debug\ekp_platform.exe` (`os error 4551`, Windows Application Control). The release profile passes platform 270 and eval 12. |
-| Defect and root cause | Host security policy blocks freshly built unsigned debug executables and fresh-clone build scripts. This is not a source-code failure: the same 22 tests pass in the release profile, and all 217 unit tests pass in the debug profile before the contract suite. |
-| Impact and risk | The canonical gate cannot be cited as PASS on this host. A release-profile substitute is useful behavioral coverage but does not satisfy the exact canonical entry point. |
-| Fix / next action | Obtain an approved Application Control exception for the repository build outputs, or run the canonical check in an approved CI/POSIX runner; add a preflight that reports `BLOCKED` distinctly from a test failure. Do not redefine canonical as release-only. |
+| Actual state | `MET` (local). At `41beaea`, the restored final bundle's fresh clone ran the canonical `scripts/check.ps1` twice and exited 0: docs 53 required/653 links in 105 tracked files, secrets 229, eval 12, platform 270 (217 unit, 22 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health), self-test 49 assertions, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations). The same script in the working tree still exits 1 at the 22 CLI contract tests because the existing `platform\target\debug\ekp_platform.exe` is denied (`os error 4551`, Windows Application Control). |
+| Defect and root cause | The working-tree block is an artifact/host-policy issue, not a source-code failure: the same 22 tests pass in the release profile, and a freshly built clone ran the full canonical check to exit 0. The debug binary already present in the working tree is denied; the clone's newly built binary was allowed. |
+| Impact and risk | The canonical check is proven on the clean clone at `41beaea`, but not yet reproducible in the working tree on this host. CI has never run because there is no remote. |
+| Fix / next action | Keep the clean-clone evidence and log the working-tree block; obtain a scoped Application Control exception or an approved CI/POSIX runner for working-tree reproducibility. Do not redefine canonical as release-only. |
 | Acceptance test | `powershell -ExecutionPolicy Bypass -File scripts/check.ps1` at the target revision, with the full output and exit code retained. |
 | Threshold | Exit 0; docs, secrets, fmt, Clippy, all tests, both self-tests, schema and search gate pass in the same run. |
 | External role / environment | Host/endpoint security owner for the Application Control policy; or an approved CI runner. The policy exception is `UNASSIGNED`. |
-| Evidence | E-001 (blocked canonical), E-002/E-003 (release profile), E-004/E-005 (docs/secrets) in [test-evidence.md](test-evidence.md). |
+| Evidence | E-002/E-003 (release profile), E-004/E-005 (docs/secrets), E-019 (working-tree block at `41beaea`), E-020 (clean-clone canonical PASS at `41beaea`) in [test-evidence.md](test-evidence.md). |
 | Owner | Engineering + QA |
-| Final status / blocker | `PARTIAL` — canonical check `BLOCKED`; release-profile results are not a canonical PASS. See [B-11](external-blockers.md#b-11-host-application-control-policy). |
+| Final status / blocker | `MET` — canonical check PASS in the fresh clone at `41beaea`; the working-tree run is `BLOCKED` by host policy and CI is absent. See [B-11](external-blockers.md#b-11-host-application-control-policy). |
 
 ### A5 — Security, identity and isolation
 
@@ -155,7 +155,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | Each in-scope requirement links to specification, implementation, test, run ID, commit SHA, result and validation evidence. |
-| Actual state | `PARTIAL`. The [traceability register](../traceability/register.md) records S1–S26, A-05/A-06, release evidence and verified/validated status. There is no pilot run ID or validated row. |
+| Actual state | `PARTIAL`. The [traceability register](../traceability/register.md) records S1–S27, A-05/A-06, release evidence and verified/validated status. There is no pilot run ID or validated row. |
 | Defect and root cause | No real pilot execution exists, so the final `Validation` link is absent. Synthetic tests can establish `Verified` only. |
 | Impact and risk | An auditor can trace code and tests, but cannot trace a real user outcome or acceptance decision. |
 | Fix / next action | Add a pilot run record with requirement IDs, workflow ID, dataset hash, commit, environment, operator role, expected/actual result and evidence path; mark `Verified` vs `Validated` explicitly. |
@@ -171,16 +171,16 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | A backup exists from the first important version; a fresh clone passes the restore drill; the result is logged. |
-| Actual state | `PARTIAL`. Local fresh-clone restore PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f` and `3ee2ee2`. The final `28b68cc` bundle verifies and clones, but its restore check is `BLOCKED` at `eval` Clippy (`proc-macro2`/`serde_core` build scripts, `os error 4551`). |
-| Defect and root cause | Host Application Control blocks execution of freshly built build scripts in a fresh clone. The bundle content is present and the clone reaches the recorded revision; the check cannot complete. This is environmental, not a missing commit. |
-| Impact and risk | The final delivery revision is not restore-verified. A restore on the same host may fail even though the bundle is intact. Off-host recovery, RPO/RTO and key custody remain absent. |
-| Fix / next action | Obtain an approved host-policy exception or run the restore in an approved clean environment; rerun `scripts/check.ps1` in the clone; record the result. Keep the `28b68cc` row `BLOCKED` until then. |
+| Actual state | `MET` (local). Local fresh-clone restore PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2` and `41beaea`. The final `41beaea` bundle `ekpi-platform-2026-10-27-140645.bundle` (SHA-256 `7C5B337A…0623B3C`) passed `git bundle verify`, cloned to HEAD `41beaea`, and the automatic restore drill ran the restored `scripts/check.ps1` to exit 0 (docs 653/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). Earlier `28b68cc`, `bc7671a`, `c77fec4` and `198d5f3` attempts remain `BLOCKED` and are not counted. |
+| Defect and root cause | The earlier final-revision blocks were caused by host Application Control denying freshly built build scripts. That policy did not block the `41beaea` clean build; the automatic drill completed. The underlying policy remains intermittent and host-specific. |
+| Impact and risk | The final assurance revision is now restore-verified on this host. Off-host recovery, RPO/RTO, key custody and scheduled drills remain absent, so this does not satisfy B7. |
+| Fix / next action | Keep the `41beaea` bundle and log row; retain the blocked earlier rows. For Phase B, approve an off-host target and key custody, define RPO/RTO, and schedule restore drills. |
 | Acceptance test | `git bundle verify`; fresh clone; `git rev-parse HEAD` equals the recorded revision; restored `scripts/check.ps1` exits 0. |
 | Threshold | All four steps pass on the final bundle; log row records revision, bundle SHA-256, environment, operator and result. |
-| External role / environment | Host/endpoint security owner; clean restore environment. `UNASSIGNED`. |
-| Evidence | E-007/E-008/E-009 in [test-evidence.md](test-evidence.md); [backup log](../operations/backup-log.md); [release evidence](../operations/release-evidence-bundle.md). |
+| External role / environment | Host/endpoint security owner for reproducibility; off-host storage and key custodian for B7. `UNASSIGNED`. |
+| Evidence | E-007/E-008/E-009/E-020 in [test-evidence.md](test-evidence.md); [backup log](../operations/backup-log.md); [release evidence](../operations/release-evidence-bundle.md). |
 | Owner | Engineering/Operations; named backup owner `UNASSIGNED` |
-| Final status / blocker | `PARTIAL` — final restore `BLOCKED`; last verified restore `3ee2ee2`; no off-host copy or RPO/RTO. See [B-06](external-blockers.md#b-06-off-host-backup-key-custody-and-rporo). |
+| Final status / blocker | `MET` (local) — `41beaea` bundle and fresh-clone restore PASS are logged. Off-host copy, approved RPO/RTO and key custody remain `BLOCKED` under [B-06](external-blockers.md#b-06-off-host-backup-key-custody-and-rporo). |
 
 ### A9 — AI and agent quality
 
@@ -203,7 +203,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | Scope, known limits, commands, recovery and evidence are current and readable by a new operator. |
-| Actual state | `PARTIAL`. The docs map, release evidence, phase gates, backup log and this assurance index are current at `6ae6134`; no pilot handoff record exists. |
+| Actual state | `PARTIAL`. The docs map, release evidence, phase gates, backup log and this assurance index are current at `41beaea`; no pilot handoff record exists. |
 | Defect and root cause | No real operator has consumed the documentation; the pilot record is absent. |
 | Impact and risk | Documentation may be internally consistent but insufficient for an external handoff. |
 | Fix / next action | Run the A6 handoff dry run; record questions, missing commands and fixes; link the signed handoff record. |
@@ -349,7 +349,7 @@ The reviewer must be able to reproduce the evidence without trusting the impleme
 | Field | Record |
 | --- | --- |
 | Requirement | Off-host encrypted backup; defined RPO/RTO; scheduled restore tests; integrity check; data-loss boundary; incident path. |
-| Actual state | `PARTIAL`. Local Git bundle + restore drills pass through `3ee2ee2`; final `28b68cc` restore is `BLOCKED` by host policy. The `age` drill at `56a944f` encrypted/decrypted byte-identically to `%TEMP%` and is labeled `local-simulated-off-host`. |
+| Actual state | `PARTIAL`. Local Git bundle + restore drills pass through `41beaea`; the final assurance bundle verifies, clones to `41beaea` and the automatic restore drill exits 0. The earlier `28b68cc` restore is `BLOCKED` by host policy. The `age` drill at `56a944f` encrypted/decrypted byte-identically to `%TEMP%` and is labeled `local-simulated-off-host`. |
 | Defect and root cause | No approved off-host target, key custodian, RPO/RTO, retention or scheduled restore programme. |
 | Impact and risk | A host loss can lose uncommitted work, the external ledger and the local bundle. The `age` drill does not prove off-host availability or key recovery. |
 | Fix / next action | Approve target/failure domain and key custody; implement transfer and immutability/versioning; schedule restores; test ledger restore and hash chain; measure RTO; record off-host receipt. |
@@ -380,7 +380,7 @@ The reviewer must be able to reproduce the evidence without trusting the impleme
 
 | Decision | Result | Basis |
 | --- | --- | --- |
-| Phase A approved? | **No** | A1 `NOT MET`; multiple mandatory pilot-scope rows `PARTIAL`; A4 canonical `BLOCKED`; A8 final restore `BLOCKED` |
+| Phase A approved? | **No** | A1 `NOT MET`; A2/A3/A5/A6/A7/A9/A10/A11 `PARTIAL`; A4 and A8 `MET` only on the local clean-clone/restore scope; no pilot, enterprise identity or independent review |
 | Phase B approved? | **No** | B1/B4/B5/B6/B8 `BLOCKED`; B2/B3/B7 `PARTIAL` with no approved workload, SLO, off-host target or RPO/RTO |
 | Can the system be called production-ready? | **No** | No deployment target, enterprise identity, tenant isolation, off-host recovery, SLO or operations owner |
 | Can the system be called AI-validated? | **No** | Only a mock LLM and deterministic lexical evaluation exist |

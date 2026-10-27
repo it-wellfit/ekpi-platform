@@ -2,7 +2,7 @@
 
 - **Status:** Final for the 2026-10-27 local evidence baseline; **Phase A not approved**, **Phase B blocked**
 - **Owner:** Engineering + QA; business, security, operations, data and independent-review roles `UNASSIGNED`
-- **Evidence revision:** `a2ba7de` (evidence-record commit); assurance-document commit `947cd27`; code baseline `6ae6134`; release-profile checks re-run 2026-10-27
+- **Evidence revision:** `41beaea` (final assurance bundle; clean-clone canonical PASS and restore PASS); code baseline `6ae6134`; release-profile checks re-run 2026-10-27
 - **Environment:** Single managed Windows 11 host; Windows PowerShell 5.1; Rust 1.99.1; local loopback only; no remote, CI, staging or production
 - **Matrix:** [phase-a-b-matrix.md](phase-a-b-matrix.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
@@ -20,7 +20,7 @@ This round created the missing assurance layer and connected it to the existing 
 | [phase-a-b-matrix.md](phase-a-b-matrix.md) | A1–A11 and B1–B8 requirement/status/defect/fix/test/threshold/owner/evidence records |
 | [root-cause-analysis.md](root-cause-analysis.md) | RC-01–RC-12, including the canonical/restore host-policy root cause |
 | [source-matrix.md](source-matrix.md) | Ten official sources plus four supporting tools, with version/date, applicability, evidence and limits |
-| [test-evidence.md](test-evidence.md) | E-001–E-017: commands, environment, revision, exit codes, results and artifact paths |
+| [test-evidence.md](test-evidence.md) | E-001–E-021: commands, environment, revision, exit codes, results and artifact paths |
 | [external-blockers.md](external-blockers.md) | B-01–B-12: owner, missing resource, minimum access, unlock steps and acceptance criteria |
 | [security-threat-model.md](security-threat-model.md) | Trust boundaries, TH-01–TH-15 assurance view, AST-01–AST-08, residual risk and non-claims |
 | [operations-and-recovery.md](operations-and-recovery.md) | Local start/stop, monitoring, incident, backup/restore and DR procedure with explicit gaps |
@@ -43,8 +43,8 @@ These were completed in the preceding delivery commits and are re-verified here 
 ### 1.3 What this round did not do
 
 - It did not change product behavior. It did not lower a gate, skip a failing test or rewrite history.
-- It did not make the canonical check pass. The host Application Control block remains.
-- It did not verify the final `28b68cc` restore. It remains `BLOCKED`.
+- The canonical check passed in a fresh clone at `41beaea`; the working-tree run still fails because the existing debug binary is denied by host Application Control.
+- It created the `41beaea` final bundle and verified its automatic restore (exit 0). The earlier `28b68cc` row remains `BLOCKED` and is retained as history.
 - It did not create a remote, CI run, PR, branch protection, IdP, tenant model, AI provider, pilot or off-host backup.
 - It did not obtain an independent review.
 
@@ -54,9 +54,10 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 
 | Check | Command (working directory) | Exit | Result |
 | --- | --- | --- | --- |
-| Canonical gate | `scripts/check.ps1` (root) | **1** | **BLOCKED** at platform test: 22 CLI contract tests cannot start the debug binary (`os error 4551`) |
-| Docs | `scripts/check-docs.ps1` (root) | 0 | PASS: 53 required, 655 links in 115 files at `a2ba7de` (652 at `947cd27`; 44/508/106 at the `6ae6134` code baseline) |
-| Secrets | `scripts/check-secrets.ps1` (root) | 0 | PASS: 229 files at `a2ba7de` (220 at the `6ae6134` code baseline) |
+| Canonical gate (working tree) | `scripts/check.ps1` (root) | **1** | **BLOCKED** at platform test: 22 CLI contract tests cannot start the existing debug binary (`os error 4551`) |
+| Canonical gate (clean clone) | `scripts/check.ps1` (fresh clone of the `41beaea` bundle) | **0** | **PASS**: docs 53 required/653 links in 105 tracked files, secrets 229, eval 12, platform 270, self-test 49, schema 20, search 28 |
+| Docs | `scripts/check-docs.ps1` (root) | 0 | PASS: 53 required, 656 links in 115 files at `41beaea` (652 at `947cd27`; 44/508/106 at the `6ae6134` code baseline) |
+| Secrets | `scripts/check-secrets.ps1` (root) | 0 | PASS: 229 files at `41beaea` (220 at the `6ae6134` code baseline) |
 | Format | `cargo fmt -- --check` (both crates) | 0 | PASS |
 | Clippy | `cargo clippy --locked --all-targets -- -D warnings` (both crates) | 0 | PASS, no warnings |
 | Release tests | `cargo test --release --locked` (platform) | 0 | PASS: 270 (217 + 22 + 2 + 10 + 8 + 7 + 4) |
@@ -65,8 +66,9 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | Schema | `cargo run --release --locked --bin ekp_platform -- --declared-rules-schema` | 0 | PASS: 20 records |
 | Search gate | `cargo run --release --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json` | 0 | PASS: 28 cases, 20/20 top-1, 8/8 refusals, 4 role cases (2/2), 0 violations |
 | Supply chain | `scripts/check-supply-chain.ps1` | 0 | PASS: 72/12 deps, 0 vulnerabilities; `cargo deny` OK |
-| Final bundle | `git bundle verify` + clone + restore check | verify 0; restore 1 | Bundle verifies/clones; restore **BLOCKED** at `eval` Clippy |
-| Last restore | `3ee2ee2` fresh clone + `scripts/check.ps1` | 0 | PASS (historical/local) |
+| Final bundle | `git bundle verify` + automatic restore at `41beaea` | verify 0; restore 0 | **PASS**: bundle `ekpi-platform-2026-10-27-140645.bundle`, SHA-256 `7C5B337A…0623B3C`; clone HEAD `41beaea`; restored `scripts/check.ps1` exit 0 |
+| Earlier final bundle | `28b68cc` bundle verify/clone/restore | verify 0; restore 1 | Bundle verifies/clones; restore **BLOCKED** at `eval` Clippy (historical, not counted) |
+| Last restore | `41beaea` fresh clone + `scripts/check.ps1` | 0 | PASS (local); previous verified restore `3ee2ee2` |
 | Off-host drill | `scripts/backup-offhost.ps1 -Drill` | 0 | PASS for encryption/decryption; `SIMULATED`, not off-host |
 | CI / PR / branch protection | n/a | n/a | **NOT RUN / BLOCKED**: no remote, no CI, no protection |
 | Staging / production | n/a | n/a | **NOT RUN / BLOCKED**: no target |
@@ -85,18 +87,18 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | ID | Status | Reason |
 | --- | --- | --- |
 | A1 User value | **NOT MET** | No named pilot owner or representative user; no real workflow record. Prepared runbook and synthetic tests are not user acceptance. |
-| A2 Functional correctness | **PARTIAL** | Release-profile tests and 67-case corpus pass; canonical run blocked; target AT-01–AT-31 not run. |
+| A2 Functional correctness | **PARTIAL** | Release-profile tests and 67-case corpus pass; clean-clone canonical passes at `41beaea`; working-tree canonical blocked; target AT-01–AT-31 not run. |
 | A3 Data correctness | **PARTIAL** | Version/state/replay/schema tests pass; no real-workflow dataset, independent review or DB transaction semantics. |
-| A4 Engineering quality | **PARTIAL** | Release 270/12, self-test/schema/search PASS; canonical `scripts/check.ps1` exit 1 due to host policy. Release profile is not a canonical PASS. |
+| A4 Engineering quality | **MET** (local clean clone) | Fresh clone at `41beaea`: canonical `scripts/check.ps1` exit 0, platform 270, eval 12, self-test 49, schema 20, search 28. Working-tree run still `BLOCKED` by host policy. |
 | A5 Security | **PARTIAL** | Local session/role/CSRF hardening tested; no IdP, MFA, recovery, persistent identity, access review or tenant isolation. |
 | A6 Maintainability | **PARTIAL** | Docs/runbooks exist; no named operator or handoff dry run. |
 | A7 Traceability | **PARTIAL** | Register links requirements/code/tests/releases; no pilot run ID or validated row. |
-| A8 Backup/restore | **PARTIAL** | `3ee2ee2` restore PASS (local); final `28b68cc` restore BLOCKED at build scripts; no off-host/RPO/RTO. |
+| A8 Backup/restore | **MET** (local) | `41beaea` bundle verifies, clones and the automatic restore drill exits 0; logged. No off-host/RPO/RTO. |
 | A9 AI quality | **PARTIAL** | Fixed deterministic corpus/retrieval gate; no LLM/agent/tool path; tool-failure gap; mock is not AI quality. |
 | A10 Docs/handoff | **PARTIAL** | Docs map and evidence current; no pilot handoff record. |
 | A11 Review/improvement | **PARTIAL** | Local self-review/retro; no independent reviewer or second annotator. |
 
-**Phase A decision: NOT APPROVED.** A1 is the decisive unmet requirement. A4 and A8 are additionally blocked at the final revision. No combination of release-profile tests, simulated drills or self-review can close these rows.
+**Phase A decision: NOT APPROVED.** A1 is the decisive unmet requirement. A4 and A8 are `MET` only on the local clean-clone/restore scope; A2/A3/A5/A6/A7/A9/A10/A11 remain `PARTIAL`. No combination of release-profile tests, simulated drills or self-review can close A1 or the enterprise-identity, AI and independent-review gaps.
 
 ## 4. Phase B status
 
@@ -139,20 +141,24 @@ Detailed unlock steps, minimum access and acceptance criteria are in [external-b
 - The repository is a runnable local prototype with a deterministic adjudication core and a loopback governance workbench.
 - On `6ae6134`, the release-profile suite passes: platform 270, eval 12; self-test 49 assertions; schema 20 records; search gate 28 cases with 20/20 top-1, 8/8 refusals, 4 role cases and 0 violations.
 - Format, Clippy, docs links, secret patterns and dependency audits pass locally on the named revision.
-- A local Git bundle for `3ee2ee2` was restored and checked successfully; the `56a944f` `age` drill encrypted and decrypted byte-identically to a local-simulated destination.
+- Local Git bundles for `3ee2ee2` and `41beaea` were restored and checked successfully; the `56a944f` `age` drill encrypted and decrypted byte-identically to a local-simulated destination.
 - A local session login, role checks, CSRF guard, CSP and request limits are implemented and tested.
-- The final `28b68cc` bundle verifies and clones, but its restored check is blocked by host policy.
+- The `41beaea` final bundle `ekpi-platform-2026-10-27-140645.bundle` verifies, clones to `41beaea`, and its automatic restore drill ran the restored canonical `scripts/check.ps1` to exit 0.
+- In that same fresh clone, a direct `powershell -ExecutionPolicy Bypass -File scripts/check.ps1` also exited 0 with platform 270, eval 12, self-test 49, schema 20, search 28 and docs 653 links in 105 tracked files.
+- The working-tree canonical run at `41beaea` still fails at the 22 CLI contract tests because the existing debug binary is denied by host Application Control (`os error 4551`); the clean-clone PASS does not transfer to that path.
+- The earlier `28b68cc` bundle verifies and clones, but its restored check remains `BLOCKED` and is not counted.
+- No off-host backup, key custody, approved RPO/RTO or disaster-recovery exercise exists.
 
 ### What cannot be proven
 
-- That the canonical `scripts/check.ps1` passes at the final revision.
-- That the final `28b68cc` revision can be restored and checked on this host.
+- That the canonical `scripts/check.ps1` passes in the working tree on this host; it passes in a fresh clone at `41beaea`, but the working-tree run is blocked.
+- That the earlier `28b68cc` revision can be restored and checked on this host; it remains `BLOCKED` and is not counted.
 - That the system is production-ready, secure, compliant, enterprise-authenticated, tenant-isolated, scalable or AI-validated.
 - That CI, PR review, branch protection, a real pilot, independent review, off-host backup, approved RPO/RTO or a production deployment exists.
 - That the lexical retrieval gate or mock LLM proves AI quality, hallucination resistance, tool success or cost/latency.
 
 ### Decision
 
-**Phase A: not approved.** **Phase B: blocked.**
+**Phase A: not approved.** A1 is `NOT MET`; the pilot, enterprise-identity, AI and independent-review gaps remain. A4 and A8 are `MET` only on the local clean-clone/restore scope. **Phase B: blocked.**
 
-The correct next actions are, in order: unlock the host-policy/clean-runner path for A4/A8; establish the pilot owner and real workflow for A1/A7; obtain independent review for A11; then execute the Phase B identity, data, AI, SLO and off-host recovery work. Until those are evidenced and signed, no production or compliance claim is valid.
+The correct next actions are, in order: establish the pilot owner and real workflow for A1/A7; obtain independent review for A11; make the canonical check reproducible in the approved working environment or CI; then execute the Phase B identity, data, AI, SLO and off-host recovery work. Until those are evidenced and signed, no production or compliance claim is valid.
