@@ -39,3 +39,16 @@ Use the five canonical Matt Pocock triage labels. Their mapping and current prov
 ### Domain docs
 
 Use the single-context root glossary and docs/adr/; read [docs/agents/domain.md](docs/agents/domain.md) for canonical product terminology and source documents. The [community skill assessment](docs/agents/community-skills-assessment.md) records why no additional bundle is installed.
+
+### 技能參考：AI 時代嚴謹軟體工程技能包 v1.0.0
+
+安裝位置：工作區根目錄（此儲存庫的上一層）的 `.kilo/skills/rigorous-skill-pack/`；它不在本儲存庫的版本控制內，也不覆蓋本檔。
+
+本技能包提供 15 個獨立技能與 12 個評估案例，總控層為 `00-orchestration`。按需載入對應技能，不直接覆寫本 `AGENTS.md` 或任何專案規則。所有完成判定均須有實際證據，不僅接受 AI 自稱。
+
+參考檔案：
+- `MASTER-WORKFLOW.md`：G0–G10 端到端工程總控流程
+- `skills/00-orchestration/SKILL.md`：總控層與停止條件
+- `evals/workflow-evals/cases.json`：12 個評估案例
+- `scripts/validate_pack.py`：套件結構驗證
+- `docs/source-registry.md`：來源與授權注意事項
