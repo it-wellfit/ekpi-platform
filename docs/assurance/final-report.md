@@ -2,7 +2,7 @@
 
 - **Status:** Final for the 2026-10-27 local evidence baseline; **Phase A not approved**, **Phase B blocked**
 - **Owner:** Engineering + QA; business, security, operations, data and independent-review roles `UNASSIGNED`
-- **Evidence revision:** `6ae6134` (code/docs baseline); release-profile checks re-run 2026-10-27
+- **Evidence revision:** `947cd27` (assurance-document commit); code baseline `6ae6134`; release-profile checks re-run 2026-10-27
 - **Environment:** Single managed Windows 11 host; Windows PowerShell 5.1; Rust 1.99.1; local loopback only; no remote, CI, staging or production
 - **Matrix:** [phase-a-b-matrix.md](phase-a-b-matrix.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
@@ -20,7 +20,7 @@ This round created the missing assurance layer and connected it to the existing 
 | [phase-a-b-matrix.md](phase-a-b-matrix.md) | A1–A11 and B1–B8 requirement/status/defect/fix/test/threshold/owner/evidence records |
 | [root-cause-analysis.md](root-cause-analysis.md) | RC-01–RC-12, including the canonical/restore host-policy root cause |
 | [source-matrix.md](source-matrix.md) | Ten official sources plus four supporting tools, with version/date, applicability, evidence and limits |
-| [test-evidence.md](test-evidence.md) | E-001–E-015: commands, environment, revision, exit codes, results and artifact paths |
+| [test-evidence.md](test-evidence.md) | E-001–E-017: commands, environment, revision, exit codes, results and artifact paths |
 | [external-blockers.md](external-blockers.md) | B-01–B-12: owner, missing resource, minimum access, unlock steps and acceptance criteria |
 | [security-threat-model.md](security-threat-model.md) | Trust boundaries, TH-01–TH-15 assurance view, AST-01–AST-08, residual risk and non-claims |
 | [operations-and-recovery.md](operations-and-recovery.md) | Local start/stop, monitoring, incident, backup/restore and DR procedure with explicit gaps |
@@ -55,8 +55,8 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | Check | Command (working directory) | Exit | Result |
 | --- | --- | --- | --- |
 | Canonical gate | `scripts/check.ps1` (root) | **1** | **BLOCKED** at platform test: 22 CLI contract tests cannot start the debug binary (`os error 4551`) |
-| Docs | `scripts/check-docs.ps1` (root) | 0 | PASS: 44 required, 508 links in 106 files |
-| Secrets | `scripts/check-secrets.ps1` (root) | 0 | PASS: 220 files |
+| Docs | `scripts/check-docs.ps1` (root) | 0 | PASS: 53 required, 652 links in 115 files at `947cd27`; 44/508/106 at the `6ae6134` code baseline |
+| Secrets | `scripts/check-secrets.ps1` (root) | 0 | PASS: 229 files at `947cd27`; 220 at the `6ae6134` code baseline |
 | Format | `cargo fmt -- --check` (both crates) | 0 | PASS |
 | Clippy | `cargo clippy --locked --all-targets -- -D warnings` (both crates) | 0 | PASS, no warnings |
 | Release tests | `cargo test --release --locked` (platform) | 0 | PASS: 270 (217 + 22 + 2 + 10 + 8 + 7 + 4) |

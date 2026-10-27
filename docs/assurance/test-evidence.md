@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Repository revision for the re-run:** `6ae61348194e2daa63a6ac53a31db00771d2a5e1` (`main`)
-- **Working tree during the re-run:** clean before the assurance-document work; the new assurance files are not part of the code revision above
+- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97` (`main`)
+- **Working tree during the re-run:** clean at each named revision; `947cd27` differs from `6ae6134` only in documentation and the required-document list, so the code-level checks remain attributed to `6ae6134`
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -29,6 +29,8 @@
 | E-013 | NOT RUN | CI, PR, branch protection | n/a | n/a | `BLOCKED`: no remote, no CI execution, no branch protection |
 | E-014 | NOT RUN | Staging/production deployment | n/a | n/a | `BLOCKED`: no approved environment or deployment target |
 | E-015 | NOT RUN | Independent review / pilot | n/a | n/a | `BLOCKED`: no independent reviewer, pilot owner or representative user |
+| E-016 | LOCAL | Documentation check (assurance commit) | `947cd27` | 0 | PASS: 53 required documents, 652 links in 115 files |
+| E-017 | LOCAL | Secret pattern scan (assurance commit) | `947cd27` | 0 | PASS: 229 files |
 
 ## E-001: canonical check (blocked)
 
@@ -249,6 +251,27 @@ This is one host, one short observation. It is not a capacity model, soak test o
 | Real pilot | `NOT RUN` / `BLOCKED` | No named pilot owner or representative user | A1 owner and approved non-sensitive workflow |
 | Independent review | `NOT RUN` / `BLOCKED` | No reviewer independent of the implementer | A11 reviewer |
 | Off-host restore | `NOT RUN` / `BLOCKED` | No approved off-host target or key custody | B7 owner, target, keys, RPO/RTO |
+
+## E-016/E-017: assurance-document commit re-check
+
+Executed on clean `947cd27` on 2026-10-27:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check-docs.ps1
+powershell -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
+```
+
+```text
+PASS: required documents present (53)
+PASS: relative Markdown links resolve (652 links in 115 files)
+Documentation check PASSED
+exit 0
+
+PASS: no high-signal secret patterns in 229 file(s)
+exit 0
+```
+
+The increase from 44/508/106 and 220 files is the nine new assurance documents plus the updated required-document list. This proves existence and link resolution, not the truth of the contents. The canonical `scripts/check.ps1` was not re-run after this documentation-only commit; its last run at `6ae6134` remains `BLOCKED` (E-001), and no code changed.
 
 ## Reproduction notes
 
