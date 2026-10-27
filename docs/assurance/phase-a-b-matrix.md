@@ -19,7 +19,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 
 ## Phase A summary
 
-| ID | Dimension | Status at `6ed236d` (code baseline `6ae6134`) | Strongest current evidence | Decisive remaining gap |
+| ID | Dimension | Status at `604a2a5` / restore `499e0d1` (code baseline `6ae6134`) | Strongest current evidence | Decisive remaining gap |
 | --- | --- | --- | --- | --- |
 | A1 | User value | `NOT MET` | Prepared [pilot runbook](../operations/pilot-runbook.md) and synthetic workflow tests | No named pilot owner or representative user; no real workflow record |
 | A2 | Functional correctness | `PARTIAL` | 67-case corpus, unit/integration tests, self-test, search gate | Target acceptance cases AT-01–AT-31 are `NOT RUN`; pilot workflow not exercised |
@@ -37,7 +37,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 
 ## Phase B summary
 
-| ID | Dimension | Status at `6ed236d` | Strongest current evidence | Decisive remaining gap |
+| ID | Dimension | Status at `499e0d1` | Strongest current evidence | Decisive remaining gap |
 | --- | --- | --- | --- | --- |
 | B1 | Security and governance | `BLOCKED` | Local threat model, boundary tests, secret scan, SBOM, dependency audit | No security owner, IdP/MFA, tenant model, approved data policy or production target |
 | B2 | Reliability and observability | `PARTIAL` | Request timeout, concurrency bound, JSON access log, correlation id, `/metrics`, liveness `/healthz` | No SLI/SLO, error budget, traces, alerting, retry/backoff, circuit breaker or fault drill |
@@ -203,7 +203,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | Scope, known limits, commands, recovery and evidence are current and readable by a new operator. |
-| Actual state | `PARTIAL`. The docs map, release evidence, phase gates, backup log and this assurance index are current at `6ed236d`; no pilot handoff record exists. |
+| Actual state | `PARTIAL`. The docs map, release evidence, phase gates, backup log and this assurance index are current at `604a2a5` (working tree, docs 660 links) and `499e0d1` (restore evidence); no pilot handoff record exists. |
 | Defect and root cause | No real operator has consumed the documentation; the pilot record is absent. |
 | Impact and risk | Documentation may be internally consistent but insufficient for an external handoff. |
 | Fix / next action | Run the A6 handoff dry run; record questions, missing commands and fixes; link the signed handoff record. |

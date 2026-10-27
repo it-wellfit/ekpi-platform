@@ -94,12 +94,12 @@ A fresh clone has no prebuilt `target/` artifacts. Cargo must compile and execut
 
 ### Why `3ee2ee2` passed and `28b68cc` did not
 
-The policy is intermittent and path/artifact dependent. `3ee2ee2` was restore-verified by a manual clone before the policy began denying the relevant build scripts; `28b68cc` was blocked later. `41beaea` and `6ed236d` then passed automatically. Historical PASSes and blocks do not transfer across revisions. The `c77fec4`, `bc7671a` and `28b68cc` rows remain `BLOCKED` and are not counted; `6ed236d` is the current verified restore.
+The policy is intermittent and path/artifact dependent. `3ee2ee2` was restore-verified by a manual clone before the policy began denying the relevant build scripts; `28b68cc` was blocked later. `41beaea`, `6ed236d` and `499e0d1` then passed automatically. Historical PASSes and blocks do not transfer across revisions. The `c77fec4`, `bc7671a` and `28b68cc` rows remain `BLOCKED` and are not counted; `499e0d1` is the current verified restore.
 
 ### Correct handling
 
-- Keep the `28b68cc` row `BLOCKED`, not PASS; keep the `41beaea` and `6ed236d` rows as local automatic-restore PASSes.
-- Record `6ed236d` as the current restore-verified revision; keep `41beaea` and `3ee2ee2` as previous verified revisions.
+- Keep the `28b68cc` row `BLOCKED`, not PASS; keep the `41beaea`, `6ed236d` and `499e0d1` rows as local automatic-restore PASSes.
+- Record `499e0d1` as the current restore-verified revision; keep `41beaea`, `6ed236d` and `3ee2ee2` as previous verified revisions.
 - Keep the working-tree canonical block visible; the clean-clone PASS does not transfer to the working-tree path.
 - Re-run the restore in an approved environment and record each new result in the [backup log](../operations/backup-log.md).
 - Do not rewrite the bundle, reset history or bypass the check to manufacture a pass.
