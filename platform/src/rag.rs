@@ -1,8 +1,15 @@
 #![forbid(unsafe_code)]
 
-//! RAG orchestration (Phase 4).
+//! RAG orchestration prototype (Phase 4).
+//!
 //! Retrieves relevant chunks, constructs a prompt with citation instructions,
-//! calls an LLM, verifies citations, and returns an answer or refuses.
+//! calls an [`LlmProvider`], verifies an exact `[doc_id@version]` citation and
+//! returns an answer or refuses.
+//!
+//! **The only provider in this repository is [`MockLlmProvider`].** It is a
+//! deterministic test double, not an LLM integration. `--llm` therefore does
+//! not call an external model and must not be treated as AI evaluation
+//! evidence (see `EVAL-GAP-01`).
 
 use crate::docs::DocDatabase;
 use crate::retrieval::{Citation, Retriever, SearchResult};
@@ -127,9 +134,9 @@ impl RagOrchestrator {
             }
         };
 
-        let has_citation = citations.iter().any(|c| {
-            llm_response.contains(&c.doc_id) || llm_response.contains(&format!("[{}", c.doc_id))
-        });
+        let has_citation = citations
+            .iter()
+            .any(|citation| has_citation_marker(&llm_response, citation));
 
         let confidence = if has_citation {
             citations.first().map(|c| c.score).unwrap_or(0.0)
@@ -154,13 +161,17 @@ impl RagOrchestrator {
     }
 
     pub fn verify_citations(answer: &str, citations: &[Citation]) -> bool {
-        if citations.is_empty() {
+        if citations.is_empty() || answer.trim().is_empty() {
             return false;
         }
         citations
             .iter()
-            .any(|c| answer.contains(&c.doc_id) || answer.contains(&c.verbatim_text))
+            .any(|citation| has_citation_marker(answer, citation))
     }
+}
+
+fn has_citation_marker(answer: &str, citation: &Citation) -> bool {
+    answer.contains(&format!("[{}@{}]", citation.doc_id, citation.version))
 }
 
 #[cfg(test)]
@@ -196,7 +207,7 @@ mod tests {
         let (db, dv) = make_db();
         let retriever = Retriever::build(&db, &dv, 0.1);
         let llm = MockLlmProvider {
-            response: "Based on [SOP-CHANGE], quality management requires document control."
+            response: "Based on [SOP-CHANGE@3.2], quality management requires document control."
                 .to_string(),
         };
         let rag = RagOrchestrator::new(0.1);
@@ -227,7 +238,7 @@ mod tests {
             verbatim_text: "test text".to_string(),
             char_range: (0, 9),
         }];
-        let answer = "Based on [DOC-1], the answer is test text.";
+        let answer = "Based on [DOC-1@1.0], the answer is test text.";
         assert!(RagOrchestrator::verify_citations(answer, &citations));
     }
 
@@ -248,6 +259,39 @@ mod tests {
     #[test]
     fn rag_refuses_empty_citations() {
         assert!(!RagOrchestrator::verify_citations("any answer", &[]));
+    }
+
+    #[test]
+    fn rag_refuses_answer_without_versioned_citation() {
+        let (db, dv) = make_db();
+        let retriever = Retriever::build(&db, &dv, 0.1);
+        let llm = MockLlmProvider {
+            response: "Based on [SOP-CHANGE], quality management requires document control."
+                .to_string(),
+        };
+        let rag = RagOrchestrator::new(0.1);
+        let result = rag.answer("quality management", &retriever, &db, &llm);
+        assert!(!result.has_answer());
+    }
+
+    #[test]
+    fn verify_citations_rejects_unversioned_or_verbatim_only_answers() {
+        let citations = vec![Citation {
+            doc_id: "DOC-1".to_string(),
+            version: "1.0".to_string(),
+            section: "s1".to_string(),
+            score: 0.9,
+            verbatim_text: "test text".to_string(),
+            char_range: (0, 9),
+        }];
+        assert!(!RagOrchestrator::verify_citations(
+            "Based on [DOC-1], see test text.",
+            &citations
+        ));
+        assert!(!RagOrchestrator::verify_citations(
+            "test text appears here without a citation",
+            &citations
+        ));
     }
 
     #[test]

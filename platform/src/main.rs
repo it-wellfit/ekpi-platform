@@ -319,7 +319,7 @@ fn run(args: &[String]) -> i32 {
             }
         }
 
-        // ── Optional LLM answer generation (Phase 4).
+        // ── Optional mock RAG demonstration. No external model is called.
         if let Some(llm_spec) = flag_value(args, "--llm") {
             let parts: Vec<&str> = llm_spec.splitn(2, ':').collect();
             let (provider, _model) = match parts.as_slice() {
@@ -332,21 +332,29 @@ fn run(args: &[String]) -> i32 {
             };
             if provider != "mock" {
                 eprintln!(
-                    "INFO: provider '{}' not yet implemented; using retrieval-only mode",
+                    "FAIL: LLM provider '{}' is not implemented; the only supported provider is 'mock'",
                     provider
                 );
+                return 2;
             }
+            eprintln!(
+                "INFO: --llm uses the deterministic mock provider; no external model is called."
+            );
             let search_citations = match &result {
                 ekp_platform::retrieval::SearchResult::Hits(cits) => cits.clone(),
                 _ => Vec::new(),
             };
             let llm = ekp_platform::rag::MockLlmProvider {
                 response: format!(
-                    "Based on the retrieved evidence, here is the answer regarding '{}'. [{}]",
+                    "Based on the retrieved evidence, here is the answer regarding '{}'. [{}@{}]",
                     query,
                     search_citations
                         .first()
                         .map(|c| c.doc_id.clone())
+                        .unwrap_or_default(),
+                    search_citations
+                        .first()
+                        .map(|c| c.version.clone())
                         .unwrap_or_default()
                 ),
             };
@@ -359,7 +367,8 @@ fn run(args: &[String]) -> i32 {
                     confidence,
                     latency_ms,
                 } => {
-                    println!("\nanswer: {}", text);
+                    println!("\nmock-answer: {}", text);
+                    println!("provider: mock (no external model)");
                     println!("confidence: {:.2}", confidence);
                     println!("citations: {}", cits.len());
                     println!("latency: {}ms", latency_ms);
@@ -368,7 +377,6 @@ fn run(args: &[String]) -> i32 {
                     println!("\nrefused: {}", reason);
                 }
             }
-            let _ = search_citations;
         }
 
         if result.has_evidence() {
