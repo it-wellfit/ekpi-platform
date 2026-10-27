@@ -17,7 +17,7 @@ This analysis separates a code defect from a test-environment block, a missing c
 | RC-02 | The `28b68cc` restore failed in a fresh clone | Application Control blocked fresh-clone build scripts (`proc-macro2`, `serde_core`, `serde`, `quote`, `zmij`) at `eval` Clippy | Environment / host policy | `28b68cc` stays `BLOCKED`; the `41beaea` final bundle verifies, clones and passes the automatic restore drill with canonical check exit 0 | Earlier revision remains unverified; off-host/RPO/RTO absent |
 | RC-03 | CLI flags were silently ignored or combined | Permissive argument parsing treated missing values and unrelated flags as defaults or no-ops | Code defect | `23b8996` hardened the contract; 22 CLI contract tests pass in release profile and in the `41beaea` clean-clone canonical run | Working-tree canonical execution blocked by RC-01 |
 | RC-04 | `--llm` could imply a model capability that did not exist | No provider adapter; a mock was the only implementation, and the output needed explicit labeling | Code/contract and scope | `--llm` accepts only `mock`, requires `--search`, labels output `mock-answer`, requires `[doc_id@version]`; other providers exit 2 before data/audit | No AI quality claim; no real provider |
-| RC-05 | `--audit-log` could be mistaken for an append-only audit service | The CLI writes one local JSON event and replaces the target file; no authenticated actor or durable audit store | Scope / documentation | Contract states the local-only behavior; `--audit-log` requires `--search`; actor is `search-cli` | Not an audit service; ledger is not WORM |
+| RC-05 | `--audit-log` could be mistaken for an append-only audit service | The CLI appends one line to a local JSONL hash chain, verifies the chain before append and fails closed on corrupt/legacy files; there is no authenticated actor or durable audit store | Scope / documentation | Contract states the local-only behavior; `--audit-log` requires `--search`; actor is fixed `search-cli`; tamper/legacy/concurrency tests pass | Not WORM, signed or an external audit service; ledger is not WORM |
 | RC-06 | Legacy `--import-wellfit` could overwrite unreadable data or mix modes | The importer did not fail closed on an unreadable `docs.json` and could be combined with unrelated modes | Code defect | `--import-wellfit` is standalone; unreadable input exits 1 without overwrite; imported documents go through `validate_shape()` | Legacy path remains a local migration tool |
 | RC-07 | Local login could be described as enterprise authentication | The implementation is a single startup-configured account with process-memory sessions; it has no IdP, MFA or persistent identity | Scope / missing external integration | Documentation and tests state the local boundary; Viewer/Editor/Approver checks and session hardening are tested | A5 stays `PARTIAL`; no tenant isolation |
 | RC-08 | No CI, PR or branch protection evidence | The repository has no remote and `gh` is not authenticated | External access | CI workflow and local gate exist; no remote execution | B4 `BLOCKED`; actions are tag-pinned |
@@ -51,7 +51,7 @@ PLATFORM_EXIT=0
 
 `eval` has 12 tests in both profiles; self-test, schema and the 28-case search gate pass in release.
 
-At `41beaea` and `6ed236d`, the automatic restore drill built a fresh debug binary in a clean clone and the canonical `scripts/check.ps1` exited 0 (at `6ed236d`: docs 652/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). The working tree at the same revisions still exited 1 at the 22 CLI contract tests because its existing `platform\target\debug\ekp_platform.exe` was denied. The pass is therefore clean-clone/local, not working-tree or CI evidence.
+At `41beaea` and `6ed236d`, the automatic restore drill built a fresh debug binary in a clean clone and the canonical `scripts/check.ps1` exited 0 (at `6ed236d`: docs 652/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). The working tree at those two revisions still exited 1 at the 22 CLI contract tests because its existing `platform\target\debug\ekp_platform.exe` was denied. Later working-tree runs at `4697aa1` and `718db57` passed the full canonical check; those are recorded separately in E-024/E-025, so the earlier clean-clone pass was local and revision-bound, not CI.
 
 ### Root cause
 
@@ -119,18 +119,18 @@ Argument parsing was permissive: an absent value fell back to a default, and mod
 Commit `23b8996` (`feat(cli): enforce the mock-only LLM and local audit contract`) changed `platform/src/main.rs` and expanded `platform/tests/cli_contract.rs` from 13 to 22 tests. The verified behavior:
 
 - `--llm` requires `--search`; only `mock` is accepted; other providers exit `2` before data load or audit write; output is `mock-answer` and requires a versioned citation.
-- `--audit-log` requires `--search`; it writes one local `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`) and replaces the target file.
+- `--audit-log` requires `--search`; it appends one JSONL `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`) to a verified hash chain, refuses corrupt/legacy files with exit `1`, and serialises local writers on a sibling lock directory.
 - `--import-wellfit` is standalone; it fails closed on an unreadable `docs.json`, does not overwrite it, and validates the imported documents before saving.
 - Missing flag values, unknown flags and mixed modes are usage errors (exit `2`), and do not create report output.
 
-The 22 tests pass in the release profile at `6ae6134` (E-002) and in the `41beaea`/`6ed236d` clean-clone canonical runs (E-020/E-023). The working-tree canonical run remains blocked by RC-01, so that path is not a canonical PASS. The clean-clone PASS is local and revision-bound, not CI.
+The 22 CLI contract tests pass in the release profile at `6ae6134` (E-002), in the `41beaea`/`6ed236d` clean-clone canonical runs (E-020/E-023), and in the later working-tree canonical runs at `4697aa1`/`718db57` (E-024/E-025; the suite grew to 24 tests at `718db57`). The earlier working-tree block remains historical. The pass is local and revision-bound, not CI.
 
 ## RC-04/RC-05/RC-06: mock LLM, local audit and legacy import boundaries
 
 These are related scope decisions, not evidence of AI or audit capability:
 
 - `rag.rs` contains only `MockLlmProvider`. The CLI labels the output `mock-answer` and requires a citation of the form `[doc_id@version]`. This proves the contract and refusal behavior, not model quality.
-- `--audit-log` writes a single JSON event and replaces the file. The actor is a fixed string. It is not authenticated, append-only, tamper-evident or an audit service. The governance ledger itself is an append-only JSONL hash chain, but it is not WORM and a filesystem administrator can rewrite it.
+- `--audit-log` appends one JSONL event to a hash chain that is verified before each append, and refuses corrupt or legacy single-object files with exit `1`; the actor is the fixed label `search-cli`. It is not authenticated, WORM, signed or externally anchored, and it remains a local diagnostic record, not an audit service. The governance ledger itself is an append-only JSONL hash chain, but it is not WORM and a filesystem administrator can rewrite it.
 - `--import-wellfit` is a legacy local migration path. Its fail-closed behavior is tested; it is not a supported ingestion service.
 
 ## RC-07: local authentication boundary
@@ -160,4 +160,4 @@ Residual root cause: there is no IdP, MFA, recovery, persistent identity, access
 
 ## Verification of fixes
 
-The code fixes in RC-03 to RC-06 are covered by the 22 CLI contract tests and the 12 eval tests in the release profile. The local-auth fixes are covered by 10 governance-web route tests and 11 `local_auth` unit tests. These are `LOCAL` and, for the CLI suite, release-profile evidence only. No independent reviewer has reproduced them.
+The code fixes in RC-03 to RC-06 are covered by the 24 CLI contract tests and the 12 eval tests at `718db57`, where the canonical debug profile passed; the earlier `23b8996` evidence was release-profile only. The local-auth fixes are covered by 11 governance-web route tests and 11 `local_auth` unit tests. These are `LOCAL`; no independent reviewer has reproduced them, and the suite's local pass does not make it CI, staging or production evidence.

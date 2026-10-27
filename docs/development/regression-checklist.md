@@ -48,9 +48,19 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 - `platform` has **270 tests** in the release profile: 217 unit, 22 CLI contract, 2 edge-case, 10 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records.
 - `--llm` requires `--search` and accepts only the `mock` provider; any other provider exits `2` before data load or audit write. The response is labeled `mock-answer`, states `provider: mock (no external model)` and must carry an exact `[doc_id@version]` citation. This is a deterministic fixture, not an LLM integration or AI-quality evidence.
-- `--audit-log` requires `--search` and writes one local `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`) to the named file, replacing any existing content. It is not an authenticated or append-only audit service.
+- **Historical (superseded by the `718db57` section below):** `--audit-log` requires `--search` and wrote one local `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`) to the named file, replacing any existing content. It was not an authenticated or append-only audit service.
 - `--import-wellfit` is a legacy local import. It cannot be combined with `--search`, `--eval` or report/export flags; it fails closed when an existing `docs.json` cannot be loaded and validates the merged documents before saving.
 - **Canonical check Blocked at `23b8996`:** `scripts/check.ps1` exited 1 because Windows Application Control denied the freshly rebuilt `platform\target\debug\ekp_platform.exe` (`os error 4551`), so all 22 CLI contract tests failed to start it. Setting `EKP_PLATFORM_BIN` to the release binary let the 270 tests pass, but `cargo run --locked --bin ekp_platform -- --selftest` was still denied (`FAIL: platform selftest`). The canonical result is therefore `Blocked`, never `PASS`. Release-profile `cargo test --release --locked` (platform 270, eval 12), `--selftest` (49 assertions), schema (20 records) and search evaluation (28 cases) all exited 0 as equivalent coverage.
+
+### 2026-10-27 Session-derived actors and append-only search audit (`718db57`)
+
+This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
+
+- `platform` has **277 tests** in the canonical debug profile: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records.
+- `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
+- Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
+- Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
+- **Canonical check PASS at `718db57`:** `scripts/check.ps1` exited 0 with docs 53 required/657 links in 115 files, secrets 229, eval 12 + 10 self-test checks, platform 277 + 49 self-test assertions, schema 20 and search 28 (20/20, 8/8, 4 role cases, 0 violations). This is local evidence only; no CI run exists.
 
 ## 2. `eval/` behavior to preserve
 
