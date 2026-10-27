@@ -99,11 +99,19 @@ $stamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $log = Join-Path $env:TEMP "ekpi-offhost-$stamp.log"
 
 Write-Host "=== Plaintext bundle and restore drill ===" -ForegroundColor Cyan
+# Windows PowerShell 5.1 turns a native child process's stderr into a
+# terminating NativeCommandError when ErrorActionPreference is Stop. The
+# nested backup writes git clone progress to stderr, so run it with Continue
+# and decide from the explicit exit code instead.
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "backup.ps1") *> $log
-if ($LASTEXITCODE -ne 0) {
+$backupExit = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+if ($backupExit -ne 0) {
     Write-Host "Last 40 lines of $log" -ForegroundColor Yellow
     Get-Content -LiteralPath $log -Tail 40
-    Fail "scripts/backup.ps1 failed; no encrypted copy was made."
+    Fail "scripts/backup.ps1 failed (exit $backupExit); no encrypted copy was made."
 }
 
 $bundle = Get-ChildItem -LiteralPath $bundlePath -Filter "*.bundle" |
@@ -138,8 +146,12 @@ if ($IdentityFile) {
         if ($plainHash -ne $bundleHash) {
             Fail "Decrypted bundle hash does not match the source bundle."
         }
+        $previousErrorAction = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         git -C $root bundle verify $plain *> $null
-        if ($LASTEXITCODE -ne 0) { Fail "Decrypted bundle failed git bundle verify." }
+        $verifyExit = $LASTEXITCODE
+        $ErrorActionPreference = $previousErrorAction
+        if ($verifyExit -ne 0) { Fail "Decrypted bundle failed git bundle verify." }
         $decryptionVerified = $true
         Write-Host "PASS: decrypted bundle matches the source and verifies." -ForegroundColor Green
     }
