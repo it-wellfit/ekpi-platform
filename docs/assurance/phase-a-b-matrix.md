@@ -124,13 +124,13 @@ This matrix expands the canonical gate into the fields required for an auditable
 | --- | --- |
 | Requirement | Authentication, authorization, input validation, secret handling and data isolation are appropriate to the approved scope. |
 | Actual state | `PARTIAL`. `governance_web` has a local process-memory session, PBKDF2-HMAC-SHA256 (600,000 iterations), CSPRNG salt/token, constant-time comparison, five-failure lockout, Viewer/Editor/Approver checks, same-origin guard, CSP and a 64 KiB body cap. |
-| Defect and root cause | The local session is a usability barrier, not enterprise identity. There is no IdP/OIDC/SAML, MFA, account recovery, persistent identity store, access review or tenant boundary. The ledger actor is an operator-entered string. |
+| Defect and root cause | The local session is a usability barrier, not enterprise identity. There is no IdP/OIDC/SAML, MFA, account recovery, persistent identity store, access review or tenant boundary. The ledger actor is the validated local session username for web mutations (the CLI search audit uses the fixed label `search-cli`), but the session is process-memory only, so this is not an enterprise-verified identity. |
 | Impact and risk | A local administrator can read or rewrite the ledger and process memory. Cross-tenant isolation is not implemented; the `tenant` module is library-only. The system must not be described as enterprise-authenticated or tenant-isolated. |
 | Fix / next action | Target design (not implemented): OIDC authorization-code + PKCE with an approved IdP, MFA policy, server-side session store, claims-to-role mapping, mandatory tenant claim, deny-by-default resource checks, access-review and joiner/mover/leaver process. Until approved, keep the local mode explicitly non-production and loopback-only. |
 | Acceptance test | Positive and negative tests for missing/invalid identity, expired sessions, role escalation, cross-tenant read/write/search/export/background work, and authorization changes; secret scan; session revocation test. |
 | Threshold | All denial tests pass; zero cross-tenant leakage; no default account; no secret in repository or logs; security owner signs the residual-risk decision. |
 | External role / environment | Enterprise IdP/MFA, tenant model, security owner/approver, approved test tenant. All are `UNASSIGNED`. |
-| Evidence | [Threat model](../architecture/threat-model.md); [web routes](../contracts/web-routes.md); [security threat model](security-threat-model.md); 10 governance-web route tests + 11 local-auth unit tests at `a826472`. |
+| Evidence | [Threat model](../architecture/threat-model.md); [web routes](../contracts/web-routes.md); [security threat model](security-threat-model.md); 11 governance-web route tests + 11 local-auth unit tests in the `IMP-013` change. |
 | Owner | Security + Engineering; named security owner `UNASSIGNED` |
 | Final status / blocker | `PARTIAL` — local-only session; no IdP/MFA/tenant isolation. See [B-03](external-blockers.md#b-03-enterprise-identity-mfa-and-tenant-model). |
 

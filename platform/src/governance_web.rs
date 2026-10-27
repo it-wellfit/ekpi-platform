@@ -225,6 +225,31 @@ fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "authentication required").into_response()
 }
 
+/// Validate the session cookie, require at least the given role, and return
+/// the local session username. Mutating handlers use this value as the ledger
+/// actor instead of trusting a form field.
+fn session_identity(
+    auth: &SharedAuth,
+    headers: &HeaderMap,
+    required: Role,
+) -> Result<String, Box<Response>> {
+    let token = session_token(headers).ok_or_else(|| Box::new(unauthorized()))?;
+    let store = auth.lock().map_err(|_| {
+        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
+    })?;
+    match store.validate_session(&token) {
+        Some(session) if session.role >= required => Ok(session.username.clone()),
+        Some(_) => Err(Box::new(
+            (
+                StatusCode::FORBIDDEN,
+                "insufficient role for this operation",
+            )
+                .into_response(),
+        )),
+        None => Err(Box::new(unauthorized())),
+    }
+}
+
 /// Validate the session cookie and require at least the given role.
 /// Returns `Some(Response)` when the request must be rejected.
 fn check_session_with_role(
@@ -232,31 +257,9 @@ fn check_session_with_role(
     headers: &HeaderMap,
     required: Role,
 ) -> Option<Response> {
-    let token = match session_token(headers) {
-        Some(token) => token,
-        None => return Some(unauthorized()),
-    };
-    let store = match auth.lock() {
-        Ok(store) => store,
-        Err(_) => {
-            return Some((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
-        }
-    };
-    match store.validate_session(&token) {
-        Some(session) if session.role >= required => None,
-        Some(_) => Some(
-            (
-                StatusCode::FORBIDDEN,
-                "insufficient role for this operation",
-            )
-                .into_response(),
-        ),
-        None => Some(unauthorized()),
-    }
-}
-
-fn check_session(auth: &SharedAuth, headers: &HeaderMap) -> Option<Response> {
-    check_session_with_role(auth, headers, Role::Editor)
+    session_identity(auth, headers, required)
+        .err()
+        .map(|response| *response)
 }
 
 fn is_public_path(path: &str) -> bool {
@@ -487,9 +490,10 @@ async fn create_project(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -509,7 +513,7 @@ async fn create_project(
                 &form.department,
                 &form.owner,
                 &form.risk_tier,
-                &form.actor,
+                &actor,
             )
         });
     match result {
@@ -537,9 +541,10 @@ async fn link_evidence(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -562,7 +567,7 @@ async fn link_evidence(
                 &form.source_version,
                 &form.evidence_type,
                 &form.owner,
-                &form.actor,
+                &actor,
             )
         });
     match result {
@@ -584,9 +589,10 @@ async fn review_evidence(
     Path(id): Path<String>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -600,7 +606,7 @@ async fn review_evidence(
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
-        .and_then(|mut db| db.review_evidence(&id, &form.result, &form.actor, &form.note));
+        .and_then(|mut db| db.review_evidence(&id, &form.result, &actor, &form.note));
     match result {
         Ok(()) => Redirect::to("/evidence").into_response(),
         Err(error) => match snapshot(&ledger) {
@@ -626,9 +632,10 @@ async fn save_workflow(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -658,7 +665,7 @@ async fn save_workflow(
                 owner: form.owner,
                 description: form.description,
                 stages,
-                actor: form.actor,
+                actor,
             })
         });
     match result {
@@ -680,23 +687,14 @@ async fn publish_workflow(
     Path((id, version)): Path<(String, u32)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
-        return response;
-    }
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
-        Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
-        }
-    };
-    let form: PublishForm = match serde_urlencoded::from_bytes(&body) {
-        Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
     };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
-        .and_then(|mut db| db.publish_workflow(&id, version, &form.actor));
+        .and_then(|mut db| db.publish_workflow(&id, version, &actor));
     match result {
         Ok(()) => Redirect::to("/workflows").into_response(),
         Err(error) => match snapshot(&ledger) {
@@ -722,9 +720,10 @@ async fn create_quality_case(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -746,7 +745,7 @@ async fn create_quality_case(
                 &form.description,
                 &form.owner,
                 &form.due_date,
-                &form.actor,
+                &actor,
             )
         });
     match result {
@@ -768,9 +767,10 @@ async fn update_quality_case(
     Path(id): Path<String>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -784,7 +784,7 @@ async fn update_quality_case(
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
-        .and_then(|mut db| db.update_quality_case(&id, &form.status, &form.actor, &form.note));
+        .and_then(|mut db| db.update_quality_case(&id, &form.status, &actor, &form.note));
     match result {
         Ok(()) => Redirect::to("/controls").into_response(),
         Err(error) => match snapshot(&ledger) {
@@ -810,9 +810,10 @@ async fn record_inspection(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
-        return response;
-    }
+    let reviewer = match session_identity(&auth, request.headers(), Role::Editor) {
+        Ok(reviewer) => reviewer,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -839,7 +840,7 @@ async fn record_inspection(
         .collect();
     let input = QualityInspectionInput {
         project_id: get("project_id"),
-        reviewer: get("reviewer"),
+        reviewer,
         results,
     };
     let result = ledger
@@ -871,9 +872,10 @@ async fn record_gate_decision(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
-        return response;
-    }
+    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
@@ -902,7 +904,7 @@ async fn record_gate_decision(
                 &form.project_id,
                 &form.gate_id,
                 &form.decision,
-                &form.actor,
+                &actor,
                 &form.reason,
                 &form.evidence_reference,
                 &form.risk_acceptor,
@@ -1083,7 +1085,7 @@ fn projects_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
                     (text_field("department", "主要部門", "", true, ""))
                     (text_field("owner", "專案負責人", "", true, ""))
                     label class="field" { span { "初始風險等級" } select name="risk_tier" required { option value="medium" selected { "中" } option value="low" { "低" } option value="high" { "高" } option value="critical" { "重大" } } }
-                    (text_field("actor", "登記人姓名", "僅供原型稽核標籤，尚未驗證身份", true, ""))
+                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "建立專案" }
                     p class="form-hint" { "請勿在本機原型輸入機密或受管制資訊。" }
                 }
@@ -1132,7 +1134,7 @@ fn evidence_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
                     (text_field("source_version", "來源版本／修訂", "例如：v3.2 或平台版本 ID", true, ""))
                     (text_field("evidence_type", "證據類型", "例如：核准紀錄、測試報告", true, ""))
                     (text_field("owner", "文件負責人", "", true, ""))
-                    (text_field("actor", "登記人姓名", "尚未驗證身份", true, ""))
+                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "登錄來源參照" }
                 }
             }
@@ -1170,7 +1172,6 @@ fn evidence_table(data: &GovernanceSnapshot) -> Markup {
                                     @if let Some(review) = review { small { (review.reviewer) " · " (format_timestamp(review.reviewed_at)) } }
                                     form class="inline-review" method="post" action=(format!("/evidence/{}/review", item.id)) {
                                         select name="result" aria-label="審查結果" { option value="accepted" { "確認有效" } option value="changes_requested" { "退回補充" } }
-                                        input type="text" name="actor" aria-label="審查人姓名" placeholder="審查人" required maxlength="80";
                                         input type="text" name="note" aria-label="審查備註或退回說明" placeholder="備註；退回必填" maxlength="1000";
                                         button class="button button-small" type="submit" { "記錄" }
                                     }
@@ -1200,7 +1201,7 @@ fn workflows_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
                     label class="field" { span { "流程目的" } textarea name="description" required maxlength="1500" rows="3" placeholder="這條流程要解決的業務問題與完成條件" {} }
                     label class="field" { span { "流程階段" } textarea name="stages" required rows="7" placeholder="每行一個階段，例如：\n提出需求\n風險評估\n審查核准\n執行與驗證\n結案封存" {} }
                     small class="field-help" { "每行一個階段，最多 30 階段。五個強制關卡在生命週期頁面管理。" }
-                    (text_field("actor", "草稿建立人", "尚未驗證身份", true, ""))
+                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "儲存為草稿" }
                 }
             }
@@ -1225,7 +1226,7 @@ fn workflow_list(data: &GovernanceSnapshot) -> Markup {
                         ol class="stage-chips" { @for stage in &workflow.stages { li { (stage) } } }
                         @if workflow.status == "draft" {
                             form class="publish-form" method="post" action=(format!("/workflows/{}/{}/publish", workflow.id, workflow.version)) {
-                                label class="compact-field" { span { "流程負責人審查者" } input type="text" name="actor" required maxlength="80" placeholder="姓名"; }
+                                p class="form-hint" { "發布人由目前登入的本機帳號自動記錄。" }
                                 button class="button button-small button-secondary" type="submit" { "核准並發布此版本" }
                             }
                         } @else {
@@ -1266,7 +1267,7 @@ fn controls_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
                     label class="field" { span { "內容與影響" } textarea name="description" required maxlength="2000" rows="4" {} }
                     (text_field("owner", "負責人", "", true, ""))
                     label class="field" { span { "到期日" } input type="date" name="due_date" required; }
-                    (text_field("actor", "登記人", "尚未驗證身份", true, ""))
+                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "新增追蹤事項" }
                 }
             }
@@ -1290,9 +1291,8 @@ fn inspections_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup
                 form class="form-stack" method="post" action="/inspections" {
                     div class="inspection-meta" {
                         label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) { (project.id) " · " (project.name) } } } }
-                        label class="field" { span { "檢查人姓名" } input type="text" name="reviewer" required maxlength="80" placeholder="尚未驗證身份"; }
                     }
-                    div class="notice notice-blue" { strong { "判定規則" } span { "符合：填可查證的證據 ID／連結；不符合：填說明及缺失編號；不適用：填理由。此原型的姓名欄僅作登記，沒有身份驗證。" } }
+                    div class="notice notice-blue" { strong { "判定規則" } span { "符合：填可查證的證據 ID／連結；不符合：填說明及缺失編號；不適用：填理由。檢查人由目前登入的本機帳號自動記錄。" } }
                     div class="table-wrap" {
                         table class="inspection-table" {
                             caption class="visually-hidden" { "29 項專案品質檢查表" }
@@ -1372,7 +1372,7 @@ fn quality_case_list(data: &GovernanceSnapshot) -> Markup {
                             form class="publish-form" method="post" action=(format!("/controls/{}/status", case.id)) {
                                 label class="compact-field" { span { "更新狀態" } select name="status" { option value="open" selected[case.status == "open"] { "待處理" } option value="in_progress" selected[case.status == "in_progress"] { "處理中" } option value="verification" selected[case.status == "verification"] { "待複驗" } option value="closed" { "結案" } } }
                                 label class="compact-field" { span { "處理／結案紀錄" } input type="text" name="note" maxlength="1200" required placeholder="複驗結果或更新說明"; }
-                                label class="compact-field" { span { "更新人" } input type="text" name="actor" maxlength="80" required placeholder="姓名"; }
+                                p class="form-hint" { "更新人由目前登入的本機帳號自動記錄。" }
                                 button class="button button-small button-secondary" type="submit" { "記錄更新" }
                             }
                         } @else if let Some(note) = &case.closure_note { p class="success-line" { "結案紀錄：" (note) } }
@@ -1431,7 +1431,7 @@ fn lifecycle_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
                         (text_field("evidence_reference", "證據參照（選填）", "來源系統連結或證據 ID", false, ""))
                         (text_field("risk_acceptor", "風險接受者（例外必填）", "", false, ""))
                         label class="field" { span { "補救期限（例外必填）" } input type="date" name="remediation_due"; }
-                        (text_field("actor", "決議記錄人", "尚未驗證身份", true, ""))
+                        p class="form-hint" { "決議記錄人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                         button class="button button-primary" type="submit" { "保存決議" }
                     }
                 }
@@ -1679,7 +1679,6 @@ struct ProjectForm {
     department: String,
     owner: String,
     risk_tier: String,
-    actor: String,
 }
 #[derive(Deserialize)]
 struct EvidenceForm {
@@ -1690,12 +1689,10 @@ struct EvidenceForm {
     source_version: String,
     evidence_type: String,
     owner: String,
-    actor: String,
 }
 #[derive(Deserialize)]
 struct ReviewForm {
     result: String,
-    actor: String,
     note: String,
 }
 #[derive(Deserialize)]
@@ -1706,11 +1703,6 @@ struct WorkflowForm {
     owner: String,
     description: String,
     stages: String,
-    actor: String,
-}
-#[derive(Deserialize)]
-struct PublishForm {
-    actor: String,
 }
 #[derive(Deserialize)]
 struct QualityCaseForm {
@@ -1720,12 +1712,10 @@ struct QualityCaseForm {
     description: String,
     owner: String,
     due_date: String,
-    actor: String,
 }
 #[derive(Deserialize)]
 struct QualityCaseUpdateForm {
     status: String,
-    actor: String,
     note: String,
 }
 #[derive(Deserialize)]
@@ -1733,7 +1723,6 @@ struct GateDecisionForm {
     project_id: String,
     gate_id: String,
     decision: String,
-    actor: String,
     reason: String,
     evidence_reference: String,
     risk_acceptor: String,

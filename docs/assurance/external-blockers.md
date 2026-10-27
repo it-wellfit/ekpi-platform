@@ -168,10 +168,10 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Expected role | Endpoint/security administrator (policy owner) + engineering. |
 | What they must provide | A scoped allow rule for the repository's build output and Rust build scripts, or an approved CI/clean runner; the policy change record and scope. |
 | Minimum access | Permission to request/approve the policy exception; no broad disablement of Application Control. |
-| Unlock steps | 1. Capture the exact blocked path and policy ID. 2. Request a scoped exception or runner. 3. Re-run `scripts/check.ps1` on `6ae6134` or the target revision. 4. Restore the final bundle in a fresh clone and run the restored check. 5. Record the result with the policy/runner identifier. |
+| Unlock steps | 1. Capture the exact blocked path and policy ID. 2. Request a scoped exception or runner. 3. Re-run `scripts/check.ps1` on the target revision. 4. Restore the final bundle in a fresh clone and run the restored check. 5. Record the result with the policy/runner identifier. |
 | Acceptance criteria | Canonical check exit 0 on the target revision; final bundle restore check exit 0; no gate lowered or test skipped. |
 | Work that can continue now | Release-profile coverage, docs/secrets checks, bundle creation/verification, manual clone inspection. |
-| Status / evidence | `PARTIAL` — the `6ed236d` clean clone passed the canonical check and the automatic restore drill; the working-tree canonical run is still `BLOCKED` at the 22 CLI contract tests. E-001/E-007/E-019/E-020/E-023; policy observed as `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` on this host. |
+| Status / evidence | `PARTIAL` — the `6ed236d` clean clone passed the canonical check and the automatic restore drill; the `4697aa1` working tree also passed. Earlier working-tree runs (`41beaea`, `6ae6134`) were `BLOCKED` at the CLI contract spawns (`os error 4551`). No named policy owner or CI runner exists, so recurrence is not prevented. E-001/E-007/E-019/E-020/E-023/E-024; policy observed as `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` on this host. |
 
 ## B-12 Legal, privacy and compliance scope
 

@@ -333,7 +333,6 @@ fn run(args: &[String]) -> i32 {
             serde_json::to_string(&citation_ids).unwrap_or_else(|_| "[]".to_string()),
             latency_ms,
         );
-        let mut audit_log = ekp_platform::audit::AuditLog::new();
         let event_id = format!(
             "KS-{}",
             std::time::SystemTime::now()
@@ -341,19 +340,23 @@ fn run(args: &[String]) -> i32 {
                 .map(|d| d.as_millis())
                 .unwrap_or(0)
         );
-        audit_log.append(
-            &event_id,
-            ekp_platform::audit::AuditEventType::KnowledgeSearch,
-            "search-cli",
-            "default",
-            &payload,
-        );
         if let Some(path) = audit_log_path {
-            let json = serde_json::to_string_pretty(&audit_log).unwrap_or_default();
-            if let Err(e) = std::fs::write(&path, json) {
-                eprintln!("WARN: failed to write audit log: {e}");
-            } else {
-                println!("audit: written to {}", path);
+            match ekp_platform::audit::append_jsonl(
+                Path::new(&path),
+                &event_id,
+                ekp_platform::audit::AuditEventType::KnowledgeSearch,
+                "search-cli",
+                "default",
+                &payload,
+            ) {
+                Ok(events) => println!(
+                    "audit: appended to {} ({} verified event(s) in chain)",
+                    path, events
+                ),
+                Err(e) => {
+                    eprintln!("FAIL: audit log append failed: {e}");
+                    return 1;
+                }
             }
         }
 

@@ -431,6 +431,41 @@ async fn oversized_form_body_is_rejected_before_parsing() {
 }
 
 #[tokio::test]
+async fn ledger_actor_is_the_authenticated_session_not_the_form_value() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Impersonation+check&department=PMO&owner=Alex&risk_tier=low&actor=Jordan",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let contents = std::fs::read_to_string(&path).expect("read ledger");
+    let events: Vec<ekp_platform::governance::LedgerEvent> = contents
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("ledger line is an event"))
+        .collect();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].actor, "tester",
+        "the ledger must use the validated session username"
+    );
+    assert_ne!(
+        events[0].actor, "Jordan",
+        "a submitted actor field must not be trusted"
+    );
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
 async fn cross_origin_mutating_request_is_rejected() {
     let path = test_path();
     let app = test_app(&path);

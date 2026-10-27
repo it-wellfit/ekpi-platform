@@ -68,7 +68,7 @@ Open `http://127.0.0.1:3000/login`. Do not bind to `0.0.0.0`. Stop with `Ctrl+C`
 | HTTP access | Local JSON log line per request | No central collection, rotation policy, retention or alerting |
 | Metrics | Aggregate Prometheus counters at `/metrics` | No latency histogram, saturation, dependency or business SLI |
 | Correlation | Request id echoed when safe | Not a user identity; no distributed trace |
-| Audit | Local JSONL hash chain and `/audit` view | Not WORM; actor is operator-entered; no external anchor |
+| Audit | Local JSONL hash chain and `/audit` view | Not WORM; web actor is the local session username, not an enterprise identity; CLI search audit actor is fixed `search-cli`; no external anchor |
 | Health | `/healthz` liveness | Not readiness; no synthetic probe or alert |
 | Backup | Manual script + log | No scheduled job, missed-run alert or off-host verification |
 

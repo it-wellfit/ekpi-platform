@@ -67,19 +67,19 @@ All routes in this table require a `viewer` session and return `401` without one
 
 ## Mutation routes
 
-All mutation routes require a session with at least the role shown. `Editor` covers ordinary creation; `Approver` covers review, publication, quality-status and lifecycle decisions. A successful mutation still uses the operator-entered `actor` field as the ledger actor string; the session identity is not written automatically, so the ledger actor remains unauthenticated data.
+All mutation routes require a session with at least the role shown. `Editor` covers ordinary creation; `Approver` covers review, publication, quality-status and lifecycle decisions. The server derives the ledger actor from the validated session username and ignores any submitted `actor` or `reviewer` field. This is local process-memory identity, not an enterprise identity.
 
 | Method | Path | Role | Form fields | Success behavior | Refusal behavior |
 | --- | --- | --- | --- | --- | --- |
-| POST | `/projects` | `editor` | `name`, `department`, `owner`, `risk_tier`, `actor` | Appends `ProjectCreated`; redirects/re-renders | Validation error; no event |
-| POST | `/evidence` | `editor` | `project_id`, `title`, `source_system`, `source_url`, `source_version`, `evidence_type`, `owner`, `actor` | Appends `EvidenceLinked` | Validation error; no event |
-| POST | `/evidence/{id}/review` | `approver` | `result`, `actor`, `note` | Appends `EvidenceReviewed` | Validation error; no event |
-| POST | `/inspections` | `editor` | `project_id`, `reviewer`, `QC-01..QC-29` result/note/evidence fields | Appends `QualityInspectionRecorded` | Missing/invalid 29-item data refused |
-| POST | `/workflows` | `editor` | `base_id`, `title`, `department`, `owner`, `description`, `stages`, `actor` | Appends `WorkflowSaved` | Validation error; no event |
-| POST | `/workflows/{id}/{version}/publish` | `approver` | `actor` | Appends `WorkflowPublished`; version becomes immutable | Invalid/immutable transition refused |
-| POST | `/controls` | `editor` | `project_id`, `kind`, `title`, `description`, `owner`, `due_date`, `actor` | Appends `QualityCaseCreated` | Validation error; no event |
-| POST | `/controls/{id}/status` | `approver` | `status`, `actor`, `note` | Appends `QualityCaseUpdated` | Invalid transition refused; CAPA closure blocked until verification/effectiveness |
-| POST | `/lifecycle` | `approver` | `project_id`, `gate_id`, `decision`, `actor`, `reason`, `evidence_reference`, `risk_acceptor`, `remediation_due`, `non_waivable` | Appends `GateDecisionRecorded` | Non-waivable condition cannot be waived; missing reason/evidence refused |
+| POST | `/projects` | `editor` | `name`, `department`, `owner`, `risk_tier` | Appends `ProjectCreated`; redirects/re-renders | Validation error; no event |
+| POST | `/evidence` | `editor` | `project_id`, `title`, `source_system`, `source_url`, `source_version`, `evidence_type`, `owner` | Appends `EvidenceLinked` | Validation error; no event |
+| POST | `/evidence/{id}/review` | `approver` | `result`, `note` | Appends `EvidenceReviewed` | Validation error; no event |
+| POST | `/inspections` | `editor` | `project_id`, `QC-01..QC-29` result/note/evidence fields; reviewer is taken from the session | Appends `QualityInspectionRecorded` | Missing/invalid 29-item data refused |
+| POST | `/workflows` | `editor` | `base_id`, `title`, `department`, `owner`, `description`, `stages` | Appends `WorkflowSaved` | Validation error; no event |
+| POST | `/workflows/{id}/{version}/publish` | `approver` | none; the session user is the publisher | Appends `WorkflowPublished`; version becomes immutable | Invalid/immutable transition refused |
+| POST | `/controls` | `editor` | `project_id`, `kind`, `title`, `description`, `owner`, `due_date` | Appends `QualityCaseCreated` | Validation error; no event |
+| POST | `/controls/{id}/status` | `approver` | `status`, `note` | Appends `QualityCaseUpdated` | Invalid transition refused; CAPA closure blocked until verification/effectiveness |
+| POST | `/lifecycle` | `approver` | `project_id`, `gate_id`, `decision`, `reason`, `evidence_reference`, `risk_acceptor`, `remediation_due`, `non_waivable` | Appends `GateDecisionRecorded` | Non-waivable condition cannot be waived; missing reason/evidence refused |
 
 The field list is the current HTML form contract. Server-side validation is authoritative; HTML attributes are convenience only. Exact error strings are not a stable contract.
 

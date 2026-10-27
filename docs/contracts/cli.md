@@ -41,7 +41,7 @@ cargo run --locked --bin ekp_platform -- --selftest
 | `--search` | query string | Lexical search over every document's latest version. Prints up to five verified verbatim citations, or `insufficient evidence` with a reason. This mode does not receive a user identity and therefore applies **no permission filter**. Cannot be combined with `--eval` or report-only flags. | — |
 | `--eval` | none | Runs a fixed retrieval regression set. Requires `--test-set`. Exits `1` if any case or coverage gate fails. Cannot be combined with `--search` or report-only flags. | — |
 | `--test-set` | file path | JSON evaluation set (`{ "version", "threshold", "cases": [...] }` or a bare array). The set may declare its own operating threshold; an explicit `--threshold` overrides it. Requires `--eval`. | — |
-| `--audit-log` | file path | With `--search`, writes one local JSON object containing a single `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`, query truncated to 100 characters, citation IDs, result count and latency) to the path, replacing any existing file. It is a local diagnostic record, not an authenticated audit service or an append-only store. Without `--search` it is a usage error. | — |
+| `--audit-log` | file path | With `--search`, appends one line to a local JSONL hash-chained audit log. Each event is a `KnowledgeSearch` record (`actor: search-cli`, `tenant_id: default`, query truncated to 100 characters, citation IDs, result count and latency) whose `prev_hash` links to the previous event, or `GENESIS` for the first line. Before appending, the CLI reads and verifies the existing chain; a malformed line, a broken chain or the legacy single-object format is refused with exit `1` and the file is left unchanged. Concurrent local writers serialise on a sibling `<PATH>.lock` directory (wait up to 5 s; a stale lock must be removed by an operator). A missing or empty file starts a new chain. It is a local diagnostic record, not WORM, an authenticated audit service, or a signed/externally anchored store. Without `--search` it is a usage error (exit `2`). | — |
 | `--llm` | `PROVIDER[:MODEL]` | With `--search`, adds a labeled mock RAG demonstration. Only `mock` is implemented; the model label is accepted but unused. Any other provider is a usage error (exit `2`) before search or audit work. The answer is prefixed `mock-answer:` and the output states `provider: mock (no external model)`; the RAG orchestrator refuses an answer that lacks an exact `[doc_id@version]` citation. Without `--search` it is a usage error. This is not an LLM integration or AI-quality evidence. | — |
 | `--import-wellfit` | file path | Legacy local import retained for prototype data preparation. Reads a JSON array, adds documents whose `doc_id` is not already in `<data>/docs.json`, defaults missing fields (`version` `1.0`, `effective_from` `2026-01-01`, `section` `1`) and missing permissions to `viewer`/`editor`, then validates document shape before saving. If an existing `docs.json` cannot be loaded, it fails closed without overwriting it. It does not validate the input against a published schema, authenticate the importer or create an audit event. It cannot be combined with `--search`, `--eval` or report-only flags, and it is not part of the supported pilot workflow. | — |
 
@@ -114,8 +114,11 @@ cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成�
 # Labeled mock RAG demonstration; no external model is called
 cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄" --llm mock:test
 
-# Local search audit record (not an authenticated audit service)
-cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄" --audit-log target/search-audit.json
+# Local search audit record: appends to a JSONL hash chain (not an authenticated audit service)
+cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄" --audit-log target/search-audit.jsonl
+
+# A second run appends to the same chain; a corrupt, tampered or legacy file exits 1 without modification
+cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄" --audit-log target/search-audit.jsonl
 
 # Fixed retrieval regression gate
 cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
@@ -161,7 +164,7 @@ Run from `eval/`.
 ## Verification
 
 - `cargo test --locked` in both crates.
-- `platform/tests/cli_contract.rs` runs the real binary for the rejection paths: unknown flag (alone and after a valid flag), missing/empty value, flag-as-value, unexpected positional argument, `--test-set`/`--cases`/`--html` prerequisites, `--search` + `--eval`, report flags with eval, and self-test precedence. It also covers `--audit-log` success and refusal without `--search`, `--llm mock` labeling with a versioned citation, unsupported-provider rejection before audit write, and legacy `--import-wellfit` fail-closed/validation behavior. It asserts exit codes and that no report, audit or imported data is written on a usage error.
+- `platform/tests/cli_contract.rs` runs the real binary for the rejection paths: unknown flag (alone and after a valid flag), missing/empty value, flag-as-value, unexpected positional argument, `--test-set`/`--cases`/`--html` prerequisites, `--search` + `--eval`, report flags with eval, and self-test precedence. It also covers `--audit-log` refusal without `--search`, two successive runs forming a verified 2-event chain, refusal of a corrupt chain and of a legacy single-object file without modifying either file, `--llm mock` labeling with a versioned citation, unsupported-provider rejection before audit write, and legacy `--import-wellfit` fail-closed/validation behavior. It asserts exit codes (including exit `1` for an audit write failure) and that no report, audit or imported data is written on a usage error.
 - `--selftest` in both crates.
 - `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json` in `platform/`.
 - `gate.ps1 -IncludeSmoke` for report/export/coverage/HTML and structural LegalRuleML checks.

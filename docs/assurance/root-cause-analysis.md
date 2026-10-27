@@ -145,7 +145,7 @@ These are related scope decisions, not evidence of AI or audit capability:
 - every ledger-backed GET requires Viewer; creation requires Editor; review/publish/quality/lifecycle requires Approver; public paths are `/healthz`, `/metrics`, `/login`, `/assets/*`; `/logout` requires a session;
 - mutations with a foreign `Origin` are refused; a missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`; form bodies are capped at 64 KiB.
 
-Residual root cause: there is no IdP, MFA, recovery, persistent identity, access review or tenant boundary. The ledger actor remains an operator-entered string. This is an architectural scope limit, not a bug to be hidden by wording.
+Residual root cause: there is no IdP, MFA, recovery, persistent identity, access review or tenant boundary. The ledger actor is the validated local session username for web mutations (fixed `search-cli` for the CLI audit), but the session is process-memory only, so this is not an enterprise-verified identity. This is an architectural scope limit, not a bug to be hidden by wording.
 
 ## RC-08 to RC-12: external dependencies
 

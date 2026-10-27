@@ -45,7 +45,7 @@ Do **not** claim any of the following for the current repository:
 - No secrets, credentials or connection strings in the repository.
 - `.env` and key files are local-only and must be ignored by Git. `.env.example` contains placeholders only.
 - The environment variables read by the current code are `EKP_GOVERNANCE_DATA` (ledger path), `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD`, `EKPI_LOCAL_AUTH_ROLE` and `EKPI_COOKIE_SECURE`. The login variables are optional, but without a user/password the data pages cannot be opened. Do not commit a real password.
-- The local login password is held in the process environment and converted to a salted PBKDF2 hash; it is never printed, logged or written to the ledger. The ledger still contains operator-entered actor strings and may contain sensitive text.
+- The local login password is held in the process environment and converted to a salted PBKDF2 hash; it is never printed, logged or written to the ledger. The ledger records the validated local session username as the mutation actor and may contain operator-entered sensitive text. The session is local-only, not an enterprise identity.
 - Never place real customer, personal or regulated data in the local ledger, reports or test fixtures.
 - If a secret is exposed, follow [secrets policy](../operations/secrets-policy.md).
 

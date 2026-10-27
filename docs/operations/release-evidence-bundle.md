@@ -107,7 +107,7 @@ This is a one-host regression observation, not a capacity model, soak test or SL
 - Public paths: `/healthz`, `/metrics`, `/login`, `/assets/*`. `/logout` requires a valid session.
 - Foreign-origin mutations are refused; a missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`. Form bodies are limited to 64 KiB.
 
-This is **not** an IdP, SSO, MFA, account recovery, persistent identity store, access review, tenant boundary or delegated administration. The ledger actor remains the operator-entered string, not the session identity. A local administrator can read or rewrite the ledger and process memory. `A5` stays `Partial`; `DEC-12` remains open.
+This is **not** an IdP, SSO, MFA, account recovery, persistent identity store, access review, tenant boundary or delegated administration. Web mutations record the validated local session username as the ledger actor and ignore submitted actor/reviewer fields; the CLI search audit uses the fixed `search-cli` label. Because the session is process-memory only, this is not an enterprise-verified identity. A local administrator can read or rewrite the ledger and process memory. `A5` stays `Partial`; `DEC-12` remains open.
 
 ## Annotation κ (A-05)
 

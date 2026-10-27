@@ -355,9 +355,57 @@ fn llm_mock_is_labeled_and_requires_a_versioned_citation() {
 }
 
 #[test]
-fn audit_log_records_a_local_search_event_without_an_identity() {
+fn audit_log_appends_a_verified_chain_across_runs() {
     let dir = temp_dir();
-    let audit = dir.join("audit.json");
+    let audit = dir.join("audit.jsonl");
+    for run in 0..2 {
+        let output = run_in(
+            &dir,
+            &[
+                "--search",
+                "變更執行前，須完成風險評估並取得核准紀錄",
+                "--audit-log",
+                audit.to_str().expect("utf-8 temp path"),
+            ],
+        );
+        assert_eq!(
+            exit_code(&output),
+            0,
+            "run {run} stderr: {}",
+            stderr(&output)
+        );
+    }
+
+    let log = ekp_platform::audit::read_jsonl(&audit).expect("valid JSONL audit chain");
+    assert_eq!(log.len(), 2);
+    assert!(log.verify_chain());
+    assert_eq!(log.events[0].prev_hash, "GENESIS");
+    assert_eq!(log.events[1].prev_hash, log.events[0].hash);
+    for event in &log.events {
+        assert_eq!(
+            event.event_type,
+            ekp_platform::audit::AuditEventType::KnowledgeSearch
+        );
+        assert_eq!(event.actor, "search-cli");
+        assert_eq!(event.tenant_id, "default");
+    }
+
+    let contents = std::fs::read_to_string(&audit).expect("read audit log");
+    assert_eq!(contents.lines().count(), 2);
+    assert!(
+        !contents.contains("session") && !contents.contains("password"),
+        "the local search audit must not invent an identity: {contents}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn audit_log_refuses_a_corrupt_chain_without_modifying_it() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.jsonl");
+    std::fs::write(&audit, "{\"not\":\"an event\"}\n").expect("write corrupt audit log");
+    let before = std::fs::read_to_string(&audit).expect("read corrupt log");
+
     let output = run_in(
         &dir,
         &[
@@ -367,20 +415,46 @@ fn audit_log_records_a_local_search_event_without_an_identity() {
             audit.to_str().expect("utf-8 temp path"),
         ],
     );
-    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
-    let contents = std::fs::read_to_string(&audit).expect("read audit log");
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
     assert!(
-        contents.contains("\"KnowledgeSearch\""),
-        "audit log: {contents}"
+        stderr(&output).contains("FAIL: audit log append failed"),
+        "stderr: {}",
+        stderr(&output)
     );
-    assert!(contents.contains("\"actor\": \"search-cli\""), "{contents}");
-    assert!(
-        contents.contains("\"tenant_id\": \"default\""),
-        "{contents}"
+    assert_eq!(
+        std::fs::read_to_string(&audit).expect("read log after refusal"),
+        before,
+        "a failed append must leave the corrupt file unchanged"
     );
+    cleanup(&dir);
+}
+
+#[test]
+fn audit_log_rejects_a_legacy_single_object_file() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.json");
+    std::fs::write(&audit, "{\n  \"events\": []\n}\n").expect("write legacy audit log");
+    let before = std::fs::read_to_string(&audit).expect("read legacy log");
+
+    let output = run_in(
+        &dir,
+        &[
+            "--search",
+            "變更執行前，須完成風險評估並取得核准紀錄",
+            "--audit-log",
+            audit.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
     assert!(
-        !contents.contains("session") && !contents.contains("password"),
-        "the local search audit must not invent an identity: {contents}"
+        stderr(&output).contains("legacy single-object format"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&audit).expect("read log after refusal"),
+        before,
+        "a legacy file must not be rewritten in place"
     );
     cleanup(&dir);
 }

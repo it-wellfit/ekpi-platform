@@ -22,7 +22,7 @@
 
 ## Audit boundary
 
-The local governance ledger records *that* a governed action happened, by which operator-entered actor string, with a hash chain. It does not record credentials or document contents. The actor field is **not** an authenticated identity. The ledger is tamper-evident against accidental edits, not WORM.
+The local governance ledger records *that* a governed action happened, by the validated local session username for web mutations (or the fixed `search-cli` label for the CLI search audit log), with a hash chain. It does not record credentials or document contents. The local session is **not** an enterprise identity. The ledger is tamper-evident against accidental edits, not WORM.
 
 ## Violation response
 

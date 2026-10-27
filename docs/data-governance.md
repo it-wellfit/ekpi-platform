@@ -17,7 +17,7 @@ There is **no tenant isolation** in the served app. The `tenant` module is compi
 
 - Local-only web prototype; loopback bind; one startup-configured account; Viewer/Editor/Approver checks on data pages and mutations.
 - Credentials come from `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD` and `EKPI_LOCAL_AUTH_ROLE`; there is no default account and no persistent identity store. Passwords are held as salted PBKDF2-HMAC-SHA256 hashes in process memory and are never logged.
-- The ledger still records the operator-entered `actor` string, not the authenticated session. A local administrator can read or rewrite the ledger.
+- The ledger records the validated local session username as the actor for web mutations. This is a local process-memory identity, not an enterprise-verified identity. A local administrator can read or rewrite the ledger.
 - Target identity, RBAC, MFA, tenant isolation, access review and denial evidence are Phase B requirements (`DEC-02`, `DEC-12`).
 
 ## Data handling
