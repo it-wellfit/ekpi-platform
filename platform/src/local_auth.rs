@@ -186,11 +186,17 @@ impl AuthStore {
         let user_exists = self.users.contains_key(username);
 
         if !(password_matches && user_exists) {
-            self.record_failure(username, now);
+            // Lockout state is only useful for accounts that exist. Tracking
+            // arbitrary usernames would let an unauthenticated caller grow the
+            // failure map without bound.
+            if user_exists {
+                self.record_failure(username, now);
+            }
             return Err("invalid username or password".to_string());
         }
 
         self.failed_logins.remove(username);
+        self.sessions.retain(|_, session| !session.is_expired());
         let token = random_hex(TOKEN_BYTES)?;
         let session = Session {
             token: token.clone(),
@@ -421,5 +427,26 @@ mod tests {
             ..session
         };
         assert!(expired.is_expired());
+    }
+
+    #[test]
+    fn unknown_usernames_do_not_grow_lockout_state() {
+        let mut store = fast_store();
+        store.register("alice", "password1", Role::Viewer).unwrap();
+        for index in 0..100 {
+            let username = format!("ghost-{index}");
+            assert!(store.login(&username, "wrong-password").is_err());
+        }
+        assert!(store.failed_logins.is_empty());
+    }
+
+    #[test]
+    fn login_prunes_expired_sessions() {
+        let mut store = AuthStore::with_iterations(0, 1_000);
+        store.register("alice", "password1", Role::Viewer).unwrap();
+        store.login("alice", "password1").unwrap();
+        assert_eq!(store.session_count(), 1);
+        store.login("alice", "password1").unwrap();
+        assert_eq!(store.session_count(), 1);
     }
 }

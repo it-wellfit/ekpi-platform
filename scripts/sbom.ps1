@@ -21,6 +21,19 @@ if (-not (Get-Command "cargo-cyclonedx" -ErrorAction SilentlyContinue)) {
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
+function Get-Sha256Hex {
+    param([string]$Path)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '')
+        }
+        finally { $stream.Dispose() }
+    }
+    finally { $sha.Dispose() }
+}
+
 $epoch = (git -C $root log -1 --format=%ct 2>$null)
 if ([string]::IsNullOrWhiteSpace($epoch)) {
     Write-Host "FAIL: cannot read the Git commit timestamp." -ForegroundColor Red
@@ -80,7 +93,7 @@ foreach ($crate in @("platform", "eval")) {
         exit 1
     }
 
-    $hash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = (Get-Sha256Hex -Path $target).ToLowerInvariant()
     $sums += "$hash  $baseName.cdx.json"
     Write-Host "PASS: $target ($($bom.components.Count) components, $hash)" -ForegroundColor Green
 }

@@ -11,12 +11,13 @@
 
 The repository is a local prototype. Use synthetic data or authorized non-sensitive data only. Do not load real customer documents, personal data, regulated data or organization-specific facts into the fixture, ledger, reports or tests.
 
-There is **no tenant isolation** in the served app. The `tenant` module is compiled but not wired. There is **no enterprise authentication**. The governance web app binds to loopback and has no user identity. Do not describe the data as tenant-isolated or access-controlled beyond the host account.
+There is **no tenant isolation** in the served app. The `tenant` module is compiled but not wired. There is a **local-only session login**, not enterprise authentication. The governance web app binds to loopback, requires a local session for data pages and roles for mutations, and has no IdP, MFA, recovery, persistent user directory or access review. Do not describe the data as tenant-isolated or enterprise access-controlled.
 
 ## Authorization
 
-- Local-only web prototype; loopback bind; no login, role enforcement or access review.
-- `local_auth` (password hashing, session expiry, roles) and `tenant` are library-only and not used by the served binary.
+- Local-only web prototype; loopback bind; one startup-configured account; Viewer/Editor/Approver checks on data pages and mutations.
+- Credentials come from `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD` and `EKPI_LOCAL_AUTH_ROLE`; there is no default account and no persistent identity store. Passwords are held as salted PBKDF2-HMAC-SHA256 hashes in process memory and are never logged.
+- The ledger still records the operator-entered `actor` string, not the authenticated session. A local administrator can read or rewrite the ledger.
 - Target identity, RBAC, MFA, tenant isolation, access review and denial evidence are Phase B requirements (`DEC-02`, `DEC-12`).
 
 ## Data handling

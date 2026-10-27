@@ -31,9 +31,9 @@ The authoritative entities, states and invariants are in [governance/06](../gove
 | Decision snapshot | `snapshot` | Records inputs and output for deterministic replay | Self-test, integration tests |
 | Report/export | `export`, `coverage_report` | LegalRuleML, coverage, Markdown/HTML reports | Smoke gate and exporter tests |
 | Governance ledger | `governance` | Append-only JSONL events for projects, evidence, workflows, quality cases, inspections and gate decisions | `governance_web` tests |
-| Governance web | `governance_web` | Server-rendered forms and read views; same-origin guard and security headers | Route/integration tests |
+| Governance web | `governance_web`, `local_auth` | Server-rendered forms and read views; local session login, role checks, same-origin guard and security headers | Route/integration tests |
 
-The following modules are compiled and unit-tested but not wired into any served request path: `api`, `local_auth`, `tenant`, `audit`, `worm`, `agents`, `benchmark`, `formal_verification`, `runtime_verification`, `multimodal`, `ocr`, `pm4py_sidecar`, `reranker`, `retrieval_v2`, `vector_search`, `xes_import`, `bpmn`, `fulltext`, `knowledge_graph`. `evidence` is not referenced outside its own module. `causal` is different: `engine.rs` calls `CausalAnalyzer::analyze` and stores `EngineOutcome.causal_results`, but no CLI, report or snapshot consumer reads that field, so it is not a user-visible capability. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs`; no served path constructs a `TenantContext`. See the [architecture module table](../architecture/README.md#module-boundaries). Do not describe these as delivered capabilities.
+The following modules are compiled and unit-tested but not wired into any served request path: `api`, `tenant`, `audit`, `worm`, `agents`, `benchmark`, `formal_verification`, `runtime_verification`, `multimodal`, `ocr`, `pm4py_sidecar`, `reranker`, `retrieval_v2`, `vector_search`, `xes_import`, `bpmn`, `fulltext`, `knowledge_graph`. `evidence` is not referenced outside its own module. `causal` is different: `engine.rs` calls `CausalAnalyzer::analyze` and stores `EngineOutcome.causal_results`, but no CLI, report or snapshot consumer reads that field, so it is not a user-visible capability. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs`; no served path constructs a `TenantContext`. See the [architecture module table](../architecture/README.md#module-boundaries). Do not describe these as delivered capabilities.
 
 ## Persistence and data stores
 
@@ -59,9 +59,9 @@ There is no relational database, ORM, migration engine or multi-process lock. Tw
 
 ## Authentication and authorization boundary
 
-The served web app has **no authentication** and **no authorization**. It binds to `127.0.0.1`, uses a same-origin guard for mutations, and sets CSP/frame/referrer/nosniff headers. These are defense-in-depth for a local tool, not an identity control.
+The served web app has a **local-only session login**. At startup it can register one account from `EKPI_LOCAL_AUTH_USER`/`EKPI_LOCAL_AUTH_PASSWORD` with role `EKPI_LOCAL_AUTH_ROLE` (default `editor`). Passwords use PBKDF2-HMAC-SHA256 with 600,000 iterations and a random salt; session tokens come from the OS CSPRNG; sessions live in process memory for 3,600 seconds. Every ledger-backed page requires a `viewer` session, ordinary creation requires `editor`, and review/publication/quality-status/lifecycle actions require `approver`. `/healthz`, `/metrics`, `/login` and the stylesheet are public. The cookie is `HttpOnly` and `SameSite=Strict`; `EKPI_COOKIE_SECURE=1` adds `Secure`.
 
-`local_auth` contains local password hashing, session expiry and a four-role enum, but it is not wired into `governance_web`. `tenant` contains an in-memory tenant store, but it is not wired. The target identity, role, MFA and tenant requirements are in [governance/07](../governance/07-security-integration-spec-v1.md) and decisions `DEC-02`, `DEC-12` and `DEC-17`.
+This is **not** enterprise authentication or authorization. There is no IdP, SSO, MFA, account recovery, persistent user database, access review or joiner/mover/leaver process. The ledger still records the operator-entered `actor` string, not the authenticated session user. `tenant` contains an in-memory tenant store, but it is not wired. The target identity, role, MFA and tenant requirements are in [governance/07](../governance/07-security-integration-spec-v1.md) and decisions `DEC-02`, `DEC-12` and `DEC-17`.
 
 The `permissions` field on a document and `retrieval::PermissionContext` are a **library-level retrieval filter**, not an authorization decision. `--search` receives no user identity and applies no filter. The fixed `--eval` set now has four role-restricted cases and two evaluation-only restricted fixtures, with 2 allowed cases, 2 denied cases and 0 violations; this proves the filter's allow/deny behavior. The fixtures are merged only for the evaluation run and are not in `docs.json`, so `--search` cannot see them. Authentication, authorization policy and tenant isolation remain unimplemented (`PR-03`, `PR-04`, `S19`). See `EVAL-GAP-06` in [AI evaluation](../quality/ai-evaluation.md#known-gaps).
 
@@ -79,15 +79,15 @@ It is a placeholder and **must not be exposed**. A real API requires an engine-b
 
 ## Errors and exit codes
 
-The CLI convention is documented in [CLI contract](../contracts/cli.md): `0` success, `1` fail-closed validation/IO/schema/export failure, `2` usage or argument error. The web app returns a rendered error page for ledger/validation failures and `403` for a foreign-origin mutation.
+The CLI convention is documented in [CLI contract](../contracts/cli.md): `0` success, `1` fail-closed validation/IO/schema/export failure, `2` usage or argument error. The web app returns a rendered error page for ledger/validation failures, `400` for an oversized or malformed form body, `401` for an unauthenticated data page, `403` for an insufficient role or foreign-origin mutation, `429` for concurrency refusal and `504` for a request timeout.
 
 Error messages must not include secrets or real personal data. The current app writes operator-visible messages; it does not have a structured error code registry. A stable error-code contract is a Phase B item.
 
 ## Observability
 
-Current state: local `println!`/`eprintln!` output and test assertions. There is no structured logging, metrics endpoint, tracing exporter, correlation ID, health/readiness endpoint for operations, or alerting. The report records per-case latency and metrics, but that is evaluation output, not production telemetry.
+Current state: one JSON access-log line per request on stdout (request id, method, path, status, duration), an in-process aggregate `/metrics` endpoint for request/4xx/5xx/in-flight/concurrency-refusal/duration counters, a liveness-only `/healthz`, and a validated correlation id. There are no traces, dashboards, alerting, SLO/error budget, readiness probe or central log collection. The report records per-case latency and metrics, but that is evaluation output, not production telemetry.
 
-Phase B requires SLI/SLO definitions, structured logs, metrics, traces, alerting and an incident path; see [production readiness](../operations/production-readiness.md) and `DEC-16`.
+Phase B requires SLI/SLO definitions, alerting and an incident path on top of these local signals; see [production readiness](../operations/production-readiness.md) and `DEC-16`.
 
 ## Migration and recovery
 
@@ -101,10 +101,10 @@ Phase B requires SLI/SLO definitions, structured logs, metrics, traces, alerting
 | ID | Gap | Impact | Tracking |
 | --- | --- | --- | --- |
 | BE-GAP-01 | `api.rs` is a false `comply` placeholder | Cannot be exposed; would be a safety defect if wired | [Improvement register](../reviews/README.md) |
-| BE-GAP-02 | No authentication/authorization in the served app | Any local user can act; no role separation | Phase B, `DEC-12` |
+| BE-GAP-02 | Local session login only; no enterprise identity or access review | Role checks are in-process and restart-scoped; no IdP/MFA/recovery/joiner-mover-leaver | Phase B, `DEC-12` |
 | BE-GAP-03 | No tenant isolation | Cannot serve multiple organizations | Phase B, `DEC-12` |
 | BE-GAP-04 | No cross-process lock or transactional store | Concurrent writers can corrupt or interleave ledger events | Phase B |
-| BE-GAP-05 | No structured logs, metrics or traces | No operational detection or SLO evidence | Phase B, `DEC-16` |
+| BE-GAP-05 | Local logs/metrics only; no traces, SLO or alerting | No operational detection, budget or readiness evidence | Phase B, `DEC-16` |
 | BE-GAP-06 | Library-only modules appear capable but are unwired | Misleading capability claims; maintenance cost | Wire with spec/tests or remove |
 | BE-GAP-07 | No idempotency key for form posts | Double submission creates duplicate events | Phase B |
 | BE-GAP-08 | `--search` has no identity or permission filter, and search is lexical only | Results are not access-controlled and paraphrased questions can abstain | Phase B identity work; new retrieval design needs an ADR and eval update |

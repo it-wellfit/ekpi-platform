@@ -9,10 +9,10 @@
 
 1. **No secrets in the repository.** Do not commit passwords, API keys, tokens, private keys, connection strings or real customer data. The repository is not currently scanned by an executed remote CI job; review staged changes manually and treat the CI secret-scan definition as unproven until it runs.
 2. **Local configuration stays local.** `.env`, key files and local ledgers are ignored by Git. `.env.example` contains placeholders only. The application does **not** automatically load `.env`; only variables actually read by the code have an effect.
-3. **Only the documented variable is functional.** The current code reads only `EKP_GOVERNANCE_DATA` (local ledger path). Other placeholder names are not read. Do not assume a secret or setting is active because it appears in `.env.example`.
-4. **Local-only governance prototype.** No enterprise authentication, no external-source permission enforcement and no AI-produced workflow drafts that self-publish. The prototype stores source references and metadata, not authoritative source contents.
+3. **Only the documented variables are functional.** The current code reads `EKP_GOVERNANCE_DATA` (local ledger path), `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD`, `EKPI_LOCAL_AUTH_ROLE` (local workbench account) and `EKPI_COOKIE_SECURE` (cookie flag). No other placeholder is read. Do not assume a secret or setting is active because it appears in `.env.example`.
+4. **Local-only governance prototype.** The workbench has a local session login, not enterprise authentication; no external-source permission enforcement and no AI-produced workflow drafts that self-publish. The prototype stores source references and metadata, not authoritative source contents.
 5. **No prefilled organization facts.** Compliance deliverables must not prefill organization-specific facts.
-6. **Sensitive data handling.** Do not put personal data, customer content or credentials in the ledger, reports, test fixtures, issue text or review records. The local ledger is not encrypted and is not WORM.
+6. **Sensitive data handling.** Do not put personal data, customer content or credentials in the ledger, reports, test fixtures, issue text or review records. The local ledger is not encrypted and is not WORM. The local login password is held in the process environment and hashed in memory; never commit or log it.
 
 ## `.env` and `.env.example`
 

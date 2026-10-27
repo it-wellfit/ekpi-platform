@@ -8,7 +8,7 @@
 
 ## System context
 
-The current system is a local, offline-capable Rust implementation. It has no server-side database, no enterprise identity provider, no cloud dependency and no live connector. The operator supplies synthetic or authorized non-sensitive data and runs the CLI or the local web workbench.
+The current system is a local, offline-capable Rust implementation. It has no server-side database, no enterprise identity provider, no cloud dependency and no live connector. The operator supplies synthetic or authorized non-sensitive data and runs the CLI or the local web workbench. The workbench has a local-only session login; it is not enterprise identity and does not isolate tenants.
 
 ```mermaid
 flowchart LR
@@ -50,10 +50,10 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 | Search evaluation | `eval` (platform module) | Served by `--eval` and integration tests; the separate `eval/` crate is the case-metrics harness |
 | Configuration and validation | `params`, `validate` | Served by CLI |
 | Output | `export`, `coverage_report` | Served by CLI |
-| Governance workbench | `governance`, `governance_web` | Served by `governance_web` |
+| Governance workbench | `governance`, `governance_web`, `local_auth` | Served by `governance_web`; local-only session login and role checks, no enterprise identity |
 | Placeholder HTTP API | `api` | **Not served.** `api.rs` returns a fixed `comply` placeholder for `/api/v1/cases/:id/decide`; it is not a contract and must not be exposed |
 | Evidence and causal analysis | `evidence`, `causal` | Library-only: `evidence` is not referenced outside its module; `causal` is called by `engine` and its result is stored in `EngineOutcome.causal_results`, but no CLI/report/snapshot consumer reads it |
-| Identity and tenancy | `local_auth`, `tenant` | Library-only; **not wired**; no enterprise authentication or tenant enforcement. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs` |
+| Identity and tenancy | `tenant` | Library-only; **not wired**; no tenant enforcement. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs` |
 | Audit/WORM | `audit`, `worm` | Library-only; the served ledger has its own hash chain but is not WORM |
 | Verification and analysis | `formal_verification`, `runtime_verification`, `benchmark` | Library-only |
 | Retrieval v2 cluster | `retrieval_v2`, `fulltext`, `reranker`, `vector_search` | Library-only; `retrieval_v2` is not imported by the served path |
@@ -79,27 +79,29 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 2. The top five sections are returned with `doc_id`, version, section, score and the verbatim text. Text below the threshold yields `insufficient evidence` and a reason instead of a guessed answer.
 3. `--eval --test-set PATH` loads a fixed JSON set (default fixture: 28 cases, threshold 0.42) and runs the same retriever per case.
 4. The gate rejects a run with fewer than 10 cases, any failed case, a missing required category (`general`, `ambiguous`, `adversarial`, `wrong_source`, `insufficient_context`, `permission`), fewer than two role-restricted cases, no allowed or no denied permission case, or any permission violation. The current 28-case set adds two evaluation-only synthetic fixtures with disjoint roles and four permission cases (two allowed, two denied); it reports 4 role-restricted cases, 2 allowed, 2 denied, 0 violations and isolation 1.00. Fixtures are merged into a clone for `--eval` only and are not present in `docs.json`, so ordinary `--search` cannot see them. This is still a library-level retrieval filter, not authentication or tenant authorization; `EVAL-GAP-06` is closed as fixed-set coverage, while S19 remains `Partial`. A failed gate exits non-zero.
-5. The user identity and role list are supplied only by the library/eval `PermissionContext`. The CLI has no login and applies **no** permission filter; `governance_web` does not call retrieval. The `permissions` field is therefore a library-level filter, not an authorization control.
+5. The user identity and role list are supplied only by the library/eval `PermissionContext`. The CLI has no login and applies **no** permission filter; `governance_web` has a local session login but does not call retrieval, so the login does not authorize search results. The `permissions` field is therefore a library-level filter, not an authorization control.
 6. Search is lexical, not semantic or LLM-based. An indirectly phrased question can legitimately return `insufficient evidence`; that is an honest refusal, not a successful answer.
 
 ### Local governance workbench
 
 1. `governance_web` opens the ledger path and binds only `127.0.0.1:3000`.
-2. GET routes render server-side Maud HTML with CSS only; there is no JavaScript and no client-side state.
-3. POST routes append a validated event to the JSONL ledger, then redirect or re-render.
-4. Every event carries a sequence number, timestamp, actor, payload, previous hash and SHA-256 hash. The audit page verifies chain continuity.
-5. Mutating requests with a foreign `Origin` are rejected before the handler; responses carry CSP, `nosniff`, frame-deny and referrer-policy headers.
+2. At startup it optionally registers one local account from `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD` and `EKPI_LOCAL_AUTH_ROLE`. There is no default account; without those variables the server starts but data pages cannot be read.
+3. `/healthz`, `/metrics`, `/login` and `/assets/*` are public. Every ledger-backed GET requires a `viewer` session; mutations require `editor` or `approver` as documented in the web-route contract.
+4. GET routes render server-side Maud HTML with CSS only; there is no JavaScript and no client-side state.
+5. POST routes append a validated event to the JSONL ledger, then redirect or re-render. The ledger actor is still the operator-entered string, not the authenticated session user.
+6. Every event carries a sequence number, timestamp, actor, payload, previous hash and SHA-256 hash. The audit page verifies chain continuity.
+7. Mutating requests with a foreign `Origin` are rejected before the handler; a missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`. Responses carry CSP, `nosniff`, frame-deny and referrer-policy headers.
 
 ## Deployment boundary
 
-There is **no approved deployment target**. The only supported mode is a local process started by the operator. The web server binds to loopback; it is not designed for a shared host, container ingress or public network.
+There is **no approved deployment target**. The only supported mode is a local process started by the operator. The web server binds to loopback and has only a local process-memory session login; it is not designed for a shared host, container ingress or public network.
 
 Not currently present:
 
 - PostgreSQL, pgvector, Tantivy, a message queue or a separate search service.
-- Enterprise SSO/MFA, tenant isolation or delegated administration.
+- Enterprise SSO/MFA, account recovery, persistent identity, access review, tenant isolation or delegated administration.
 - Kubernetes, reverse proxy, TLS termination or horizontal scaling.
-- Centralized logs, metrics, traces, alerting or on-call.
+- Centralized logs, traces, alerting, dashboards or on-call. Local JSON access logs and aggregate `/metrics` exist, but they are not an operational observability stack.
 - Automated deployment, rollback or blue/green release.
 
 The research and selection documents may discuss these technologies. They are options, not current implementation facts. See [tech selection](../tech-selection-round1.md) for the record and [operations](../operations/README.md) for the actual operating mode.
@@ -122,10 +124,10 @@ The research and selection documents may discuss these technologies. They are op
 | ID | Gap | Consequence | Tracking |
 | --- | --- | --- | --- |
 | ARCH-GAP-01 | `api.rs` is an unwired placeholder that returns `comply` with no citations | Must never be exposed; a future API needs a real engine-backed implementation and contract tests | [Reviews improvement register](../reviews/README.md) |
-| ARCH-GAP-02 | `local_auth` is not wired into `governance_web` | No authenticated user, role enforcement or access review in the served app | Phase B, `DEC-12` |
+| ARCH-GAP-02 | `local_auth` is a local-only session mechanism, not enterprise identity | No IdP, SSO, MFA, account recovery, persistent identity store, access review or joiner/mover/leaver process; sessions vanish on restart | Phase B, `DEC-12` |
 | ARCH-GAP-03 | `tenant` is not wired | No tenant isolation in the served app or ledger | Phase B, `DEC-12` |
 | ARCH-GAP-04 | Ledger is a local JSONL hash chain, not WORM | Local tamper evidence only; no enterprise retention or external anchoring | Phase B, `DEC-14` |
-| ARCH-GAP-05 | No structured logs, metrics, traces or health endpoint for operations | No SLI/SLO or incident detection | Phase B, `DEC-16` |
+| ARCH-GAP-05 | Local logs and metrics exist, but there is no operational observability | No SLO, error budget, traces, dashboards, alerting, readiness probe or incident detection | Phase B, `DEC-16` |
 | ARCH-GAP-06 | Many modules are library-only | Repository size and apparent capability exceed served evidence | Tracked in module table; wire only with a spec and integration tests |
 | ARCH-GAP-07 | `permissions` is a library-level retrieval filter, not an authorization boundary | `--search` has no identity and cannot isolate tenants; `governance_web` does not use it | Phase B identity work, `DEC-12` |
 | ARCH-GAP-08 | Search is lexical bigram cosine, not semantic or LLM retrieval | Paraphrased questions can abstain; it is not a natural-language answer system | [AI evaluation](../quality/ai-evaluation.md); future retrieval work needs a new ADR and eval set |

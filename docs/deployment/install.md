@@ -71,14 +71,17 @@ cargo run --locked --bin ekp_platform -- --coverage-report
 cargo run --locked --bin ekp_platform -- --export-legalruleml target/lrml
 ```
 
-The local governance workbench is a separate binary:
+The local governance workbench is a separate binary. It has no default account, so set the login variables before starting it:
 
 ```powershell
 cd platform
+$env:EKPI_LOCAL_AUTH_USER = "operator"
+$env:EKPI_LOCAL_AUTH_PASSWORD = "choose-a-long-local-password"
+$env:EKPI_LOCAL_AUTH_ROLE = "approver"   # viewer | editor | approver | admin
 cargo run --locked --bin governance_web
 ```
 
-It binds **`127.0.0.1:3000` only**. Use synthetic or authorized non-sensitive data. It has no login, no tenant isolation and no enterprise identity integration; do not expose it beyond the local machine. See [operations](../operations/README.md) and the [threat model](../architecture/threat-model.md).
+It binds **`127.0.0.1:3000` only**. Use synthetic or authorized non-sensitive data. The login is local process-memory authentication: there is no IdP, SSO, MFA, account recovery, persistent user database or tenant isolation. Without the two credential variables the server still starts, but data pages return `401`. Do not expose it beyond the local machine. See [operations](../operations/README.md), [configuration](config.md) and the [threat model](../architecture/threat-model.md).
 
 ## Data locations
 

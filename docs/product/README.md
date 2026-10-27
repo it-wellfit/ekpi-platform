@@ -25,7 +25,7 @@ The role baseline is defined in [governance/02](../governance/02-requirements-v0
 - Compliance and legal, who interpret applicable requirements and non-waivable controls.
 - The AI system owner, who owns model, prompt, evaluation and human-review policy.
 
-One person may hold several roles. Conflicts must be recorded, and high-risk work requires independent review. The prototype does **not** enforce these role separations because enterprise identity and authorization are not wired.
+One person may hold several roles. Conflicts must be recorded, and high-risk work requires independent review. The prototype does **not** enforce these organizational role separations: it has only a local Viewer/Editor/Approver session check, with no enterprise identity, role administration, access review or tenant boundary.
 
 ## Evidence status
 

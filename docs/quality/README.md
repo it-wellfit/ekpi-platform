@@ -27,15 +27,17 @@ The fixed local entry point is `scripts/check.ps1` (Windows) or `scripts/check.s
 
 ## Current evidence (dated)
 
-The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline. The final 2026-10-26 revision `7f6ab97` re-ran the canonical gate with the repo-local `.cargo/config.toml` profile overrides and passed:
+The [regression checklist](../development/regression-checklist.md) records the 2026-10-25 baseline. The 2026-10-27 revision `42d0302` re-ran the canonical checks:
 
-- `eval`: 9 Cargo tests; self-test 10 checks.
-- `platform`: 233 Cargo tests (200 unit, 2 edge, 3 governance web, 8 integration, 7 search evaluation, 13 CLI contract); self-test 49 assertions; schema 20 records.
+- `eval`: 12 Cargo tests; self-test 10 checks.
+- `platform`: 261 Cargo tests (217 unit, 13 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health); self-test 49 assertions; schema 20 records.
+- Authentication boundary: PBKDF2-HMAC-SHA256 (600,000 iterations, random salt), OS-CSPRNG session tokens, constant-time comparison, 5-failure/300-second lockout, Viewer/Editor/Approver route checks, 64 KiB form limit and a stricter same-origin/fetch-metadata guard. Failed logins are only tracked for existing accounts, so arbitrary usernames cannot grow lockout state; expired sessions are pruned on login. These are local session controls, not enterprise identity.
 - Search: `--eval --test-set data/eval/search_eval.json` 28 cases, 20/20 top-1, 8/8 refusals, 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00, gate PASS. Lexical only. This is library-filter evidence, not authentication or tenant isolation (`S19`).
 - Smoke: `G_ekpi_engine acc=1.000`, hard gates H-1–H-6 all OK; LegalRuleML 51,026 bytes with 19/19/19/16 structure; `report.html` zero script.
-- `gate.ps1 -IncludeSmoke`: 13/13 steps PASS; documentation 44 required files / 488 links in 95 files; high-signal secret scan 205 files.
-- Restore drill: PASS at `7f6ab97` and again at `5328787` (docs-only diff). Latest bundle `ekpi-platform-2026-10-26-110117.bundle`, SHA-256 `789626183B04AA0429214F902E79FE4924D469431FAC14758CF7DAF339D0E93F`, `git bundle verify` okay, fresh clone reached `5328787` and its restored `scripts/check.ps1` exited 0. See the [backup log](../operations/backup-log.md).
-- Dependencies: `cargo audit` rerun 2026-10-26 against the current lockfiles — platform 66 dependencies, eval 12 dependencies, 0 vulnerabilities; no SBOM and no CI execution yet.
+- `gate.ps1 -IncludeSmoke`: 13/13 steps PASS; documentation and high-signal secret scan pass. Exact link/file counts are recorded in the [release evidence bundle](../operations/release-evidence-bundle.md).
+- Restore drill: PASS at `283f83a`, `7f6ab97` and `5328787` (the last is a docs-only diff of `7f6ab97`). Latest bundle `ekpi-platform-2026-10-26-110117.bundle`, SHA-256 `789626183B04AA0429214F902E79FE4924D469431FAC14758CF7DAF339D0E93F`, `git bundle verify` okay, fresh clone reached `5328787` and its restored `scripts/check.ps1` exited 0. See the [backup log](../operations/backup-log.md) and the newer drill row for `42d0302`.
+- Dependencies: local `cargo audit` against both lockfiles reports 0 vulnerabilities; CycloneDX SBOM artifacts for `ekp_platform` and `ekp_eval` are generated with a SHA-256 list. No CI execution or independent attestation yet.
+- Performance: one local release benchmark recorded eval p50/p95 `18.955/24.891 ms` and loopback `/healthz` p50/p95 `17.408/19.420 ms` at `5,589.57 req/s` (artifact `artifacts/benchmark/benchmark-2026-10-26-115830.json`). This is a local observation, not a capacity model or SLO.
 
 Historical note: the earlier audit revision `8bf2d53` could not run canonical `cargo test --locked`/`gate.ps1` because Windows Application Control blocked execution from `target` (`os error 4551`). The narrow profile overrides in `.cargo/config.toml` removed that host block; the later `198d5f3` restore attempt remains a recorded **BLOCKED** row and is not retroactively a PASS. There is still no CI run, remote, off-host backup or approved RPO/RTO. See [troubleshooting](../deployment/troubleshooting.md#windows-application-control-blocks-target-binaries).
 
@@ -60,7 +62,7 @@ A higher tier adds checks; it never removes the baseline. See [quality gates](..
 
 ## Performance and capacity
 
-There is no approved performance target or capacity model. `DEC-19` requires an owner-approved workload, latency/throughput budget and growth model before a performance claim. Local `mean_latency_ms` in a report is not an SLO.
+There is no approved performance target or capacity model. `DEC-19` requires an owner-approved workload, latency/throughput budget and growth model before a performance claim. The recorded local benchmark is useful as a regression baseline only; local `mean_latency_ms` and loopback throughput are not an SLO or a capacity model.
 
 When a performance requirement is approved, add a reproducible load script, a capacity report and a regression threshold. Do not invent a number to fill the gap.
 

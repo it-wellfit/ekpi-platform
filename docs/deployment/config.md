@@ -35,8 +35,12 @@ The declared invariants include: draft rules are not consumable; ambiguous bindi
 | Variable | Read by | Default | Description |
 | --- | --- | --- | --- |
 | `EKP_GOVERNANCE_DATA` | `governance_web` | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` (Windows) or the platform data fallback | Local governance ledger path |
+| `EKPI_LOCAL_AUTH_USER` | `governance_web` | none | Username for the single local workbench account |
+| `EKPI_LOCAL_AUTH_PASSWORD` | `governance_web` | none | Password for that account; minimum 8 characters, maximum 128; never commit or log it |
+| `EKPI_LOCAL_AUTH_ROLE` | `governance_web` | `editor` | `viewer`, `editor`, `approver` or `admin`; unknown values fall back to `editor` |
+| `EKPI_COOKIE_SECURE` | `governance_web` | unset | Set to `1` to add `Secure` to the session cookie; requires an HTTPS origin to be useful |
 
-**Only `EKP_GOVERNANCE_DATA` is read by the current code.** The other placeholder names in `.env.example` (`EKP_DATA_DIR`, `EKP_CONFIG_DIR`, `EKP_OUT_DIR`, `EKP_EVAL_CASES_DIR`, `EKP_EVAL_OUT_DIR`) are **not** read. `DATABASE_URL`, `RUST_LOG` and similar variables are not used: there is no database and no tracing/log-level configuration.
+The local auth variables are optional at process start, but without both user and password the server starts with no account and every data page returns `401`. There is no default account. `DATABASE_URL`, `RUST_LOG` and similar variables are not used: there is no database and no tracing/log-level configuration.
 
 Do not assume an environment variable configures behavior unless the code reads it. If a new variable is added, update this table, `.env.example`, the contract and a test in the same change.
 
@@ -52,7 +56,7 @@ Output directories are operator-selected. Generated artifacts are not transactio
 
 ## Local web configuration
 
-The current `governance_web` binary has no configuration file for its bind address; it always binds `127.0.0.1:3000`. The ledger path is the only configurable value. There is no TLS, reverse proxy, authentication or tenant setting.
+The current `governance_web` binary has no configuration file for its bind address; it always binds `127.0.0.1:3000`. The ledger path and the optional local login/cookie variables above are the only configurable values. There is no TLS, reverse proxy, tenant setting, password recovery or user administration.
 
 ## Update triggers
 

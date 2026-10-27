@@ -27,6 +27,19 @@ function Fail {
     exit 1
 }
 
+function Get-Sha256Hex {
+    param([string]$Path)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '')
+        }
+        finally { $stream.Dispose() }
+    }
+    finally { $sha.Dispose() }
+}
+
 function Resolve-Age {
     $command = Get-Command "age" -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
@@ -110,8 +123,8 @@ Write-Host "=== age encryption ===" -ForegroundColor Cyan
 & $age --encrypt --recipient $Recipient --output $cipher $bundle.FullName
 if ($LASTEXITCODE -ne 0) { Fail "age encryption failed." }
 
-$bundleHash = (Get-FileHash -LiteralPath $bundle.FullName -Algorithm SHA256).Hash
-$cipherHash = (Get-FileHash -LiteralPath $cipher -Algorithm SHA256).Hash
+$bundleHash = Get-Sha256Hex -Path $bundle.FullName
+$cipherHash = Get-Sha256Hex -Path $cipher
 [System.IO.File]::WriteAllText("$cipher.sha256", "$cipherHash  $($bundle.BaseName).bundle.age`n", $utf8NoBom)
 
 $decryptionVerified = $false
@@ -121,7 +134,7 @@ if ($IdentityFile) {
     try {
         & $age --decrypt --identity $IdentityFile --output $plain $cipher
         if ($LASTEXITCODE -ne 0) { Fail "age decryption failed." }
-        $plainHash = (Get-FileHash -LiteralPath $plain -Algorithm SHA256).Hash
+        $plainHash = Get-Sha256Hex -Path $plain
         if ($plainHash -ne $bundleHash) {
             Fail "Decrypted bundle hash does not match the source bundle."
         }

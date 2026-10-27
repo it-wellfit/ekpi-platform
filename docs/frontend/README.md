@@ -13,7 +13,8 @@ The governance workbench is a server-rendered, CSS-first application. It has no 
 
 | Page | Route | Purpose | Mutations |
 | --- | --- | --- | --- |
-| Work overview | `GET /` | Dashboard counts and recent governance state | None |
+| Login | `GET /login` | Local username/password form | `POST /login` |
+| Work overview | `GET /` | Dashboard counts and recent governance state | `POST /logout` |
 | Projects | `GET /projects` | List and register projects | `POST /projects` |
 | Evidence | `GET /evidence` | List source references and review state | `POST /evidence`; `POST /evidence/{id}/review` |
 | Inspections | `GET /inspections` | Record the 29-item quality inspection | `POST /inspections` |
@@ -21,9 +22,9 @@ The governance workbench is a server-rendered, CSS-first application. It has no 
 | Controls | `GET /controls` | Risk, change, defect and CAPA cases | `POST /controls`; `POST /controls/{id}/status` |
 | Lifecycle | `GET /lifecycle` | Gate decisions across the 12-stage lifecycle | `POST /lifecycle` |
 | Audit | `GET /audit` | Verify and inspect the local hash-chained ledger | None |
-| Stylesheet | `GET /assets/governance.css` | CSS-only presentation | None |
+| Stylesheet | `GET /assets/governance.css` | CSS-only presentation (public) | None |
 
-The app does not have a login page, tenant selector, user administration page, settings page or API documentation page. Those are Phase B surfaces and are not implemented.
+Every data page requires a local `viewer` session; ordinary creation requires `editor` and review/publication/quality-status/lifecycle actions require `approver`. The UI does not hide actions the current session cannot perform: the server rejects them with `403`. There is no tenant selector, user administration page, password recovery, settings page or API documentation page. Those remain Phase B surfaces and are not implemented.
 
 ## Page composition
 
@@ -38,9 +39,13 @@ The app does not have a login page, tenant selector, user administration page, s
 
 | State | Behavior | Evidence |
 | --- | --- | --- |
+| Unauthenticated data page | `401` and the login form; no ledger content | Route test |
+| Insufficient role | `403`; no event appended | Route test |
+| Invalid credentials | `401`, no session cookie; user-existence is not confirmed | Route test |
 | Initial/empty | Renders an empty-state message and the available create action | Route tests; manual review |
 | Success | A mutation appends an event, then redirects or re-renders with the new record | `governance_web` tests |
 | Validation error | The request is rejected and an error page/message is rendered; no event is appended | Handler tests and manual checks |
+| Oversized form body | `400` before parsing; no event appended | Route test |
 | Ledger/read error | An error page is rendered without exposing sensitive content | `error_response` path |
 | Foreign-origin mutation | `403` response; no ledger event appended | `governance_web` integration test |
 | Publish conflict | Published versions are immutable; the handler refuses an invalid publish | Workflow tests |
@@ -53,6 +58,7 @@ There is no optimistic UI, client-side cache, toast system or offline mode. The 
 
 | Form | Fields | Server-side rules |
 | --- | --- | --- |
+| Login | `username`, `password` | Matches the single startup account; lockout after 5 failures for 300 s; 64 KiB body limit; no session cookie on failure |
 | Project | `name`, `department`, `owner`, `risk_tier`, `actor` | Required fields; text length/cleanup; actor required |
 | Evidence link | `project_id`, `title`, `source_system`, `source_url`, `source_version`, `evidence_type`, `owner`, `actor` | Required fields; source URL/version recorded as a reference, not fetched |
 | Evidence review | `result`, `actor`, `note` | Allowed review result; reviewer/actor required; note retained |
@@ -103,7 +109,7 @@ The route tests check semantics, CSP, skip link, focus style, CSS content type a
 
 | ID | Gap | Impact | Tracking |
 | --- | --- | --- | --- |
-| FE-GAP-01 | No authentication or role-aware UI | Every local user sees the same actions | Phase B, `DEC-12` |
+| FE-GAP-01 | Login exists, but the UI is not role-aware and has no account administration | Every session sees every action; the server rejects insufficient roles; no user list, recovery, MFA or access review | Phase B, `DEC-12` |
 | FE-GAP-02 | No tenant selector or tenant-scoped views | Cannot serve multiple organizations | Phase B, `DEC-12` |
 | FE-GAP-03 | No browser E2E or automated accessibility suite | Manual checks can be skipped | Phase B quality work |
 | FE-GAP-04 | No localization framework | UI copy is Chinese; docs are English | Decide before broader pilot |
