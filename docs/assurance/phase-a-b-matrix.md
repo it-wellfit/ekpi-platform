@@ -1,0 +1,389 @@
+# Phase A and Phase B assurance matrix
+
+- **Status:** Active; Phase A **not approved**, Phase B **blocked**
+- **Owner:** Product + QA + Engineering; business, security, operations, data and independent-review roles are `UNASSIGNED`
+- **Last reviewed:** 2026-10-27
+- **Evidence baseline:** `6ae6134` (2026-10-27), plus the historical revision named in each row
+- **Canonical gate:** [Phase A/B gates](../quality/phase-gates.md)
+- **Test evidence:** [test-evidence.md](test-evidence.md)
+
+This matrix expands the canonical gate into the fields required for an auditable acceptance decision. It records the requirement, observed state, defect and root cause, impact, fix, executable acceptance test, threshold, external dependency, evidence, owner and remaining blocker. It does not replace the canonical gate or the [governance acceptance matrix](../governance/04-acceptance-test-matrix.md).
+
+## Status rules
+
+- `PASS` requires the named command or drill to run on the named revision and exit 0. No row in this matrix is `PASS` at `6ae6134`.
+- A release-profile result is not a canonical `scripts/check.ps1` pass.
+- A local clone is not CI. A simulated `age` drill is not an off-host backup. A self-review is not independent review.
+- A row is `PARTIAL` when some evidence exists but the full condition is unmet; it is `BLOCKED` when an external owner, environment or approval is required; it is `NOT MET` when the required condition is absent.
+- The overall phase result follows the weakest mandatory row, not the majority.
+
+## Phase A summary
+
+| ID | Dimension | Status at `6ae6134` | Strongest current evidence | Decisive remaining gap |
+| --- | --- | --- | --- | --- |
+| A1 | User value | `NOT MET` | Prepared [pilot runbook](../operations/pilot-runbook.md) and synthetic workflow tests | No named pilot owner or representative user; no real workflow record |
+| A2 | Functional correctness | `PARTIAL` | 67-case corpus, unit/integration tests, self-test, search gate | Target acceptance cases AT-01–AT-31 are `NOT RUN`; pilot workflow not exercised |
+| A3 | Data correctness | `PARTIAL` | Version binding, rule activity, state, replay and schema tests | No real-workflow dataset, no independent review, no database transaction semantics |
+| A4 | Engineering quality | `PARTIAL` | Release profile: platform 270, eval 12, self-test 49, schema 20, search 28; fmt/Clippy PASS | Canonical `scripts/check.ps1` exits 1 because host policy blocks the debug binary (`os error 4551`) |
+| A5 | Security | `PARTIAL` | Local PBKDF2 session, Viewer/Editor/Approver, CSRF guard, CSP, body cap, boundary tests | No enterprise IdP, MFA, recovery, persistent identity, access review or tenant isolation |
+| A6 | Maintainability | `PARTIAL` | Install, configuration, troubleshooting, runbook and evidence pages | No named operator, no independent handoff dry run |
+| A7 | Traceability | `PARTIAL` | Requirement → spec → code → test → release rows in the register | No pilot run ID, no validated row, no real-user acceptance |
+| A8 | Backup and restore | `PARTIAL` | `3ee2ee2` local fresh-clone restore PASS; `28b68cc` bundle verifies and clones | Final `28b68cc` restore check is `BLOCKED` at `eval` Clippy by host policy |
+| A9 | AI quality | `PARTIAL` | Fixed 67-case verdict corpus and 28-case lexical retrieval gate | No LLM/agent/tool path; tool-failure dimension absent; mock output is not AI quality |
+| A10 | Documentation and handoff | `PARTIAL` | Canonical docs map, commands, limits and evidence pages | No pilot handoff record or new-operator acceptance |
+| A11 | Review and improvement | `PARTIAL` | Local review, retro template, improvement register | No independent reviewer, no second annotator, no signed review |
+
+**Phase A decision:** `NOT APPROVED`. A1 is `NOT MET`; A2/A3/A5/A6/A7/A8/A9/A10/A11 are `PARTIAL`; A4 is `PARTIAL` because the canonical check is blocked. A passing release-profile suite cannot waive A1 or the pilot-scope gaps.
+
+## Phase B summary
+
+| ID | Dimension | Status at `6ae6134` | Strongest current evidence | Decisive remaining gap |
+| --- | --- | --- | --- | --- |
+| B1 | Security and governance | `BLOCKED` | Local threat model, boundary tests, secret scan, SBOM, dependency audit | No security owner, IdP/MFA, tenant model, approved data policy or production target |
+| B2 | Reliability and observability | `PARTIAL` | Request timeout, concurrency bound, JSON access log, correlation id, `/metrics`, liveness `/healthz` | No SLI/SLO, error budget, traces, alerting, retry/backoff, circuit breaker or fault drill |
+| B3 | Performance and scale | `PARTIAL` | One-host release benchmark (eval p50/p95 17.432/23.319 ms; loopback p50/p95 19.010/24.069 ms; 5,369.21 req/s) | No approved workload, soak, bottleneck analysis, capacity model or cost model |
+| B4 | Delivery and change governance | `BLOCKED` | CI workflow file and local gates exist | No remote, no CI execution, no branch protection, no required checks, no deployment target |
+| B5 | AI and agent quality | `BLOCKED` | Mock-only LLM contract and deterministic eval policy | No approved AI provider/data policy; no versioned model evaluation or tool-failure test |
+| B6 | Operations and support | `BLOCKED` | Draft runbooks and ownership proposal | No named service, operations or support owner; no on-call, escalation drill or handoff sign-off |
+| B7 | Backup and disaster recovery | `PARTIAL` | Local bundle + restore drills; local-simulated `age` encryption drill | No off-host artifact, approved RPO/RTO, key custody, scheduled restore or DR exercise |
+| B8 | Data governance | `BLOCKED` | Data-handling limits in docs and threat model | No data owner, inventory, classification, retention/deletion, legal hold or residency decision |
+
+**Phase B decision:** `BLOCKED`. B1/B4/B5/B6/B8 require decisions, owners or environments that do not exist. B2/B3/B7 are `PARTIAL`; their local evidence is exploratory, not an approved production acceptance.
+
+---
+
+## Phase A records
+
+### A1 — Real pilot and named accountability
+
+| Field | Record |
+| --- | --- |
+| Requirement | At least one complete real workflow is executed by a representative user, with a named owner and a recorded outcome. |
+| Actual state | `NOT MET`. The [pilot runbook](../operations/pilot-runbook.md) and synthetic workflow tests are prepared, but no pilot owner, representative user, session record or acceptance signature exists. |
+| Defect and root cause | Process/ownership gap, not a code defect. No business pilot owner has selected an authorized non-sensitive workflow or accepted the residual risk. |
+| Impact and risk | Synthetic tests prove conformance, not fitness for real use. User value, usability, data suitability and operational handoff remain unproven. |
+| Fix / next action | Name a pilot owner and representative user; select one workflow from the approved scope; run it on authorized non-sensitive data; record inputs, outputs, errors, acceptance and consent; log the run in the traceability register. |
+| Acceptance test | A completed pilot record containing the workflow ID, owner, user role, date, environment, input dataset class, expected/actual result, defects, acceptance decision and signature. |
+| Threshold | At least one end-to-end workflow accepted by the named representative user; no unresolved critical defect; data is non-sensitive or explicitly authorized. |
+| External role / environment | Business pilot owner + representative user + approved non-sensitive dataset/environment. All are `UNASSIGNED`. |
+| Evidence | [Pilot runbook](../operations/pilot-runbook.md); [traceability register](../traceability/register.md); [phase gates](../quality/phase-gates.md). No pilot execution log exists. |
+| Owner | `UNASSIGNED` (business/pilot owner) |
+| Final status / blocker | `NOT MET` — cannot be closed by code. See [external blocker B-01](external-blockers.md#b-01-pilot-owner-and-representative-user). |
+
+### A2 — Functional correctness
+
+| Field | Record |
+| --- | --- |
+| Requirement | Primary use cases and high-risk boundary cases pass for the approved scope. |
+| Actual state | `PARTIAL`. Release-profile tests pass at `6ae6134`; the canonical debug-profile run is blocked. The target acceptance matrix AT-01–AT-31 is not executed. |
+| Defect and root cause | Scope gap and host policy. The current synthetic 67-case corpus covers the prototype; the target acceptance cases require approved workflows and a runnable canonical environment. |
+| Impact and risk | A regression outside the synthetic corpus or target cases could ship unnoticed. A blocked canonical run prevents a single-command acceptance claim. |
+| Fix / next action | Execute the target acceptance cases on the approved scope; add regression tests for every accepted case; restore a host/CI path that can run the canonical check. |
+| Acceptance test | `cargo test --release --locked` in both crates plus `--selftest`, schema and search gate; target AT cases executed and recorded. |
+| Threshold | 0 failed tests in the executed suite; all in-scope AT cases pass or have an accepted, time-bound exception. |
+| External role / environment | QA owner; pilot workflow; canonical host or CI runner. |
+| Evidence | E-002, E-003, E-004 in [test-evidence.md](test-evidence.md); [regression checklist](../development/regression-checklist.md). |
+| Owner | QA (role) + Engineering; named QA owner `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — AT-01–AT-31 not run; canonical check blocked. |
+
+### A3 — Data correctness
+
+| Field | Record |
+| --- | --- |
+| Requirement | Version binding, rule activity, state transitions, evidence sufficiency and error handling match the specification. |
+| Actual state | `PARTIAL`. Unit/integration tests cover binding, draft rejection, replay, schema and fail-closed behavior. No real-workflow dataset or independent data review exists. |
+| Defect and root cause | The prototype uses file/JSONL persistence, not a transactional database. Real-workflow data and an independent reviewer are absent. |
+| Impact and risk | Concurrency, partial-write and recovery behavior under a real workload are not proven. An incorrect version binding could change a conclusion. |
+| Fix / next action | Run a real-workflow dataset; verify version binding and replay; add transactional or explicit single-writer guarantees if the deployment target requires them; obtain independent review. |
+| Acceptance test | Replay a real workflow set, compare expected/actual verdicts and citations, verify schema and state transitions, and record the dataset hash. |
+| Threshold | 100% of in-scope cases match approved expected results; no unresolved data-integrity defect. |
+| External role / environment | Product/data owner; representative dataset; independent reviewer. |
+| Evidence | 67-case corpus and tests; [data and state model](../governance/06-data-and-state-model-v1.md); [AI evaluation](../quality/ai-evaluation.md). |
+| Owner | Engineering + QA; data owner `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — no real dataset or independent review. |
+
+### A4 — Engineering quality and canonical acceptance
+
+| Field | Record |
+| --- | --- |
+| Requirement | Format, Clippy with warnings denied, unit/integration tests and self-tests pass through the canonical entry point. |
+| Actual state | `PARTIAL`. At `6ae6134`, `scripts/check.ps1` exits 1 at the platform test: all 22 CLI contract tests cannot start `platform\target\debug\ekp_platform.exe` (`os error 4551`, Windows Application Control). The release profile passes platform 270 and eval 12. |
+| Defect and root cause | Host security policy blocks freshly built unsigned debug executables and fresh-clone build scripts. This is not a source-code failure: the same 22 tests pass in the release profile, and all 217 unit tests pass in the debug profile before the contract suite. |
+| Impact and risk | The canonical gate cannot be cited as PASS on this host. A release-profile substitute is useful behavioral coverage but does not satisfy the exact canonical entry point. |
+| Fix / next action | Obtain an approved Application Control exception for the repository build outputs, or run the canonical check in an approved CI/POSIX runner; add a preflight that reports `BLOCKED` distinctly from a test failure. Do not redefine canonical as release-only. |
+| Acceptance test | `powershell -ExecutionPolicy Bypass -File scripts/check.ps1` at the target revision, with the full output and exit code retained. |
+| Threshold | Exit 0; docs, secrets, fmt, Clippy, all tests, both self-tests, schema and search gate pass in the same run. |
+| External role / environment | Host/endpoint security owner for the Application Control policy; or an approved CI runner. The policy exception is `UNASSIGNED`. |
+| Evidence | E-001 (blocked canonical), E-002/E-003 (release profile), E-004/E-005 (docs/secrets) in [test-evidence.md](test-evidence.md). |
+| Owner | Engineering + QA |
+| Final status / blocker | `PARTIAL` — canonical check `BLOCKED`; release-profile results are not a canonical PASS. See [B-11](external-blockers.md#b-11-host-application-control-policy). |
+
+### A5 — Security, identity and isolation
+
+| Field | Record |
+| --- | --- |
+| Requirement | Authentication, authorization, input validation, secret handling and data isolation are appropriate to the approved scope. |
+| Actual state | `PARTIAL`. `governance_web` has a local process-memory session, PBKDF2-HMAC-SHA256 (600,000 iterations), CSPRNG salt/token, constant-time comparison, five-failure lockout, Viewer/Editor/Approver checks, same-origin guard, CSP and a 64 KiB body cap. |
+| Defect and root cause | The local session is a usability barrier, not enterprise identity. There is no IdP/OIDC/SAML, MFA, account recovery, persistent identity store, access review or tenant boundary. The ledger actor is an operator-entered string. |
+| Impact and risk | A local administrator can read or rewrite the ledger and process memory. Cross-tenant isolation is not implemented; the `tenant` module is library-only. The system must not be described as enterprise-authenticated or tenant-isolated. |
+| Fix / next action | Target design (not implemented): OIDC authorization-code + PKCE with an approved IdP, MFA policy, server-side session store, claims-to-role mapping, mandatory tenant claim, deny-by-default resource checks, access-review and joiner/mover/leaver process. Until approved, keep the local mode explicitly non-production and loopback-only. |
+| Acceptance test | Positive and negative tests for missing/invalid identity, expired sessions, role escalation, cross-tenant read/write/search/export/background work, and authorization changes; secret scan; session revocation test. |
+| Threshold | All denial tests pass; zero cross-tenant leakage; no default account; no secret in repository or logs; security owner signs the residual-risk decision. |
+| External role / environment | Enterprise IdP/MFA, tenant model, security owner/approver, approved test tenant. All are `UNASSIGNED`. |
+| Evidence | [Threat model](../architecture/threat-model.md); [web routes](../contracts/web-routes.md); [security threat model](security-threat-model.md); 10 governance-web route tests + 11 local-auth unit tests at `a826472`. |
+| Owner | Security + Engineering; named security owner `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — local-only session; no IdP/MFA/tenant isolation. See [B-03](external-blockers.md#b-03-enterprise-identity-mfa-and-tenant-model). |
+
+### A6 — Maintainability and handoff
+
+| Field | Record |
+| --- | --- |
+| Requirement | Install, configure, diagnose and hand off using the documentation. |
+| Actual state | `PARTIAL`. Install/config/troubleshooting/runbook pages exist; no named operator and no independent handoff dry run. |
+| Defect and root cause | Ownership gap. The documentation is written by the implementer and has not been exercised by a different operator. |
+| Impact and risk | A new operator may miss environment prerequisites, host-policy constraints or recovery steps. |
+| Fix / next action | Have a different operator follow the documented install, start, diagnose and restore path on a clean host; record every ambiguity and fix it. |
+| Acceptance test | Timed handoff dry run with a checklist, commands, observed results and operator sign-off. |
+| Threshold | Operator completes the documented workflow without undocumented help; all defects fixed or tracked. |
+| External role / environment | Named operations owner/operator. `UNASSIGNED`. |
+| Evidence | [Operations index](../operations/README.md); [deployment troubleshooting](../deployment/troubleshooting.md); [local backup](../operations/local-backup.md). No handoff record. |
+| Owner | Operations; named owner `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — no operator dry run. |
+
+### A7 — Pilot traceability
+
+| Field | Record |
+| --- | --- |
+| Requirement | Each in-scope requirement links to specification, implementation, test, run ID, commit SHA, result and validation evidence. |
+| Actual state | `PARTIAL`. The [traceability register](../traceability/register.md) records S1–S26, A-05/A-06, release evidence and verified/validated status. There is no pilot run ID or validated row. |
+| Defect and root cause | No real pilot execution exists, so the final `Validation` link is absent. Synthetic tests can establish `Verified` only. |
+| Impact and risk | An auditor can trace code and tests, but cannot trace a real user outcome or acceptance decision. |
+| Fix / next action | Add a pilot run record with requirement IDs, workflow ID, dataset hash, commit, environment, operator role, expected/actual result and evidence path; mark `Verified` vs `Validated` explicitly. |
+| Acceptance test | Sample audit: pick each in-scope requirement and follow the chain to a run record and a signed acceptance. |
+| Threshold | 100% of in-scope requirements have a complete chain; no secret or personal data in the evidence. |
+| External role / environment | Pilot owner, operator, QA; approved data. `UNASSIGNED`. |
+| Evidence | [Traceability rules](../traceability/README.md); [register](../traceability/register.md); [governance traceability baseline](../governance/10-traceability-baseline.md). |
+| Owner | QA + Product; named owners `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — no pilot run or validated row. |
+
+### A8 — Backup and restore
+
+| Field | Record |
+| --- | --- |
+| Requirement | A backup exists from the first important version; a fresh clone passes the restore drill; the result is logged. |
+| Actual state | `PARTIAL`. Local fresh-clone restore PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f` and `3ee2ee2`. The final `28b68cc` bundle verifies and clones, but its restore check is `BLOCKED` at `eval` Clippy (`proc-macro2`/`serde_core` build scripts, `os error 4551`). |
+| Defect and root cause | Host Application Control blocks execution of freshly built build scripts in a fresh clone. The bundle content is present and the clone reaches the recorded revision; the check cannot complete. This is environmental, not a missing commit. |
+| Impact and risk | The final delivery revision is not restore-verified. A restore on the same host may fail even though the bundle is intact. Off-host recovery, RPO/RTO and key custody remain absent. |
+| Fix / next action | Obtain an approved host-policy exception or run the restore in an approved clean environment; rerun `scripts/check.ps1` in the clone; record the result. Keep the `28b68cc` row `BLOCKED` until then. |
+| Acceptance test | `git bundle verify`; fresh clone; `git rev-parse HEAD` equals the recorded revision; restored `scripts/check.ps1` exits 0. |
+| Threshold | All four steps pass on the final bundle; log row records revision, bundle SHA-256, environment, operator and result. |
+| External role / environment | Host/endpoint security owner; clean restore environment. `UNASSIGNED`. |
+| Evidence | E-007/E-008/E-009 in [test-evidence.md](test-evidence.md); [backup log](../operations/backup-log.md); [release evidence](../operations/release-evidence-bundle.md). |
+| Owner | Engineering/Operations; named backup owner `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — final restore `BLOCKED`; last verified restore `3ee2ee2`; no off-host copy or RPO/RTO. See [B-06](external-blockers.md#b-06-off-host-backup-key-custody-and-rporo). |
+
+### A9 — AI and agent quality
+
+| Field | Record |
+| --- | --- |
+| Requirement | A fixed evaluation set covers normal, ambiguous, adversarial, wrong-source, tool-failure and insufficient-context cases; changes rerun the applicable set. |
+| Actual state | `PARTIAL`. The deterministic verdict corpus has 67 cases and covers five dimensions; the 28-case lexical retrieval gate covers normal/ambiguous/adversarial/wrong-source/insufficient-context plus four synthetic role cases. No LLM/agent/tool path exists; `--llm` accepts only `mock` and labels output `mock-answer`. |
+| Defect and root cause | No approved AI provider or data policy, no model integration and no tool path. Tool-failure cases therefore cannot be exercised; the mock provider is a contract fixture, not a model. |
+| Impact and risk | No claim about hallucination, reasoning, tool success, cost, latency or model regression is possible. A future provider change has no baseline. |
+| Fix / next action | After provider/data approval: implement a versioned adapter, prompt/tool registry, fixed evaluation set including timeout/partial-failure/retry exhaustion, citation and refusal metrics, cost/latency budgets, human takeover and a rerun-on-change policy. |
+| Acceptance test | Reproducible evaluation command with recorded provider/model/prompt/index/corpus versions; six dimensions present; regression comparison against an approved baseline. |
+| Threshold | 0 violations on hard safety gates; required categories present; approved quality/cost/latency thresholds met; human review for subjective quality. |
+| External role / environment | AI system owner, data owner, approved provider and data policy. `UNASSIGNED`. |
+| Evidence | [AI evaluation](../quality/ai-evaluation.md); [CLI contract](../contracts/cli.md); 28-case gate result in E-003; `EVAL-GAP-01`/`02`/`03`. |
+| Owner | AI system owner + QA; `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — mock only; no AI/agent evaluation or tool-failure coverage. See [B-05](external-blockers.md#b-05-ai-provider-and-data-policy). |
+
+### A10 — Documentation and handoff
+
+| Field | Record |
+| --- | --- |
+| Requirement | Scope, known limits, commands, recovery and evidence are current and readable by a new operator. |
+| Actual state | `PARTIAL`. The docs map, release evidence, phase gates, backup log and this assurance index are current at `6ae6134`; no pilot handoff record exists. |
+| Defect and root cause | No real operator has consumed the documentation; the pilot record is absent. |
+| Impact and risk | Documentation may be internally consistent but insufficient for an external handoff. |
+| Fix / next action | Run the A6 handoff dry run; record questions, missing commands and fixes; link the signed handoff record. |
+| Acceptance test | New operator completes install/start/diagnose/restore from the docs and signs the checklist. |
+| Threshold | No undocumented step; all discovered defects fixed or tracked with owners. |
+| External role / environment | Operations owner/operator. `UNASSIGNED`. |
+| Evidence | [Documentation map](../README.md); [operations](../operations/README.md); [release evidence](../operations/release-evidence-bundle.md). |
+| Owner | Engineering + Operations |
+| Final status / blocker | `PARTIAL` — no pilot handoff. |
+
+### A11 — Review and improvement
+
+| Field | Record |
+| --- | --- |
+| Requirement | Major review findings are fixed; a retro is completed; accepted improvements are tracked; an independent reviewer can verify the result. |
+| Actual state | `PARTIAL`. Local self-review, retro template and improvement register exist. No independent reviewer, no second annotator and no signed review. |
+| Defect and root cause | The implementer performed the review. Independence is a role separation that cannot be manufactured by an AI self-check. |
+| Impact and risk | Self-review can miss shared assumptions, unsafe defaults and evidence gaps. The κ metric has no second annotator. |
+| Fix / next action | Assign a reviewer who did not implement the change; provide the diff, threat model, test evidence and matrix; require the reviewer to rerun commands and sign findings; track remediation. |
+| Acceptance test | Completed reviewer checklist with command reruns, diff inspection, finding disposition and signature; κ study with two independent annotators. |
+| Threshold | No unresolved critical/high finding; reviewer signs; any exception has an owner and expiry. |
+| External role / environment | Independent reviewer and second annotator. `UNASSIGNED`. |
+| Evidence | [Reviews](../reviews/README.md); [retro template](../reviews/retro-template.md); [improvement register](../reviews/README.md); [annotation tests](../quality/ai-evaluation.md#annotation-and-agreement). |
+| Owner | Independent reviewer + QA; `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — self-review only. See [B-08](external-blockers.md#b-08-independent-reviewer-and-second-annotator). |
+
+#### A11 reviewer checklist (prepared, not signed)
+
+The reviewer must be able to reproduce the evidence without trusting the implementer:
+
+- [ ] Confirm the commit SHA and clean worktree.
+- [ ] Inspect the full diff and the affected requirements/ADRs.
+- [ ] Re-run `scripts/check-docs.ps1`, `scripts/check-secrets.ps1`, `scripts/check.ps1` (or record the host block), `gate.ps1`, and the release-profile suite.
+- [ ] Verify each `PASS` row names a command, revision, date and exit code.
+- [ ] Verify each `BLOCKED`/`NOT RUN` row is not described as a pass.
+- [ ] Review the threat model, auth boundary, ledger semantics and backup scope.
+- [ ] Verify no secret, real personal data or fabricated owner/reviewer exists.
+- [ ] Recompute the Phase A/B decision from the weakest mandatory row.
+- [ ] Record findings, severity, owner, disposition and signature/date.
+
+---
+
+## Phase B records
+
+### B1 — Security and governance
+
+| Field | Record |
+| --- | --- |
+| Requirement | Owned threat model; identity/MFA; least privilege; tenant isolation; secret management; audit/retention; vulnerability and supply-chain process. |
+| Actual state | `BLOCKED`. Local threat model, boundary tests, secret scan, `cargo audit`/`cargo deny` and SBOM exist. No security owner, IdP/MFA, tenant model, approved data policy or production target. |
+| Defect and root cause | External governance and environment decisions are absent; the local prototype intentionally stops at a local session. |
+| Impact and risk | The system cannot be operated for multiple users or organizations; security claims beyond the local boundary are unsupported. |
+| Fix / next action | Assign security owner; approve IdP/MFA/tenant/data policy; implement and test authorization/tenant boundaries; define audit retention and access review; run independent security review. |
+| Acceptance test | AuthZ/denial matrix, cross-tenant tests, secret scan, dependency/SBOM review, access review and signed threat-model review. |
+| Threshold | Zero cross-tenant leakage; no unresolved critical/high finding; owner accepts residual risk. |
+| External role / environment | Security owner/approver, IAM owner, data owner, approved environment. `UNASSIGNED`. |
+| Evidence | [Threat model](../architecture/threat-model.md); [security threat model](security-threat-model.md); [production readiness](../operations/production-readiness.md); E-006. |
+| Owner | Security + Engineering; `UNASSIGNED` |
+| Final status / blocker | `BLOCKED` — see [B-03](external-blockers.md#b-03-enterprise-identity-mfa-and-tenant-model), [B-07](external-blockers.md#b-07-security-and-operations-owners). |
+
+### B2 — Reliability and observability
+
+| Field | Record |
+| --- | --- |
+| Requirement | SLI/SLO/error budget; structured logs, metrics, traces, correlation IDs; timeouts, bounded retries, backoff, circuit breaker, rate limits; health checks; failure isolation, degradation and recovery drills. |
+| Actual state | `PARTIAL`. Local JSON access log, request correlation id, aggregate Prometheus counters, liveness `/healthz`, 15 s request timeout, 64-way concurrency bound with `429`, 64 KiB body cap and graceful shutdown exist and are tested. No SLO, traces, alerting, retry/backoff, circuit breaker or fault drill. |
+| Defect and root cause | No approved service level or target environment; the prototype has no dependency graph or external services to exercise. |
+| Impact and risk | Reliability under failure, saturation or dependency loss is unmeasured. `/healthz` is liveness only, not readiness or an SLO. |
+| Fix / next action | Approve SLIs/SLOs and error budget; add OpenTelemetry traces/metrics/log correlation and an exporter; define retry/backoff/timeout budgets; add alert rules and a fault-injection drill in an approved environment. |
+| Acceptance test | Dashboard/alert drill, injected dependency failure, timeout/retry exhaustion, saturation test and recovery measurement against the approved SLO. |
+| Threshold | SLO met for the approved window; alerts fire and recover; no unbounded retry or thundering herd; RTO/RPO met. |
+| External role / environment | Operations owner, monitoring target, approved environment. `UNASSIGNED`. |
+| Evidence | [Production readiness](../operations/production-readiness.md) PR-08/PR-09; 4 web-health tests; [architecture](../architecture/README.md). |
+| Owner | Operations + Engineering |
+| Final status / blocker | `PARTIAL` — no SLO, traces, alerting or fault drill. |
+
+### B3 — Performance and scale
+
+| Field | Record |
+| --- | --- |
+| Requirement | Reproducible benchmark/load/stress/soak tests; bottleneck analysis; capacity model; caching/batching/backpressure; scale decision based on cost/latency/throughput. |
+| Actual state | `PARTIAL`. One local release benchmark exists: eval p50/p95 17.432/23.319 ms; loopback `/healthz` p50/p95 19.010/24.069 ms; concurrent 5,369.21 req/s. No approved workload, soak, bottleneck analysis or capacity model. |
+| Defect and root cause | No workload owner, user/concurrency profile, SLO or cost budget. The benchmark is a one-host observation. |
+| Impact and risk | Scalability and cost cannot be predicted; a single short run does not prove behavior under sustained load. |
+| Fix / next action | Approve workload and growth assumptions; run load/stress/soak with latency percentiles, error rate and resource use; identify bottlenecks; publish a capacity/cost model with limits. |
+| Acceptance test | Reproducible load/soak scripts with recorded environment, dataset, duration and results; capacity model reviewed against approved budget. |
+| Threshold | Approved latency/throughput/error targets met with headroom; no unbounded degradation; cost within budget. |
+| External role / environment | Product/operations workload owner; approved target. `UNASSIGNED`. |
+| Evidence | [Benchmark artifact](../../artifacts/benchmark/benchmark-2026-10-27-124954.json); [release evidence](../operations/release-evidence-bundle.md#performance-observation). |
+| Owner | Engineering + Operations |
+| Final status / blocker | `PARTIAL` — exploratory only; formal B3 `BLOCKED` without approved workload/SLO. |
+
+### B4 — Delivery and change governance
+
+| Field | Record |
+| --- | --- |
+| Requirement | CI required checks; dependency/security scans; migration and compatibility policy; versioned API/events; feature flags, progressive rollout, rollback, post-release verification; PR review and branch protection. |
+| Actual state | `BLOCKED`. `.github/workflows/ci.yml` defines validate/security/workflow-lint/SBOM jobs, but there is no Git remote and no CI execution. No branch protection or required checks exist. |
+| Defect and root cause | No remote repository, no `gh` authentication, no deployment target and no human reviewer/release owner. |
+| Impact and risk | Changes are not independently gated; a local pass cannot prove the CI workflow runs. Actions are tag-pinned, not SHA-pinned. |
+| Fix / next action | Create/authorize a remote; push; run CI on the commit; configure branch protection/required checks; pin actions by SHA; add PR review and rollback/post-release verification. |
+| Acceptance test | CI run URL/result on the target commit; branch protection settings; a PR blocked by a failing required check; rollback drill. |
+| Threshold | Required checks green; no direct push to protected branch; rollback and post-release verification recorded. |
+| External role / environment | Repository admin, CI runner, reviewer. `UNASSIGNED`. |
+| Evidence | `.github/workflows/ci.yml`; [phase gates](../quality/phase-gates.md); no CI URL exists. |
+| Owner | Engineering + repository admin; `UNASSIGNED` |
+| Final status / blocker | `BLOCKED` — see [B-02](external-blockers.md#b-02-remote-ci-and-branch-protection). |
+
+### B5 — AI and agent quality
+
+| Field | Record |
+| --- | --- |
+| Requirement | Model/prompt/retrieval/tool/data versioning; fixed eval set; hallucination/citation/tool-success metrics; cost/latency budget; retry and human takeover; online/offline regression. |
+| Actual state | `BLOCKED`. No model provider or agent path. `--llm` accepts only `mock`, labels output `mock-answer`, and requires a versioned citation. The deterministic retrieval gate is lexical-only. |
+| Defect and root cause | No approved provider, data policy or tool integration; AI is intentionally not implemented. |
+| Impact and risk | No AI quality, safety, cost or latency claim is possible. Enabling a provider without policy/evaluation would be unsafe. |
+| Fix / next action | Approve provider and data boundary; implement versioned adapter and tool policy; add fixed eval including tool failure, prompt injection, sensitive-data leakage and cross-tenant attempts; define human takeover and cost/latency budgets. |
+| Acceptance test | Versioned comparison report across model/prompt/index changes; fixed six-dimension eval; tool-failure and permission tests; human review record. |
+| Threshold | Approved safety/quality/cost thresholds met; no unresolved high-risk finding; data policy enforced. |
+| External role / environment | AI/data owner, security, approved provider. `UNASSIGNED`. |
+| Evidence | [AI evaluation](../quality/ai-evaluation.md); [CLI contract](../contracts/cli.md); [source matrix](source-matrix.md). |
+| Owner | AI system owner + Security; `UNASSIGNED` |
+| Final status / blocker | `BLOCKED` — see [B-05](external-blockers.md#b-05-ai-provider-and-data-policy). |
+
+### B6 — Operations and support
+
+| Field | Record |
+| --- | --- |
+| Requirement | Named service/environment owner; support and escalation; start/stop/health; data locations/classification/retention; backup owner; incident procedure; maintenance and dependency ownership. |
+| Actual state | `BLOCKED`. Draft runbooks and an ownership proposal exist; no named service, operations or support owner, no on-call/escalation drill and no handoff sign-off. |
+| Defect and root cause | Ownership and service-level decisions are absent. |
+| Impact and risk | No accountable responder for an incident, data loss or failed restore. |
+| Fix / next action | Assign service/operations/data/backup owners; approve support hours and escalation; exercise an incident and restore drill; record handoff sign-off. |
+| Acceptance test | On-call roster, escalation contact tree, incident drill record, restore owner, maintenance calendar and signed handoff. |
+| Threshold | Every critical service has a named owner and an exercised escalation path. |
+| External role / environment | Operations owner, support owner, data owner. `UNASSIGNED`. |
+| Evidence | [Production readiness](../operations/production-readiness.md) PR-14/PR-15; [incident log](../operations/incident-log.md); [pilot runbook](../operations/pilot-runbook.md). |
+| Owner | Operations; `UNASSIGNED` |
+| Final status / blocker | `BLOCKED` — see [B-07](external-blockers.md#b-07-security-and-operations-owners). |
+
+### B7 — Backup and disaster recovery
+
+| Field | Record |
+| --- | --- |
+| Requirement | Off-host encrypted backup; defined RPO/RTO; scheduled restore tests; integrity check; data-loss boundary; incident path. |
+| Actual state | `PARTIAL`. Local Git bundle + restore drills pass through `3ee2ee2`; final `28b68cc` restore is `BLOCKED` by host policy. The `age` drill at `56a944f` encrypted/decrypted byte-identically to `%TEMP%` and is labeled `local-simulated-off-host`. |
+| Defect and root cause | No approved off-host target, key custodian, RPO/RTO, retention or scheduled restore programme. |
+| Impact and risk | A host loss can lose uncommitted work, the external ledger and the local bundle. The `age` drill does not prove off-host availability or key recovery. |
+| Fix / next action | Approve target/failure domain and key custody; implement transfer and immutability/versioning; schedule restores; test ledger restore and hash chain; measure RTO; record off-host receipt. |
+| Acceptance test | Retrieve an artifact from off-host using the documented key path; `git bundle verify`; clone; restored check exit 0; ledger hash chain verifies; RTO measured. |
+| Threshold | Approved RPO/RTO met; at least one off-host restore passes; key recovery tested without the operator holding the only key. |
+| External role / environment | Operations + Security + Data owner; approved storage and key custody. `UNASSIGNED`. |
+| Evidence | E-007/E-008/E-009; [backup log](../operations/backup-log.md); [off-host proposal](../operations/backup-policy-draft.md). |
+| Owner | Operations + Security; `UNASSIGNED` |
+| Final status / blocker | `PARTIAL` — local-only; no off-host/RPO/RTO. See [B-06](external-blockers.md#b-06-off-host-backup-key-custody-and-rporo). |
+
+### B8 — Data governance
+
+| Field | Record |
+| --- | --- |
+| Requirement | Classification, lawful basis, retention/deletion, legal hold, residency, access and AI data boundaries. |
+| Actual state | `BLOCKED`. Docs prohibit real customer/personal/regulated data and define a draft data boundary; no data owner, inventory, classification, retention/deletion test or legal hold. |
+| Defect and root cause | No data owner or approved policy; the prototype is synthetic-data only. |
+| Impact and risk | Real data cannot be lawfully or safely processed; retention, deletion and residency obligations are unknown. |
+| Fix / next action | Assign data owner; inventory data; classify; approve lawful basis, retention, deletion, legal hold and residency; implement deletion/export and access review; publish AI data boundary. |
+| Acceptance test | Data inventory and classification; retention/deletion test; access review; legal-hold procedure; signed policy. |
+| Threshold | Every data class has an owner, purpose, location, retention and deletion method; policy approved. |
+| External role / environment | Data owner + Legal/Privacy. `UNASSIGNED`. |
+| Evidence | [Production readiness](../operations/production-readiness.md) PR-05; [threat model](../architecture/threat-model.md); [backup proposal](../operations/backup-policy-draft.md). |
+| Owner | Data owner + Legal; `UNASSIGNED` |
+| Final status / blocker | `BLOCKED` — see [B-04](external-blockers.md#b-04-data-owner-and-data-policy). |
+
+## Decision record
+
+| Decision | Result | Basis |
+| --- | --- | --- |
+| Phase A approved? | **No** | A1 `NOT MET`; multiple mandatory pilot-scope rows `PARTIAL`; A4 canonical `BLOCKED`; A8 final restore `BLOCKED` |
+| Phase B approved? | **No** | B1/B4/B5/B6/B8 `BLOCKED`; B2/B3/B7 `PARTIAL` with no approved workload, SLO, off-host target or RPO/RTO |
+| Can the system be called production-ready? | **No** | No deployment target, enterprise identity, tenant isolation, off-host recovery, SLO or operations owner |
+| Can the system be called AI-validated? | **No** | Only a mock LLM and deterministic lexical evaluation exist |
+| Can the system be called compliant? | **No** | No certification, independent assessment or legal mapping |
+
+The decision is intentionally conservative. A future revision must replace a row only with new, revision-bound evidence and a named accountable owner.

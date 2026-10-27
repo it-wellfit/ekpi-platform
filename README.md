@@ -12,9 +12,9 @@ Mojo 列為前沿方法軌道（research-only）；Python 降為參考實作與�
 
 ## Documentation and current status
 
-The canonical documentation index is [docs/README.md](docs/README.md). It names the owner and update trigger for each topic, and points to the product, architecture, backend, frontend, contract, quality, operations, decision, review and traceability documents. Do not treat a summary or a historical report as the current source of truth.
+The canonical documentation index is [docs/README.md](docs/README.md). It names the owner and update trigger for each topic, and points to the product, architecture, backend, frontend, contract, quality, operations, decision, review and traceability documents. Do not treat a summary or a historical report as the current source of truth. The cross-phase acceptance evidence is in [docs/assurance/](docs/assurance/README.md).
 
-**Phase status (2026-10-26):** Phase A (0 → 1 MVP) is **not approved**; Phase B (production-grade) is **blocked**. The repository is a tested local prototype, not a production service. It has no approved deployment target, enterprise identity, tenant isolation, off-host backup, operational telemetry or named operations owner. See [phase gates](docs/quality/phase-gates.md) and [production readiness](docs/operations/production-readiness.md).
+**Phase status (2026-10-27):** Phase A (0 → 1 MVP) is **not approved**; Phase B (production-grade) is **blocked**. The repository is a tested local prototype, not a production service. It has no approved deployment target, enterprise identity, tenant isolation, off-host backup, operational telemetry or named operations owner. See [phase gates](docs/quality/phase-gates.md), [assurance final report](docs/assurance/final-report.md) and [production readiness](docs/operations/production-readiness.md).
 
 ## Development workflow and CI
 
@@ -43,6 +43,7 @@ ekpi-platform/
 │   ├── decisions/                            ← 決策索引與 ADR 範本（ADR 本體在 adr/）
 │   ├── reviews/                              ← 審查、回顧與改善登錄
 │   ├── traceability/                         ← ID 規則與需求→證據登錄
+│   ├── assurance/                            ← Phase A/B 驗收矩陣、根因、來源、測試證據、外部阻塞、威脅模型、營運復原與最終報告
 │   ├── development/                          ← 工作路徑、範本、回歸清單、品質門檻、發布與移交
 │   ├── agents/                               ← GitHub issue、triage、領域知識與社群技能評估
 │   ├── adr/                                  ← 工程決策記錄
@@ -58,7 +59,7 @@ ekpi-platform/
 ├── platform/                                ← 確定性核心（Round 2 交付物 C/D 的 MVP 引擎＋Round 3 匯出／治理／覆蓋率）
 │   ├── Cargo.toml / src/                    ← docs/rules/process/retrieval/evidence/snapshot/engine/validate/params/export/coverage_report/eval；`#![forbid(unsafe_code)]`、clippy -D warnings 零警告
 │   ├── data/                                ← docs.json（7 文件 10 版本，含注入測試欄位）；rules.json（20 紀錄＝19 active＋1 draft_ai 投毒測試）；processes.json（3 流程模型）
-│   ├── data/eval/search_eval.json           ← 24 案固定檢索評測集（18 應命中、6 應拒答；營運門檻 0.42）
+│   ├── data/eval/search_eval.json           ← 28 案固定檢索評測集（20 應命中、8 應拒答；4 個角色限制案例；營運門檻 0.42）
 │   ├── config/engine-params.json     ← 參數治理檔（`--params` 顯式載入或預設路徑自動載入；任一不符即 fail-closed 拒執行）
 │   ├── tests/integration.rs                 ← 端到端整合測試（真實 data + 種子案例）
 │   ├── tests/search_eval.rs                 ← `--search`／`--eval` 的固定集與 fail-closed 整合測試

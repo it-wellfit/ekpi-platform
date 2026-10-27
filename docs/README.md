@@ -24,6 +24,7 @@ This is the entry point for repository documentation. It answers three questions
 | Installation, configuration, backup, monitoring, incidents and pilot handoff | [Operations](operations/README.md), including the [pilot runbook](operations/pilot-runbook.md) and [off-host backup proposal](operations/backup-policy-draft.md) | Deployment summaries |
 | Engineering and business decisions | [ADR index](decisions/README.md), [ADR-0001](adr/0001-engineering-delivery-workflow.md), and [decision register](governance/08-decision-register.md) | Specs and contracts |
 | Requirement-to-evidence chain | [Traceability rules](traceability/README.md) and [register](traceability/register.md) | PR descriptions only |
+| Cross-phase assurance, root causes, source mapping, external blockers and the final report | [Assurance index](assurance/README.md), [Phase A/B matrix](assurance/phase-a-b-matrix.md), and [final report](assurance/final-report.md) | Release notes, PR descriptions, phase gates |
 | Reviews, retrospectives and improvement tracking | [Reviews](reviews/README.md) | Release notes |
 | Local-first Git, backup and remote-upgrade rules | [Local-first workflow](operations/local-first-workflow.md), [local backup](operations/local-backup.md), [remote collaboration criteria](remote-collaboration-criteria.md) | New process documents |
 | Agent skills and issue-tracker setup | [Skill setup](agents/skill-setup.md), [issue tracker](agents/issue-tracker.md), [triage labels](agents/triage-labels.md), and [community skill assessment](agents/community-skills-assessment.md) | AGENTS.md detail |
@@ -43,6 +44,7 @@ This is the entry point for repository documentation. It answers three questions
 | `decisions/` | Decision index and ADR template; ADR storage remains `docs/adr/` | Engineering | New or superseded decision |
 | `reviews/` | Review reports, retrospectives and the improvement register | Engineering + QA | Each review, release or retrospective |
 | `traceability/` | ID rules and the repository-change traceability ledger | QA | Each accepted requirement, test, release or retro |
+| `assurance/` | Cross-phase acceptance matrix, root-cause analysis, source mapping, test evidence, external blockers, threat model, operations/recovery and final report | QA + Engineering | Any acceptance, release, incident, source, blocker or phase-status change |
 | `development/` | Workflow, risk tiers, templates, regression baseline and release/retro procedure | Engineering | Process, template or gate changes |
 | `agents/` | Agent skill setup, issue-tracker conventions, triage labels and external skill assessment | Engineering | Tooling or skill changes |
 | `metrics/` | Numeric target register and hard gates | Product | Release review or approved target change |
@@ -60,7 +62,8 @@ This is the entry point for repository documentation. It answers three questions
 | Create or pick up a work item | [Issue tracker](agents/issue-tracker.md) | Issue form under `.github/ISSUE_TEMPLATE/` (`feature`, `ticket`, `improvement`, `bug`), [quality gates](development/quality-gates.md), [traceability register](traceability/register.md) |
 | Defect or regression | [Regression checklist](development/regression-checklist.md) | [Backend](backend/README.md) or [frontend](frontend/README.md), [contracts](contracts/README.md), [quality gates](development/quality-gates.md) |
 | Security or data change | [Threat model](architecture/threat-model.md) | [Security spec](governance/07-security-integration-spec-v1.md), [production readiness](operations/production-readiness.md), [secrets policy](operations/secrets-policy.md) |
-| Release or pilot handoff | [Phase gates](quality/phase-gates.md) | [Release and retro](development/release-and-retro.md), [release template](development/release-template.md), [operations](operations/README.md) |
+| Release or pilot handoff | [Phase gates](quality/phase-gates.md) | [Release and retro](development/release-and-retro.md), [release template](development/release-template.md), [operations](operations/README.md), [assurance final report](assurance/final-report.md) |
+| Audit, acceptance or external blocker review | [Assurance index](assurance/README.md) | [Phase A/B matrix](assurance/phase-a-b-matrix.md), [test evidence](assurance/test-evidence.md), [external blockers](assurance/external-blockers.md) |
 | Retrospective | [Reviews](reviews/README.md) | [Retro template](reviews/retro-template.md), [traceability register](traceability/register.md) |
 | Documentation-only change | This page | Relevant canonical document; run `scripts/check-docs.ps1` or `scripts/check-docs.sh` |
 

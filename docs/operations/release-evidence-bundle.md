@@ -9,7 +9,7 @@
 - **Status:** Local verification record; Phase A **not approved**, Phase B **blocked**
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Verification revision:** `b2bae3e` (last canonical `gate.ps1 -IncludeSmoke` PASS); `23b8996` (latest code delivery revision: release-profile suite, blocked canonical check); `3ee2ee2` (documentation re-check and restore drill); `c77fec4` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `bc7671a` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `28b68cc` (final evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy)
+- **Verification revision:** `b2bae3e` (last canonical `gate.ps1 -IncludeSmoke` PASS); `23b8996` (latest code delivery revision: release-profile suite, blocked canonical check); `3ee2ee2` (documentation re-check and restore drill); `c77fec4` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `bc7671a` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `28b68cc` (final evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `6ae6134` (assurance baseline: release-profile suite PASS, canonical check Blocked by host policy, docs/secrets PASS)
 - **Environment:** One managed Windows host, Windows PowerShell 5.1, Rust stable from `rust-toolchain.toml`; local loopback only
 - **Repository state:** `main`, no remote, no CI execution
 - **Phase gates:** [phase-gates.md](../quality/phase-gates.md)
@@ -44,6 +44,8 @@ Executed at `b2bae3e` on 2026-10-27 unless the row states another revision. Rows
 | Secret scan | `scripts/check-secrets.ps1` | Repo root | PASS, 220 files | `b2bae3e` |
 | Supply chain | `scripts/check-supply-chain.ps1` | Repo root | PASS: `cargo deny` advisories/bans/licenses/sources OK; `cargo audit` platform 72 deps, eval 12 deps, 0 vulnerabilities | `b2bae3e` |
 | Canonical check (docs re-check) | `scripts/check.ps1` | Repo root | PASS, 506 links in 106 files; 220 secret-scan files; eval 12, platform 261, schema 20, search 28 cases | `3ee2ee2` |
+| Canonical check (assurance baseline) | `scripts/check.ps1` | Repo root | **BLOCKED**, exit 1: docs 508/106 and secrets 220 PASS, eval 12 PASS, platform 217 unit PASS, then all 22 CLI contract tests could not start the debug binary (`os error 4551`); `FAIL: platform test` | `6ae6134` |
+| Release profile (assurance baseline) | `cargo test --release --locked` | Both crates | PASS: platform 270, eval 12; `--selftest` 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt/Clippy PASS; supply chain 72/12, 0 vulnerabilities | `6ae6134` |
 
 `platform` test split at `b2bae3e`: 217 unit, 13 CLI contract, 2 edge-case, 10 governance web, 8 integration, 7 search evaluation, 4 web health. The `governance_web` binary has `test = false` in `platform/Cargo.toml` because the host's Application Control intermittently blocks freshly built test harnesses; route coverage is provided by `platform/tests/governance_web.rs` and `platform/tests/web_health.rs`.
 
