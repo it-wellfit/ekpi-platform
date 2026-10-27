@@ -9,7 +9,7 @@
 - **Status:** Local verification record; Phase A **not approved**, Phase B **blocked**
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Verification revision:** `b2bae3e` (last canonical `gate.ps1 -IncludeSmoke` PASS); `23b8996` (latest delivery revision: release-profile suite, blocked canonical check); `3ee2ee2` (documentation re-check and restore drill)
+- **Verification revision:** `b2bae3e` (last canonical `gate.ps1 -IncludeSmoke` PASS); `23b8996` (latest code delivery revision: release-profile suite, blocked canonical check); `3ee2ee2` (documentation re-check and restore drill); `c77fec4` (final evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy)
 - **Environment:** One managed Windows host, Windows PowerShell 5.1, Rust stable from `rust-toolchain.toml`; local loopback only
 - **Repository state:** `main`, no remote, no CI execution
 - **Phase gates:** [phase-gates.md](../quality/phase-gates.md)
@@ -122,10 +122,11 @@ Single-class agreement is **not** reported as κ = 1.0 because the chance-agreem
 | `7fd0c0b` | `ekpi-platform-2026-10-27-124512.bundle` | `EBFD373C45EC7A556C6B7C59483F16CE42FA77C4E9C35A85BD50C5B8FF34A2FF` | Fresh clone reached `7fd0c0b`; restored `scripts/check.ps1` PASS (eval 12, platform 261) |
 | `56a944f` | `ekpi-platform-2026-10-27-124757.bundle` | `23EA44011711566CC7147767E6FF4258F75030CFFA0507EC98E00323AACE6421` | Fresh clone reached `56a944f`; restored `scripts/check.ps1` PASS; `age` drill encrypted and decrypted byte-identically; `git bundle verify` okay |
 | `3ee2ee2` | `ekpi-platform-2026-10-27-125701.bundle` | `7E21EEEE456F36DE79056508BE718705D6294525D98E39C5F1C80C585C73FE19` | `git bundle verify` okay; automatic TEMP drill **BLOCKED** at `edge_cases` by Application Control (`os error 4551`); manual fresh clone at `%USERPROFILE%\EKPI-restore-drill-3ee2ee2` ran the restored `scripts/check.ps1` and exited 0 (eval 12, platform 261, docs 503 links in 96 tracked files, secrets 220) |
+| `c77fec4` | `ekpi-platform-2026-10-27-132212.bundle` | `780464D606AC5A68D7ED1FF4883F58E3A9FEC9475D5948EA95F77B83D74D9FC9` | `git bundle verify` okay and records a complete history; automatic TEMP drill **BLOCKED** at `eval` Clippy (`serde`, `serde_core`, `proc-macro2` build scripts, `os error 4551`); two manual fresh clones (`EKPI-restore-drill-c77fec4` and `-c77fec4b`) reached `c77fec4`; the first clone's docs check (505 links in 96 tracked files) and secrets (220) passed, but both restored `scripts/check.ps1` runs failed at `eval` Clippy (`zmij`, `quote`, `serde_core`, `proc-macro2` build scripts); release-profile tests in the clone were also blocked. **Not** a restore PASS |
 
 The `56a944f` off-host drill receipt records ciphertext SHA-256 `0DBA33BCC90B94749DAF7547AF524364C5F4567358953E01A3D61260284AC181`, `decryption_verified: true` and `destination_class: local-simulated-off-host`. A drill under `%TEMP%` is **not** an off-host copy.
 
-These drills prove that committed history can be restored and checked locally. They do not prove an off-host backup, an approved RPO/RTO, a scheduled restore programme, encryption-key custody or disaster recovery. Uncommitted work, the external governance ledger and ignored secrets are outside the bundle.
+The `3ee2ee2` and earlier drills prove that committed history can be restored and checked locally. The final `c77fec4` bundle is created and verifies, but its restore check is **Blocked** by host policy and is not a PASS; A8 therefore remains `Met` only for the earlier local drills, not for the final revision. None of these drills proves an off-host backup, an approved RPO/RTO, a scheduled restore programme, encryption-key custody or disaster recovery. Uncommitted work, the external governance ledger and ignored secrets are outside the bundle.
 
 ## Traceability
 
@@ -144,7 +145,7 @@ These drills prove that committed history can be restored and checked locally. T
 5. **No production observability** — local JSON access log, correlation id, aggregate `/metrics` and liveness `/healthz`; no SLO, traces, alerting, on-call or readiness probe (`DEC-16`).
 6. **No AI/LLM capability** — retrieval is deterministic lexical; `--llm` accepts only `mock` and labels output `mock-answer`; no model quality claim (`EVAL-GAP-01`).
 7. **No independent review** — the threat model, audit and this pack are self-assessments; no penetration test or certification.
-8. **Host policy risk** — Windows Application Control intermittently blocks freshly built executables (`os error 4551`). At `23b8996` the canonical `scripts/check.ps1` was blocked at the platform test because the debug binary could not start; the release profile passed the same 270 tests. The automatic TEMP drill for `3ee2ee2` was blocked at `edge_cases`; a manual fresh clone of the identical bundle then passed. A blocked run is recorded as `Blocked`, never `PASS`.
+8. **Host policy risk** — Windows Application Control intermittently blocks freshly built executables (`os error 4551`). At `23b8996` the canonical `scripts/check.ps1` was blocked at the platform test because the debug binary could not start; the release profile passed the same 270 tests. The automatic TEMP drill for `3ee2ee2` was blocked at `edge_cases`; a manual fresh clone of the identical bundle then passed. For the final `c77fec4` bundle, both the automatic TEMP drill and a manual fresh clone were blocked at `eval` Clippy build scripts, and release-profile tests in the clone were blocked too; that restore is `Blocked`. A blocked run is recorded as `Blocked`, never `PASS`.
 
 ## Sign-off
 
