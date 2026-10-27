@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97` (`main`)
-- **Working tree during the re-run:** clean at each named revision; `947cd27` differs from `6ae6134` only in documentation and the required-document list, so the code-level checks remain attributed to `6ae6134`
+- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070` (`main`)
+- **Working tree during the re-run:** clean at each named revision; `947cd27` and `a2ba7de` differ from `6ae6134` only in documentation and the required-document list, so the code-level checks remain attributed to `6ae6134`
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -31,6 +31,7 @@
 | E-015 | NOT RUN | Independent review / pilot | n/a | n/a | `BLOCKED`: no independent reviewer, pilot owner or representative user |
 | E-016 | LOCAL | Documentation check (assurance commit) | `947cd27` | 0 | PASS: 53 required documents, 652 links in 115 files |
 | E-017 | LOCAL | Secret pattern scan (assurance commit) | `947cd27` | 0 | PASS: 229 files |
+| E-018 | LOCAL | Documentation and secret checks (evidence-record commit) | `a2ba7de` | 0 | PASS: 53 required documents, 655 links in 115 files; 229 secret-scan files |
 
 ## E-001: canonical check (blocked)
 
@@ -272,6 +273,22 @@ exit 0
 ```
 
 The increase from 44/508/106 and 220 files is the nine new assurance documents plus the updated required-document list. This proves existence and link resolution, not the truth of the contents. The canonical `scripts/check.ps1` was not re-run after this documentation-only commit; its last run at `6ae6134` remains `BLOCKED` (E-001), and no code changed.
+
+## E-018: evidence-record commit re-check
+
+After adding the S27 traceability row and the evidence references, the clean evidence-record commit `a2ba7de` was checked on 2026-10-27:
+
+```text
+PASS: required documents present (53)
+PASS: relative Markdown links resolve (655 links in 115 files)
+Documentation check PASSED
+exit 0
+
+PASS: no high-signal secret patterns in 229 file(s)
+exit 0
+```
+
+The three additional links are the assurance references in the S27 row. The file count is unchanged. This remains existence/link evidence; it does not establish content truth or a phase approval. The bundle created after this commit is recorded in the [backup log](../operations/backup-log.md).
 
 ## Reproduction notes
 
