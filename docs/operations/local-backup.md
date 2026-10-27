@@ -1,6 +1,6 @@
 # Local backup and restore procedure
 
-- **Status:** Procedure defined; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, `41beaea` and `6ed236d` (the last via the automatic TEMP drill with restored `scripts/check.ps1` exit 0); earlier `198d5f3`, `c77fec4`, `bc7671a` and `28b68cc` attempts were BLOCKED by host policy and are not counted as verification
+- **Status:** Procedure defined; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, `41beaea`, `6ed236d` and `499e0d1` (the last three via the automatic TEMP drill with restored `scripts/check.ps1` exit 0); earlier `198d5f3`, `c77fec4`, `bc7671a` and `28b68cc` attempts were BLOCKED by host policy and are not counted as verification
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
 - **Last reviewed:** 2026-10-27
 - **Evidence log:** [backup-log.md](backup-log.md)

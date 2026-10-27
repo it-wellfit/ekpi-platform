@@ -2,7 +2,7 @@
 
 - **Status:** Final for the 2026-10-27 local evidence baseline; **Phase A not approved**, **Phase B blocked**
 - **Owner:** Engineering + QA; business, security, operations, data and independent-review roles `UNASSIGNED`
-- **Evidence revision:** `32f2b36` (current working-tree canonical PASS); `718db57` (code change and preceding canonical PASS); `6ed236d` (final evidence bundle clean-clone canonical PASS and automatic restore PASS); previous assurance bundle `41beaea`; code baseline `6ae6134`; release-profile checks re-run 2026-10-27
+- **Evidence revision:** `32f2b36` (current working-tree canonical PASS); `718db57` (code change and preceding canonical PASS); `499e0d1` (current evidence bundle: automatic restore PASS); `6ed236d` (final evidence bundle clean-clone canonical PASS and automatic restore PASS); previous assurance bundle `41beaea`; code baseline `6ae6134`; release-profile checks re-run 2026-10-27
 - **Environment:** Single managed Windows 11 host; Windows PowerShell 5.1; Rust 1.99.1; local loopback only; no remote, CI, staging or production
 - **Matrix:** [phase-a-b-matrix.md](phase-a-b-matrix.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
@@ -44,7 +44,7 @@ These were completed in the preceding delivery commits and are re-verified here 
 ### 1.3 What this round did not do
 
 - It changed the served workbench and CLI audit behavior in `718db57`: web mutation actors come from the validated local session, and `--audit-log` is an append-only JSONL chain. It did not lower a gate, skip a failing test or rewrite history.
-- The canonical check passed in a fresh clone at `41beaea` and again at the final bundle revision `6ed236d`; it also passed in the working tree at `4697aa1`, `718db57` and `32f2b36`. The earlier working-tree block at `41beaea` remains historical.
+- The canonical check passed in a fresh clone at `41beaea`, at the final evidence revision `6ed236d` and at the current evidence bundle revision `499e0d1`; it also passed in the working tree at `4697aa1`, `718db57` and `32f2b36`. The earlier working-tree block at `41beaea` remains historical.
 - It created the `41beaea` assurance bundle and the final `6ed236d` bundle, and verified both automatic restores (exit 0). The earlier `28b68cc` row remains `BLOCKED` and is retained as history.
 - It did not create a remote, CI run, PR, branch protection, IdP, tenant model, AI provider, pilot or off-host backup.
 - It did not obtain an independent review.
@@ -97,7 +97,7 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | A5 Security | **PARTIAL** | Local session/role/CSRF hardening tested; no IdP, MFA, recovery, persistent identity, access review or tenant isolation. |
 | A6 Maintainability | **PARTIAL** | Docs/runbooks exist; no named operator or handoff dry run. |
 | A7 Traceability | **PARTIAL** | Register links requirements/code/tests/releases; no pilot run ID or validated row. |
-| A8 Backup/restore | **MET** (local) | `6ed236d` bundle verifies, clones and the automatic restore drill exits 0; logged. No off-host/RPO/RTO. |
+| A8 Backup/restore | **MET** (local) | `499e0d1` bundle verifies, clones and the automatic restore drill exits 0 (docs 657/105, platform 277); `6ed236d` also remains restore-verified. No off-host/RPO/RTO. |
 | A9 AI quality | **PARTIAL** | Fixed deterministic corpus/retrieval gate; no LLM/agent/tool path; tool-failure gap; mock is not AI quality. |
 | A10 Docs/handoff | **PARTIAL** | Docs map and evidence current; no pilot handoff record. |
 | A11 Review/improvement | **PARTIAL** | Local self-review/retro; no independent reviewer or second annotator. |
@@ -148,6 +148,7 @@ Detailed unlock steps, minimum access and acceptance criteria are in [external-b
 - Local Git bundles for `3ee2ee2`, `41beaea` and `6ed236d` were restored and checked successfully; the `56a944f` `age` drill encrypted and decrypted byte-identically to a local-simulated destination.
 - A local session login, role checks, session-derived mutation actors, CSRF guard, CSP and request limits are implemented and tested.
 - The final `6ed236d` bundle `ekpi-platform-2026-10-27-141734.bundle` verifies, clones to `6ed236d`, and its automatic restore drill ran the restored canonical `scripts/check.ps1` to exit 0 (platform 270, eval 12, self-test 49, schema 20, search 28, docs 652 links in 105 tracked files, secrets 229).
+- The current `499e0d1` bundle `ekpi-platform-2026-10-27-170750.bundle` (SHA-256 `09A33F…09B8`) verifies, clones to `499e0d1`, and its automatic restore drill ran the restored canonical `scripts/check.ps1` to exit 0 (docs 657 links in 105 tracked files, secrets 229, platform 277, eval 12, self-test 49, schema 20, search 28).
 - The previous `41beaea` assurance bundle also verifies, clones and ran the canonical check to exit 0.
 - The working tree at `4697aa1`, `718db57` and `32f2b36` passed the canonical check; the earlier `41beaea` working-tree block (`os error 4551`) remains historical.
 - The earlier `28b68cc` bundle verifies and clones, but its restored check remains `BLOCKED` and is not counted.

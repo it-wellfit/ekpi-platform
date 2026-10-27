@@ -96,7 +96,7 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Unlock steps | 1. Approve target and RPO/RTO ([proposal](../operations/backup-policy-draft.md)). 2. Configure encryption and key custody. 3. Transfer a bundle and ledger copy; record SHA-256 manifest. 4. Retrieve from off-host and restore into an isolated environment. 5. Verify `git bundle verify`, clone, restored check, ledger hash chain and measured RTO. 6. Schedule recurring drills and missed-run escalation. |
 | Acceptance criteria | At least one off-host artifact retrieved and restored; RPO/RTO met; key recovery tested without the operator holding the only key; result logged in [backup log](../operations/backup-log.md). |
 | Work that can continue now | Local bundle/restore, ledger copy procedure, local `age` drill, manifest and failure-message hardening. |
-| Status / evidence | `BLOCKED` / `UNASSIGNED`; B7 `Partial`; local A8 `Met` at `6ed236d` (E-023); off-host evidence E-009 is `SIMULATED` only. |
+| Status / evidence | `BLOCKED` / `UNASSIGNED`; B7 `Partial`; local A8 `Met` at `499e0d1` (E-027; `6ed236d` E-023 also PASS); off-host evidence E-009 is `SIMULATED` only. |
 
 ## B-07 Security and operations owners
 

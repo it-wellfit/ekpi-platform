@@ -23,7 +23,7 @@ This analysis separates a code defect from a test-environment block, a missing c
 | RC-08 | No CI, PR or branch protection evidence | The repository has no remote and `gh` is not authenticated | External access | CI workflow and local gate exist; no remote execution | B4 `BLOCKED`; actions are tag-pinned |
 | RC-09 | No real pilot or independent review | No named business owner, representative user or independent reviewer | External ownership | Pilot runbook and reviewer checklist prepared | A1 `NOT MET`; A11 `PARTIAL` |
 | RC-10 | No AI/agent evaluation | No approved provider/data policy or tool path; only a deterministic lexical retriever and a mock provider exist | Missing capability / external decision | Fixed eval policy and 28-case regression gate exist | A9 `PARTIAL`; B5 `BLOCKED` |
-| RC-11 | No off-host backup or approved RPO/RTO | No approved destination, key custodian, retention decision or operations owner | External decision / environment | Local bundle, restore drill and local-simulated `age` drill exist | B7 `PARTIAL`; A8 final restore blocked |
+| RC-11 | No off-host backup or approved RPO/RTO | No approved destination, key custodian, retention decision or operations owner | External decision / environment | Local bundle, restore drill and local-simulated `age` drill exist; the current `499e0d1` bundle restores locally | B7 `PARTIAL`; A8 `MET` only for local restore |
 | RC-12 | No SLO, soak or capacity model | No approved workload, user profile, SLO or cost budget | External decision | One-host benchmark exists | B2/B3 `PARTIAL`; exploratory only |
 
 ## RC-01: canonical check versus release profile

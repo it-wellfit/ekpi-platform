@@ -11,7 +11,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 
 ## Status rules
 
-- `PASS` requires the named command or drill to run on the named revision and exit 0. At `41beaea` A4 is `MET` on the clean-clone canonical run; at `6ed236d` A4 is `MET` again and A8 is `MET` on the local restore drill.
+- `PASS` requires the named command or drill to run on the named revision and exit 0. At `41beaea` A4 is `MET` on the clean-clone canonical run; at `6ed236d` A4 is `MET` again and A8 is `MET` on the local restore drill; at `499e0d1` A8 is `MET` again on the current bundle restore.
 - A release-profile result is not a canonical `scripts/check.ps1` pass. A clean-clone canonical pass is revision-bound and is not CI, staging or production evidence.
 - A local clone is not CI. A simulated `age` drill is not an off-host backup. A self-review is not independent review.
 - A row is `PARTIAL` when some evidence exists but the full condition is unmet; it is `BLOCKED` when an external owner, environment or approval is required; it is `NOT MET` when the required condition is absent.
@@ -28,7 +28,7 @@ This matrix expands the canonical gate into the fields required for an auditable
 | A5 | Security | `PARTIAL` | Local PBKDF2 session, Viewer/Editor/Approver, CSRF guard, CSP, body cap, boundary tests | No enterprise IdP, MFA, recovery, persistent identity, access review or tenant isolation |
 | A6 | Maintainability | `PARTIAL` | Install, configuration, troubleshooting, runbook and evidence pages | No named operator, no independent handoff dry run |
 | A7 | Traceability | `PARTIAL` | Requirement → spec → code → test → release rows in the register | No pilot run ID, no validated row, no real-user acceptance |
-| A8 | Backup and restore | `MET` (local) | `6ed236d` bundle verifies, clones and the automatic restore drill exits 0; logged | No off-host copy, approved RPO/RTO, key custody or scheduled drill (B7) |
+| A8 | Backup and restore | `MET` (local) | `499e0d1` bundle verifies, clones and the automatic restore drill exits 0; logged | No off-host copy, approved RPO/RTO, key custody or scheduled drill (B7) |
 | A9 | AI quality | `PARTIAL` | Fixed 67-case verdict corpus and 28-case lexical retrieval gate | No LLM/agent/tool path; tool-failure dimension absent; mock output is not AI quality |
 | A10 | Documentation and handoff | `PARTIAL` | Canonical docs map, commands, limits and evidence pages | No pilot handoff record or new-operator acceptance |
 | A11 | Review and improvement | `PARTIAL` | Local review, retro template, improvement register | No independent reviewer, no second annotator, no signed review |
@@ -171,16 +171,16 @@ This matrix expands the canonical gate into the fields required for an auditable
 | Field | Record |
 | --- | --- |
 | Requirement | A backup exists from the first important version; a fresh clone passes the restore drill; the result is logged. |
-| Actual state | `MET` (local). Local fresh-clone restore PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, `41beaea` and `6ed236d`. The final `6ed236d` bundle `ekpi-platform-2026-10-27-141734.bundle` (SHA-256 `E3E8C3EE…EEA13E`) passed `git bundle verify`, cloned to HEAD `6ed236d`, and the automatic restore drill ran the restored `scripts/check.ps1` to exit 0 (docs 652/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). Earlier `28b68cc`, `bc7671a`, `c77fec4` and `198d5f3` attempts remain `BLOCKED` and are not counted. |
+| Actual state | `MET` (local). Local fresh-clone restore PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, `41beaea`, `6ed236d` and `499e0d1`. The current `499e0d1` bundle `ekpi-platform-2026-10-27-170750.bundle` (SHA-256 `09A33F…09B8`) passed `git bundle verify`, cloned to HEAD `499e0d1`, and the automatic restore drill ran the restored `scripts/check.ps1` to exit 0 (docs 657/105, secrets 229, platform 277, eval 12, self-test 49, schema 20, search 28). The final `6ed236d` bundle remains restore-verified (platform 270). Earlier `28b68cc`, `bc7671a`, `c77fec4` and `198d5f3` attempts remain `BLOCKED` and are not counted. |
 | Defect and root cause | The earlier blocks were caused by host Application Control denying freshly built build scripts. That policy did not block the `41beaea` and `6ed236d` clean builds; the automatic drills completed. The underlying policy remains intermittent and host-specific. |
 | Impact and risk | The final evidence revision is restore-verified on this host. Off-host recovery, RPO/RTO, key custody and scheduled drills remain absent, so this does not satisfy B7. |
-| Fix / next action | Keep the `6ed236d` bundle and log row; retain the blocked earlier rows. For Phase B, approve an off-host target and key custody, define RPO/RTO, and schedule restore drills. |
+| Fix / next action | Keep the `499e0d1` bundle and log row; retain the `6ed236d` and earlier rows. For Phase B, approve an off-host target and key custody, define RPO/RTO, and schedule restore drills. |
 | Acceptance test | `git bundle verify`; fresh clone; `git rev-parse HEAD` equals the recorded revision; restored `scripts/check.ps1` exits 0. |
 | Threshold | All four steps pass on the final bundle; log row records revision, bundle SHA-256, environment, operator and result. |
 | External role / environment | Host/endpoint security owner for reproducibility; off-host storage and key custodian for B7. `UNASSIGNED`. |
-| Evidence | E-007/E-008/E-009/E-020/E-023 in [test-evidence.md](test-evidence.md); [backup log](../operations/backup-log.md); [release evidence](../operations/release-evidence-bundle.md). |
+| Evidence | E-007/E-008/E-009/E-020/E-023/E-027 in [test-evidence.md](test-evidence.md); [backup log](../operations/backup-log.md); [release evidence](../operations/release-evidence-bundle.md). |
 | Owner | Engineering/Operations; named backup owner `UNASSIGNED` |
-| Final status / blocker | `MET` (local) — `6ed236d` bundle and fresh-clone restore PASS are logged. Off-host copy, approved RPO/RTO and key custody remain `BLOCKED` under [B-06](external-blockers.md#b-06-off-host-backup-key-custody-and-rporo). |
+| Final status / blocker | `MET` (local) — `499e0d1` bundle and fresh-clone restore PASS are logged; `6ed236d` remains restore-verified. Off-host copy, approved RPO/RTO and key custody remain `BLOCKED` under [B-06](external-blockers.md#b-06-off-host-backup-key-custody-and-rporo). |
 
 ### A9 — AI and agent quality
 
@@ -349,7 +349,7 @@ The reviewer must be able to reproduce the evidence without trusting the impleme
 | Field | Record |
 | --- | --- |
 | Requirement | Off-host encrypted backup; defined RPO/RTO; scheduled restore tests; integrity check; data-loss boundary; incident path. |
-| Actual state | `PARTIAL`. Local Git bundle + restore drills pass through `6ed236d`; the final evidence bundle verifies, clones to `6ed236d` and the automatic restore drill exits 0. The earlier `28b68cc` restore is `BLOCKED` by host policy. The `age` drill at `56a944f` encrypted/decrypted byte-identically to `%TEMP%` and is labeled `local-simulated-off-host`. |
+| Actual state | `PARTIAL`. Local Git bundle + restore drills pass through `499e0d1`; the current evidence bundle verifies, clones to `499e0d1` and the automatic restore drill exits 0. `6ed236d` also remains restore-verified. The earlier `28b68cc` restore is `BLOCKED` by host policy. The `age` drill at `56a944f` encrypted/decrypted byte-identically to `%TEMP%` and is labeled `local-simulated-off-host`. |
 | Defect and root cause | No approved off-host target, key custodian, RPO/RTO, retention or scheduled restore programme. |
 | Impact and risk | A host loss can lose uncommitted work, the external ledger and the local bundle. The `age` drill does not prove off-host availability or key recovery. |
 | Fix / next action | Approve target/failure domain and key custody; implement transfer and immutability/versioning; schedule restores; test ledger restore and hash chain; measure RTO; record off-host receipt. |

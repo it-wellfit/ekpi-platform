@@ -40,6 +40,7 @@
 | E-024 | HISTORICAL LOCAL | Canonical `scripts/check.ps1` (working tree) | `4697aa1` | 0 | PASS: docs 53 required/655 links in 115 files, secrets 229, eval 12, platform 270 (217 unit, 22 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health), self-test 49, schema 20, search 28; superseded by E-025 |
 | E-025 | HISTORICAL LOCAL | Canonical `scripts/check.ps1` (working tree, `IMP-013`/`IMP-014`) | `718db57` | 0 | PASS: docs 53 required/657 links in 115 files, secrets 229, eval 12 + 10 self-test checks, platform 277 (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations); superseded by E-026 |
 | E-026 | LOCAL | Canonical `scripts/check.ps1` (working tree, evidence-document commit) | `32f2b36` | 0 | PASS: docs 53 required/660 links in 115 files, secrets 229, eval 12 + 10 self-test checks, platform 277 (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations) |
+| E-027 | LOCAL | Current bundle restore + clean-clone canonical check | `499e0d1` | 0 | PASS: bundle verifies, clone HEAD `499e0d1`; automatic restore drill and restored canonical check exit 0 (docs 657/105, secrets 229, platform 277, eval 12, self-test 49, schema 20, search 28) |
 
 ## E-001: canonical check (blocked)
 
@@ -437,6 +438,23 @@ Observed on 2026-10-27 at clean `32f2b36` (working tree clean): exit 0, `=== ALL
 - Eval 12 tests + 10 self-test checks; platform 277 tests (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions; schema 20 records; search gate 28 cases (20/20, 8/8, 4 role cases, 0 violations).
 - `32f2b36` is a documentation/evidence commit; the code is unchanged from `718db57`. The link count rose from 657 to 660 because the evidence index, register and release bundle gained cross-references.
 - This is local working-tree evidence. It is not CI, staging, production, off-host or independent review.
+
+## E-027: current bundle restore and clean-clone canonical check (`499e0d1`)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/backup.ps1
+```
+
+Observed on 2026-10-27:
+
+- Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-170750.bundle`
+- SHA-256: `09A33FFD9AAFC70C5D2BF701019B33CE8B67BED360B4A529B593FDA9E6B809B8`
+- Size: 848,599 bytes
+- `git bundle verify`: okay; `refs/heads/main` and `HEAD` both at `499e0d1`; complete history
+- Automatic restore drill: clone to `%TEMP%\ekpi-restore-drill`, HEAD `499e0d1`; restored `scripts/check.ps1` exit 0; `RESTORE DRILL PASSED`
+- Clone check counts: docs 53 required/657 links in 105 tracked files; secrets 229; eval 12 + 10 self-test checks; platform 277 (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations)
+
+`499e0d1` records the `718db57` and `32f2b36` evidence; its code is unchanged from `718db57`. This is a **local restore PASS** and a **revision-bound canonical PASS** in a fresh clone. It is not CI, staging, production, off-host or independent review. The bundle is created before its own log row is committed, so the row is evidence in the later revision.
 
 ## Reproduction notes
 
