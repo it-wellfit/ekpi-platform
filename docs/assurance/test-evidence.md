@@ -38,7 +38,8 @@
 | E-022 | LOCAL | Documentation and secret checks (final bundle revision) | `6ed236d` | 0 | PASS: 53 required documents, 655 links in 115 files; 229 secret-scan files |
 | E-023 | LOCAL | Final bundle restore + clean-clone canonical check | `6ed236d` | 0 | PASS: bundle verifies, clone HEAD `6ed236d`; automatic restore drill and restored canonical check exit 0 (platform 270, eval 12, self-test 49, schema 20, search 28, docs 652/105, secrets 229) |
 | E-024 | HISTORICAL LOCAL | Canonical `scripts/check.ps1` (working tree) | `4697aa1` | 0 | PASS: docs 53 required/655 links in 115 files, secrets 229, eval 12, platform 270 (217 unit, 22 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health), self-test 49, schema 20, search 28; superseded by E-025 |
-| E-025 | LOCAL | Canonical `scripts/check.ps1` (working tree, `IMP-013`/`IMP-014`) | `718db57` | 0 | PASS: docs 53 required/657 links in 115 files, secrets 229, eval 12 + 10 self-test checks, platform 277 (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations) |
+| E-025 | HISTORICAL LOCAL | Canonical `scripts/check.ps1` (working tree, `IMP-013`/`IMP-014`) | `718db57` | 0 | PASS: docs 53 required/657 links in 115 files, secrets 229, eval 12 + 10 self-test checks, platform 277 (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations); superseded by E-026 |
+| E-026 | LOCAL | Canonical `scripts/check.ps1` (working tree, evidence-document commit) | `32f2b36` | 0 | PASS: docs 53 required/660 links in 115 files, secrets 229, eval 12 + 10 self-test checks, platform 277 (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations) |
 
 ## E-001: canonical check (blocked)
 
@@ -424,6 +425,19 @@ PASS: platform search evaluation (28 cases)
 - The 11 governance-web route tests include `ledger_actor_is_the_authenticated_session_not_the_form_value`: a POST with `actor=Jordan` records `tester` (the validated session username).
 - This is local working-tree evidence for `718db57`. It is not CI, staging, production, off-host or independent review. The host Application Control policy still has no named exception owner, so a future blocked run must be recorded as `BLOCKED`.
 
+## E-026: canonical check after the evidence-document reconciliation (`32f2b36`)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-10-27 at clean `32f2b36` (working tree clean): exit 0, `=== ALL CHECKS PASSED ===`.
+
+- Docs 53 required/660 links in 115 files; secrets 229.
+- Eval 12 tests + 10 self-test checks; platform 277 tests (221 unit, 24 CLI contract, 2 edge, 11 governance web, 8 integration, 7 search evaluation, 4 web health) + 49 self-test assertions; schema 20 records; search gate 28 cases (20/20, 8/8, 4 role cases, 0 violations).
+- `32f2b36` is a documentation/evidence commit; the code is unchanged from `718db57`. The link count rose from 657 to 660 because the evidence index, register and release bundle gained cross-references.
+- This is local working-tree evidence. It is not CI, staging, production, off-host or independent review.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -439,5 +453,5 @@ PASS: platform search evaluation (28 cases)
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI; the earlier `41beaea` working-tree run was blocked, while later working-tree runs at `4697aa1` and `718db57` passed. There is still no CI run.
+- It does not show that the canonical check is reproducible on a different host or in CI; the earlier `41beaea` working-tree run was blocked, while later working-tree runs at `4697aa1`, `718db57` and `32f2b36` passed. There is still no CI run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.
