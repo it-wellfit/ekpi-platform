@@ -45,6 +45,7 @@ static REQUEST_LIMIT: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(MAX_CONCURRENT_REQUESTS));
 
 pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
+    let auth_for_guard = auth.clone();
     Router::new()
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
@@ -66,6 +67,10 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .route("/audit", get(audit_page))
         .route("/assets/governance.css", get(stylesheet))
         .with_state((ledger, auth))
+        .layer(middleware::from_fn_with_state(
+            auth_for_guard,
+            require_session,
+        ))
         .layer(middleware::from_fn(same_origin_guard))
         .layer(middleware::from_fn(request_context))
 }
@@ -252,6 +257,23 @@ fn check_session_with_role(
 
 fn check_session(auth: &SharedAuth, headers: &HeaderMap) -> Option<Response> {
     check_session_with_role(auth, headers, Role::Editor)
+}
+
+fn is_public_path(path: &str) -> bool {
+    matches!(path, "/healthz" | "/metrics" | "/login") || path.starts_with("/assets/")
+}
+
+/// Require a valid session for every data page. The liveness probe, aggregate
+/// metrics, login page and stylesheet remain reachable so an unauthenticated
+/// operator can log in and monitoring can run.
+async fn require_session(State(auth): State<SharedAuth>, request: Request, next: Next) -> Response {
+    if is_public_path(request.uri().path()) {
+        return next.run(request).await;
+    }
+    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Viewer) {
+        return response;
+    }
+    next.run(request).await
 }
 
 async fn login_page() -> Response {

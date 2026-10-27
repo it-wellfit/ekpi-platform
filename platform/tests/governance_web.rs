@@ -74,6 +74,19 @@ async fn post_authed(
     post_form_with_cookie(app, uri, body, Some(cookie)).await
 }
 
+async fn get_with_cookie(
+    app: &axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> axum::response::Response {
+    let mut builder = Request::get(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("GET request builds");
+    app.clone().oneshot(request).await.expect("router responds")
+}
+
 async fn login(app: &axum::Router, username: &str, password: &str) -> String {
     let body = format!("username={username}&password={password}");
     let response = post_form(app, "/login", &body).await;
@@ -109,11 +122,8 @@ async fn response_text(response: axum::response::Response) -> String {
 async fn workbench_renders_accessible_shell_and_local_stylesheet() {
     let path = test_path();
     let app = test_app(&path);
-    let response = app
-        .clone()
-        .oneshot(Request::get("/").body(Body::empty()).expect("GET builds"))
-        .await
-        .expect("router responds");
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = get_with_cookie(&app, "/", Some(&cookie)).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response
         .headers()
@@ -124,15 +134,7 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
     assert!(html.contains("文件與證據"));
     assert!(!html.contains("<script"));
 
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/assets/governance.css")
-                .body(Body::empty())
-                .expect("stylesheet GET builds"),
-        )
-        .await
-        .expect("router responds");
+    let response = get_with_cookie(&app, "/assets/governance.css", None).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         response.headers().get(header::CONTENT_TYPE).unwrap(),
@@ -151,15 +153,7 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
         ("/lifecycle", "生命週期與強制關卡"),
         ("/audit", "追加式稽核紀錄"),
     ] {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::get(route)
-                    .body(Body::empty())
-                    .expect("page GET builds"),
-            )
-            .await
-            .expect("page route responds");
+        let response = get_with_cookie(&app, route, Some(&cookie)).await;
         assert_eq!(response.status(), StatusCode::OK, "route {route}");
         assert!(
             response_text(response).await.contains(expected_heading),
@@ -265,15 +259,7 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
     }
     let response = post_authed(&app, &cookie, "/inspections", &inspection_body).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/inspections")
-                .body(Body::empty())
-                .expect("inspection GET builds"),
-        )
-        .await
-        .expect("inspection page responds");
+    let response = get_with_cookie(&app, "/inspections", Some(&cookie)).await;
     let inspection_html = response_text(response).await;
     assert!(inspection_html.contains("1 份完整檢查紀錄"));
     assert!(inspection_html.contains("REF-QC-01"));
@@ -290,15 +276,7 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
         .await
         .contains("不可豁免要求不得以一般例外放行"));
 
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/audit")
-                .body(Body::empty())
-                .expect("audit GET builds"),
-        )
-        .await
-        .expect("router responds");
+    let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
     assert_eq!(response.status(), StatusCode::OK);
     let audit_html = response_text(response).await;
     assert!(audit_html.contains("本機雜湊鏈驗證通過"));
@@ -322,6 +300,28 @@ async fn mutation_requires_authentication() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn data_pages_require_authentication() {
+    let path = test_path();
+    let app = test_app(&path);
+    for route in ["/", "/projects", "/evidence", "/audit"] {
+        let response = get_with_cookie(&app, route, None).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "route {route} must require a session"
+        );
+    }
+    let response = get_with_cookie(&app, "/login", None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = get_with_cookie(&app, "/healthz", None).await;
+    assert_eq!(response.status(), StatusCode::OK);
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
@@ -434,6 +434,7 @@ async fn oversized_form_body_is_rejected_before_parsing() {
 async fn cross_origin_mutating_request_is_rejected() {
     let path = test_path();
     let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
     let request = Request::builder()
         .method(Method::POST)
         .uri("/projects")
@@ -446,15 +447,7 @@ async fn cross_origin_mutating_request_is_rejected() {
         .expect("cross-origin request builds");
     let response = app.clone().oneshot(request).await.expect("router responds");
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/audit")
-                .body(Body::empty())
-                .expect("GET builds"),
-        )
-        .await
-        .expect("router responds");
+    let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
     assert!(response_text(response).await.contains("0 筆事件"));
     drop(app);
     if path.exists() {

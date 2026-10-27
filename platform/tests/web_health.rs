@@ -84,7 +84,11 @@ async fn metrics_endpoint_exposes_aggregate_counters_only() {
     let (app, path) = test_app();
     let response = app
         .clone()
-        .oneshot(Request::get("/").body(Body::empty()).expect("GET builds"))
+        .oneshot(
+            Request::get("/login")
+                .body(Body::empty())
+                .expect("GET builds"),
+        )
         .await
         .expect("router responds");
     assert_eq!(response.status(), StatusCode::OK);
@@ -127,7 +131,7 @@ async fn request_id_is_echoed_only_when_safe() {
     let response = app
         .clone()
         .oneshot(
-            Request::get("/")
+            Request::get("/login")
                 .header(request_id_header(), "pilot-123_alpha")
                 .body(Body::empty())
                 .expect("GET builds"),
@@ -139,7 +143,7 @@ async fn request_id_is_echoed_only_when_safe() {
     let response = app
         .clone()
         .oneshot(
-            Request::get("/")
+            Request::get("/login")
                 .header(request_id_header(), "bad id with spaces")
                 .body(Body::empty())
                 .expect("GET builds"),
@@ -154,7 +158,7 @@ async fn request_id_is_echoed_only_when_safe() {
     let response = app
         .clone()
         .oneshot(
-            Request::get("/")
+            Request::get("/login")
                 .header(request_id_header(), too_long.clone())
                 .body(Body::empty())
                 .expect("GET builds"),
@@ -174,7 +178,11 @@ async fn dynamic_pages_carry_defence_in_depth_headers() {
     let (app, path) = test_app();
     let response = app
         .clone()
-        .oneshot(Request::get("/").body(Body::empty()).expect("GET builds"))
+        .oneshot(
+            Request::get("/login")
+                .body(Body::empty())
+                .expect("GET builds"),
+        )
         .await
         .expect("router responds");
 
