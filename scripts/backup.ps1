@@ -12,8 +12,12 @@ $bundlePath = "$bundleDir\$name"
 
 Write-Host "Creating bundle: $bundlePath" -ForegroundColor Cyan
 Set-Location $root
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 git bundle create "$bundlePath" --all
-if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: bundle create" -ForegroundColor Red; exit 1 }
+$bundleExit = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+if ($bundleExit -ne 0) { Write-Host "FAIL: bundle create" -ForegroundColor Red; exit 1 }
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
 $stream = [System.IO.File]::OpenRead($bundlePath)
 try {
@@ -29,8 +33,12 @@ Write-Host "SHA-256: $bundleHash"
 $drillDir = "$env:TEMP\ekpi-restore-drill"
 if (Test-Path $drillDir) { Remove-Item -Recurse -Force $drillDir }
 Write-Host "Restore drill: cloning bundle..." -ForegroundColor Cyan
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 git clone "$bundlePath" "$drillDir"
-if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: clone" -ForegroundColor Red; exit 1 }
+$cloneExit = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+if ($cloneExit -ne 0) { Write-Host "FAIL: clone" -ForegroundColor Red; exit 1 }
 
 Write-Host "Restore drill: running the restored repository check..." -ForegroundColor Cyan
 $checkScript = Join-Path $drillDir "scripts\check.ps1"
