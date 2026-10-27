@@ -35,6 +35,15 @@ These are dated observations. Re-run them for the revision being delivered and a
 - D-05 `sequencing.on_violation = warn` now records `deadline_overdue_warned` and preserves `Comply` instead of treating the deadline breach as `Violate`. Regression case: BC-194.
 - The LegalRuleML exporter was restored after a placeholder returned `<LegalRuleML/>`. The regenerated artifact is byte-identical to the 51,026-byte reference, and the smoke gate now rejects undersized or structurally incomplete exports.
 
+### 2026-10-27 local session-auth baseline (`b2bae3e`)
+
+- `platform` now has **261 tests**: 217 unit, 13 CLI contract, 2 edge-case, 10 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test still reports 49 assertions and the schema command validates 20 records.
+- `local_auth` has 11 unit tests covering password hashing, duplicate/weak passwords, session expiry, logout, role ordering, lockout, unknown-user lockout isolation and expired-session pruning.
+- `governance_web` has 10 route tests covering unauthenticated `401`, Viewer/Editor/Approver enforcement, login/logout, oversized login bodies, no default account, same-origin/fetch-metadata refusal and no ledger append on refusal.
+- `gate.ps1 -IncludeSmoke` is 13/13 PASS at `b2bae3e`; supply-chain check is PASS (platform 72 dependencies, eval 12, 0 vulnerabilities). The canonical check in a fresh clone at `56a944f` passed with docs 491 links in 96 tracked files and secret scan 219 files.
+- Restore: bundles `7fd0c0b` (SHA-256 `EBFD373C…34A2FF`) and `56a944f` (SHA-256 `23EA4401…CE6421`) both passed a fresh-clone check. The `56a944f` run also passed an `age` encrypt/decrypt drill; it remains local-simulated, not off-host.
+- Benchmark at `56a944f`: eval p50/p95 17.432/23.319 ms; loopback `/healthz` p50/p95 19.010/24.069 ms; 5,369.21 req/s. One host only; not a capacity model.
+
 ## 2. `eval/` behavior to preserve
 
 - Parse seed/evaluation cases and preserve warnings/errors for malformed input.
@@ -87,7 +96,8 @@ For a search behavior change, also record one real `--search` command and its ci
 
 ### Read routes and presentation
 
-- `GET /`, `/projects`, `/evidence`, `/inspections`, `/workflows`, `/controls`, `/lifecycle`, and `/audit` render their expected headings.
+- `GET /login` renders the local login form. Every ledger-backed GET requires a Viewer session and otherwise returns `401` without ledger content. `GET /healthz`, `/metrics` and `/assets/governance.css` stay public.
+- `GET /`, `/projects`, `/evidence`, `/inspections`, `/workflows`, `/controls`, `/lifecycle`, and `/audit` render their expected headings when authenticated.
 - `GET /assets/governance.css` returns CSS with the expected content type.
 - Preserve the skip link, visible keyboard focus styling, narrow-screen media rule, Content Security Policy header, and zero-script HTML.
 
@@ -100,9 +110,11 @@ For a search behavior change, also record one real `--search` command and its ci
 - Quality inspection requires all 29 checklist decisions and their evidence.
 - Gate decisions preserve non-waivable blocking behavior.
 - Audit view verifies the hash-linked local event ledger and reflects recorded project, evidence, inspection, workflow, CAPA, and gate events.
-- Mutating requests with a foreign Origin are rejected; the test confirms rejection does not append a ledger event.
+- Mutating requests with a foreign Origin are rejected; the test confirms rejection does not append a ledger event. A missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`.
+- Unauthenticated mutations return `401`; authenticated sessions without the required role return `403`; neither appends an event.
+- Login failures do not reveal whether a username exists; five failures lock an existing account for 300 seconds; a successful login clears the failure state and prunes expired sessions.
 
-Relevant routes and tests: `platform/src/governance_web.rs`, `platform/src/governance.rs`, `platform/tests/governance_web.rs`. Preserve the boundary that this prototype is local-only and has no enterprise authentication or external-source permission enforcement.
+Relevant routes and tests: `platform/src/governance_web.rs`, `platform/src/local_auth.rs`, `platform/src/governance.rs`, `platform/tests/governance_web.rs`. Preserve the boundary that this prototype is local-only and has **no enterprise authentication** or external-source permission enforcement; the session is a local process-memory control, not an IdP.
 
 The existing automated route test checks semantic page headings, CSP presence, skip link, zero script, CSS content type, focus-visible selector, and a narrow-screen media rule. It is not a substitute for manual keyboard, screen-reader, contrast, or browser-resize checks on UI changes.
 

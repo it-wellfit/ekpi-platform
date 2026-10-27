@@ -2,7 +2,7 @@
 
 - **Status:** Active
 - **Owner:** QA + Engineering
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-27
 - **Phase gates:** [Phase gates](phase-gates.md)
 - **Risk tiers:** [Quality gates](../development/quality-gates.md)
 - **Regression baseline:** [Regression checklist](../development/regression-checklist.md)
@@ -35,9 +35,9 @@ The [regression checklist](../development/regression-checklist.md) records the 2
 - Search: `--eval --test-set data/eval/search_eval.json` 28 cases, 20/20 top-1, 8/8 refusals, 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00, gate PASS. Lexical only. This is library-filter evidence, not authentication or tenant isolation (`S19`).
 - Smoke: `G_ekpi_engine acc=1.000`, hard gates H-1–H-6 all OK; LegalRuleML 51,026 bytes with 19/19/19/16 structure; `report.html` zero script.
 - `gate.ps1 -IncludeSmoke`: 13/13 steps PASS; documentation and high-signal secret scan pass. Exact link/file counts are recorded in the [release evidence bundle](../operations/release-evidence-bundle.md).
-- Restore drill: PASS at `283f83a`, `7f6ab97` and `5328787` (the last is a docs-only diff of `7f6ab97`). Latest bundle `ekpi-platform-2026-10-26-110117.bundle`, SHA-256 `789626183B04AA0429214F902E79FE4924D469431FAC14758CF7DAF339D0E93F`, `git bundle verify` okay, fresh clone reached `5328787` and its restored `scripts/check.ps1` exited 0. See the [backup log](../operations/backup-log.md) and the newer drill row for `42d0302`.
-- Dependencies: local `cargo audit` against both lockfiles reports 0 vulnerabilities; CycloneDX SBOM artifacts for `ekp_platform` and `ekp_eval` are generated with a SHA-256 list. No CI execution or independent attestation yet.
-- Performance: one local release benchmark recorded eval p50/p95 `18.955/24.891 ms` and loopback `/healthz` p50/p95 `17.408/19.420 ms` at `5,589.57 req/s` (artifact `artifacts/benchmark/benchmark-2026-10-26-115830.json`). This is a local observation, not a capacity model or SLO.
+- Restore drill: PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`. Latest bundles: `ekpi-platform-2026-10-27-124512.bundle` (revision `7fd0c0b`, SHA-256 `EBFD373C45EC7A556C6B7C59483F16CE42FA77C4E9C35A85BD50C5B8FF34A2FF`) and `ekpi-platform-2026-10-27-124757.bundle` (revision `56a944f`, SHA-256 `23EA44011711566CC7147767E6FF4258F75030CFFA0507EC98E00323AACE6421`), both `git bundle verify` okay and a fresh clone whose restored `scripts/check.ps1` exited 0. The `56a944f` bundle also passed an `age` encrypt/decrypt drill, but the destination was local-simulated, not off-host. See the [backup log](../operations/backup-log.md).
+- Dependencies: local `cargo audit` against both lockfiles reports 0 vulnerabilities; CycloneDX SBOM artifacts for `ekp_platform` (67 components) and `ekp_eval` (11 components) are generated with a SHA-256 list. No CI execution or independent attestation yet.
+- Performance: one local release benchmark at `56a944f` recorded eval p50/p95 `17.432/23.319 ms` and loopback `/healthz` p50/p95 `19.010/24.069 ms` at `5,369.21 req/s` (artifact `artifacts/benchmark/benchmark-2026-10-27-124954.json`). This is a one-host local observation, not a capacity model or SLO.
 
 Historical note: the earlier audit revision `8bf2d53` could not run canonical `cargo test --locked`/`gate.ps1` because Windows Application Control blocked execution from `target` (`os error 4551`). The narrow profile overrides in `.cargo/config.toml` removed that host block; the later `198d5f3` restore attempt remains a recorded **BLOCKED** row and is not retroactively a PASS. There is still no CI run, remote, off-host backup or approved RPO/RTO. See [troubleshooting](../deployment/troubleshooting.md#windows-application-control-blocks-target-binaries).
 

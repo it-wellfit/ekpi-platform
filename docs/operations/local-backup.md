@@ -1,8 +1,8 @@
 # Local backup and restore procedure
 
-- **Status:** Procedure defined; local restore drills PASS at `283f83a` and `7f6ab97`; earlier `198d5f3` attempt BLOCKED by host policy and not counted as verification
+- **Status:** Procedure defined; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`; earlier `198d5f3` attempt BLOCKED by host policy and not counted as verification
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-27
 - **Evidence log:** [backup-log.md](backup-log.md)
 - **Production gap:** [production-readiness.md](production-readiness.md)
 
@@ -34,6 +34,40 @@ The script:
 4. reports `RESTORE DRILL PASSED` or fails non-zero.
 
 A backup is verified only if the restored clone passes the drill. Do not mark it verified from the bundle's existence or size.
+
+## Encrypted off-host drill (Windows, `age`)
+
+`scripts/backup-offhost.ps1` wraps the local drill, encrypts the new bundle with
+[`age`](https://age-encryption.org/) to an operator-supplied destination and can
+decrypt it again for verification. It refuses a dirty tree, a destination inside
+the repository, the local bundle directory, or a run without `-Drill` or
+`-AcknowledgeOffHost`.
+
+```powershell
+# Generate a throwaway key pair for a drill.
+age-keygen -o "$env:TEMP\ekpi-age-drill-key.txt"
+$recipient = (Select-String -Path "$env:TEMP\ekpi-age-drill-key.txt" `
+    -Pattern '^# public key: (age1[0-9a-z]+)$').Matches.Groups[1].Value
+
+# Drill into a temporary directory; verify the decrypted bundle byte-for-byte.
+powershell -ExecutionPolicy Bypass -File scripts/backup-offhost.ps1 `
+    -Destination "$env:TEMP\ekpi-offhost-drill" `
+    -Recipient $recipient `
+    -IdentityFile "$env:TEMP\ekpi-age-drill-key.txt" `
+    -Drill
+```
+
+The receipt records the revision, bundle and ciphertext hashes, the restore
+result and `destination_class: local-simulated-off-host`. A `-Drill` run is
+**not** evidence of an off-host copy. A real run requires
+`-AcknowledgeOffHost`, an approved destination outside the host and a managed
+key-custody process; none of those exist in this repository.
+
+Both PowerShell scripts use a .NET SHA-256 helper instead of `Get-FileHash`,
+which is unavailable on this managed host. Native `git` and `age` output on
+stderr is handled with `ErrorActionPreference=Continue` and an explicit exit-code
+check so a successful command is not mistaken for a failure (and a failure is
+never mistaken for success).
 
 ## Ledger and uncommitted work
 

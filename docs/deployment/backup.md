@@ -1,8 +1,8 @@
 # Backup and disaster recovery
 
-- **Status:** Procedure defined; local restore drills PASS at `283f83a` and `7f6ab97`; earlier `198d5f3` attempt BLOCKED by host policy and not counted as verification
+- **Status:** Procedure defined; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`; earlier `198d5f3` attempt BLOCKED by host policy and not counted as verification
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-27
 - **Canonical procedure:** [Local backup](../operations/local-backup.md)
 - **Evidence log:** [Backup log](../operations/backup-log.md)
 
@@ -10,7 +10,7 @@
 
 - `scripts/backup.ps1` and `scripts/backup.sh` create a Git bundle in a directory outside the workspace and run a restore drill.
 - The drill clones the bundle to a temporary path and runs the repository check script in the clone.
-- `docs/operations/backup-log.md` is the evidence record. It contains local PASS drills at `283f83a` and `7f6ab97`, and one BLOCKED attempt (`198d5f3`, host Application Control denied freshly built build scripts). A blocked row is not verification.
+- `docs/operations/backup-log.md` is the evidence record. It contains local PASS drills at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`, including an `age` drill with a local-simulated destination, and one BLOCKED attempt (`198d5f3`, host Application Control denied freshly built build scripts). A blocked row is not verification.
 
 ## What the bundle contains and excludes
 
