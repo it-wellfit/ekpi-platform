@@ -2,7 +2,7 @@
 
 - **Status:** Active for the deterministic core; AI/agent evaluation is **not implemented**
 - **Owner:** QA + AI system owner (role not yet assigned)
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-27
 - **Target register:** [metrics/targets.md](../metrics/targets.md)
 - **Hard gates:** H-1–H-6 in the target register
 
@@ -11,9 +11,10 @@
 This policy covers two different things:
 
 1. **Deterministic evaluation (current):** the engine's verdicts, citations, abstention, process replay and hard gates on a fixed JSONL corpus, plus a fixed lexical-retrieval regression set for `--search`. No model, prompt, external retrieval service or tool is involved.
-2. **AI/agent evaluation (target):** any future LLM, prompt, hosted retrieval, connector or tool path. None exists in the served code today; `agents` and `pm4py_sidecar` are library-only and not called by the CLI or web app.
+2. **AI/agent evaluation (target):** any future LLM, prompt, hosted retrieval, connector or tool path. No hosted model, external provider or tool path exists. The CLI's optional `--llm` argument is restricted to a deterministic `MockLlmProvider` and labels its output `mock-answer`; it is a contract and test fixture, not an AI implementation (see the [CLI contract](../contracts/cli.md)).
+3. **Mock RAG demonstration (current):** `--llm mock[:model]` with `--search` exercises retrieval, prompt construction, citation checking and refusal around a fixed response. It calls no network or external model and produces no model-quality, hallucination, cost or latency evidence. `--llm` with any other provider is a usage error.
 
-Do not use deterministic-corpus results to claim AI quality, and do not use an AI evaluation result to claim the deterministic engine is correct. They are separate evidence streams.
+Do not use deterministic-corpus results to claim AI quality, and do not use an AI evaluation result to claim the deterministic engine is correct. They are separate evidence streams. The mock RAG path is neither.
 
 ## Fixed corpus
 
@@ -122,10 +123,10 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 ## Current status
 
 - Deterministic corpus: 67 cases, fixed and versioned.
-- Search retrieval regression: 28 cases (20 answer, 8 refusal), threshold 0.42; `--eval` gate PASS at `7f6ab97` with 20/20 top-1 and 8/8 refusals. Lexical only; paraphrases can abstain.
+- Search retrieval regression: 28 cases (20 answer, 8 refusal), threshold 0.42; the canonical gate at `b2bae3e` (2026-10-27) reported 20/20 top-1, 8/8 refusals, 4 role-restricted cases and 0 violations. Lexical only; paraphrases can abstain.
 - Permission coverage in the fixed set: 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00; `EVAL-GAP-06` is closed. The fixtures and roles are synthetic and evaluation-only; this is library-filter evidence, not authenticated authorization or tenant isolation (`S19`, `PR-03`).
 - Hard gates H-1–H-6: exercised by the engine self-test/report pipeline; see the dated regression baseline.
-- AI/agent: not implemented; no quality claim.
+- AI/agent: not implemented; no quality claim. The `--llm` path is mock-only, labeled `mock-answer`, and covered by CLI contract tests; it is not evidence of model quality, hallucination resistance, cost or latency (`EVAL-GAP-02`).
 - Tool failure: not covered for a future connector/LLM/tool path (`EVAL-GAP-01`). The retrieval CLI calls no tool; its missing-data fail-closed test is not a substitute.
 - Annotation agreement: not measured.
 

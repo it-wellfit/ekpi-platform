@@ -4,14 +4,14 @@ This checklist records the behavior already present in the local prototype. It i
 
 ## 1. Required automated baseline
 
-Run the exact commands in [quality gates](quality-gates.md) from each independent crate directory. CI runs them on Ubuntu and Windows. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest`, the schema check and `platform/tests/cli_contract.rs`.
+Run the exact commands in [quality gates](quality-gates.md) from each independent crate directory. The GitHub Actions workflow is defined for Ubuntu and Windows, but it has never run because this checkout has no remote; local runs are the only executed evidence. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest`, the schema check and `platform/tests/cli_contract.rs`.
 
 The full local baseline and representative CLI paths were rerun for this audit (Rust 1.99.1, 2026-10-25):
 
 - `eval`: format, Clippy, Cargo tests, CLI self-test, default report generation, and explicit single-adapter report generation passed; Cargo reported 9 unit tests and the self-test reported 10 checks. Unknown adapter selection returned the expected exit code 2.
 - `platform`: format, Clippy, Cargo tests, engine self-test, declared-rules schema, parameterized report/export/coverage/HTML generation, and output artifact checks passed. Cargo reported 183 tests (170 unit including 9 LegalRuleML exporter tests and 3 subject-activity tests, 2 edge-case tests, 3 governance web, 8 engine integration). The CLI self-test reported 49 assertions; the schema command validated 20 records. Malformed params and `--html` without `--out` returned the expected refusal exit codes. The generated HTML had no script element; the LegalRuleML export was 51,026 bytes with 19 `PrescriptiveStatement` elements and validated against the exporter's compact-schema self-check.
 
-These are dated observations. Re-run them for the revision being delivered and attach the new output to the PR.
+These are dated observations. Re-run them for the revision being delivered and attach the new output to the release evidence (or to a PR when a remote exists).
 
 ### 2026-10-26 audit update
 

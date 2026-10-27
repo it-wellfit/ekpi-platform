@@ -2,7 +2,7 @@
 
 - **Status:** Active
 - **Owner:** Engineering
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-27
 - **Contract IDs:** `CTR-CLI-001` (`ekp_platform`), `CTR-CLI-002` (`ekp_eval`)
 
 Both CLIs are local, offline tools. Commands must be run from the crate directory because relative data paths resolve from the process working directory or the crate manifest, and the crates are independent (no root Cargo workspace).
@@ -14,7 +14,8 @@ Both CLIs are local, offline tools. Commands must be run from the crate director
 ```text
 usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]
         [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]
-        [--coverage-report] [--html] | --search QUERY | --eval --test-set PATH]
+        [--coverage-report] [--html] | --search QUERY [--audit-log PATH]
+        [--llm PROVIDER[:MODEL]] | --eval --test-set PATH | --import-wellfit PATH]
 ```
 
 Run from `platform/`:
@@ -40,6 +41,9 @@ cargo run --locked --bin ekp_platform -- --selftest
 | `--search` | query string | Lexical search over every document's latest version. Prints up to five verified verbatim citations, or `insufficient evidence` with a reason. This mode does not receive a user identity and therefore applies **no permission filter**. Cannot be combined with `--eval` or report-only flags. | — |
 | `--eval` | none | Runs a fixed retrieval regression set. Requires `--test-set`. Exits `1` if any case or coverage gate fails. Cannot be combined with `--search` or report-only flags. | — |
 | `--test-set` | file path | JSON evaluation set (`{ "version", "threshold", "cases": [...] }` or a bare array). The set may declare its own operating threshold; an explicit `--threshold` overrides it. Requires `--eval`. | — |
+| `--audit-log` | file path | With `--search`, writes one local JSON object containing a single `KnowledgeSearch` event (`actor: search-cli`, `tenant_id: default`, query truncated to 100 characters, citation IDs, result count and latency) to the path, replacing any existing file. It is a local diagnostic record, not an authenticated audit service or an append-only store. Without `--search` it is a usage error. | — |
+| `--llm` | `PROVIDER[:MODEL]` | With `--search`, adds a labeled mock RAG demonstration. Only `mock` is implemented; the model label is accepted but unused. Any other provider is a usage error (exit `2`) before search or audit work. The answer is prefixed `mock-answer:` and the output states `provider: mock (no external model)`; the RAG orchestrator refuses an answer that lacks an exact `[doc_id@version]` citation. Without `--search` it is a usage error. This is not an LLM integration or AI-quality evidence. | — |
+| `--import-wellfit` | file path | Legacy local import retained for prototype data preparation. Reads a JSON array, adds documents whose `doc_id` is not already in `<data>/docs.json`, defaults missing fields (`version` `1.0`, `effective_from` `2026-01-01`, `section` `1`) and missing permissions to `viewer`/`editor`, then validates document shape before saving. If an existing `docs.json` cannot be loaded, it fails closed without overwriting it. It does not validate the input against a published schema, authenticate the importer or create an audit event. It cannot be combined with `--search`, `--eval` or report-only flags, and it is not part of the supported pilot workflow. | — |
 
 `--selftest` is the primary integration check. `--declared-rules-schema` may be run alone and returns success after validating all records; when combined with another mode it validates first and the mode continues. `--html` is not a standalone mode. `--search` and `--eval` are standalone modes: combining either with `--out`, `--cases`, `--html`, `--coverage-report` or `--export-legalruleml` is rejected with exit code `2` instead of silently ignoring the flag.
 
@@ -51,7 +55,9 @@ Before any data load, report write or filesystem side effect, the CLI scans the 
 - a value flag without a value, with an empty value, or followed by another flag (`--out --html`) is a usage error — the value is never taken from a default;
 - a bare positional argument is a usage error;
 - `--test-set` without `--eval`, `--cases` without `--out`, and `--html` without `--out` are usage errors;
-- `--search` and `--eval` are mutually exclusive, and neither accepts report/export flags.
+- `--search` and `--eval` are mutually exclusive, and neither accepts report/export flags;
+- `--audit-log` and `--llm` require `--search`; `--llm` accepts only the `mock` provider, and any other provider is rejected before data load or audit write;
+- `--import-wellfit` cannot be combined with `--search`, `--eval` or report/export flags.
 
 A usage error prints the message and usage text to stderr and exits `2`. Validation runs before the self-test's result is returned, so `--selftest --bogus` runs the self-test and then exits `2`, preventing a typo from being reported as success.
 
@@ -67,7 +73,7 @@ The gate is `metrics.gate_failures()` in `platform/src/eval.rs`: at least 10 cas
 | --- | --- |
 | `0` | Success; requested checks/artifacts completed |
 | `1` | Fail-closed failure: invalid/tampered parameters, invariant mismatch, schema rejection, export/report IO failure, self-test failure, missing/unreadable data source, failed evaluation gate |
-| `2` | Usage or argument error: unknown flag, unexpected positional argument, missing/empty value, a flag used as another flag's value, invalid threshold, `--html`/`--cases` without `--out`, `--eval` without `--test-set`, `--test-set` without `--eval`, `--search` with `--eval`, or a search/eval mode combined with a report-only flag |
+| `2` | Usage or argument error: unknown flag, unexpected positional argument, missing/empty value, a flag used as another flag's value, invalid threshold, `--html`/`--cases` without `--out`, `--eval` without `--test-set`, `--test-set` without `--eval`, `--search` with `--eval`, a search/eval mode combined with a report-only flag, `--audit-log`/`--llm` without `--search`, an unsupported `--llm` provider, or `--import-wellfit` combined with another mode |
 
 An exit code of `0` means the requested operation completed; it does not mean the target product is validated or production-ready.
 
@@ -104,6 +110,12 @@ cargo run --locked --bin ekp_platform -- --html
 
 # Knowledge search with verified citations
 cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄"
+
+# Labeled mock RAG demonstration; no external model is called
+cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄" --llm mock:test
+
+# Local search audit record (not an authenticated audit service)
+cargo run --locked --bin ekp_platform -- --search "變更執行前，須完成風險評估並取得核准紀錄" --audit-log target/search-audit.json
 
 # Fixed retrieval regression gate
 cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
@@ -149,7 +161,7 @@ Run from `eval/`.
 ## Verification
 
 - `cargo test --locked` in both crates.
-- `platform/tests/cli_contract.rs` runs the real binary for the rejection paths: unknown flag (alone and after a valid flag), missing/empty value, flag-as-value, unexpected positional argument, `--test-set`/`--cases`/`--html` prerequisites, `--search` + `--eval`, report flags with eval, and self-test precedence. It asserts exit `2` and that no report output is written.
+- `platform/tests/cli_contract.rs` runs the real binary for the rejection paths: unknown flag (alone and after a valid flag), missing/empty value, flag-as-value, unexpected positional argument, `--test-set`/`--cases`/`--html` prerequisites, `--search` + `--eval`, report flags with eval, and self-test precedence. It also covers `--audit-log` success and refusal without `--search`, `--llm mock` labeling with a versioned citation, unsupported-provider rejection before audit write, and legacy `--import-wellfit` fail-closed/validation behavior. It asserts exit codes and that no report, audit or imported data is written on a usage error.
 - `--selftest` in both crates.
 - `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json` in `platform/`.
 - `gate.ps1 -IncludeSmoke` for report/export/coverage/HTML and structural LegalRuleML checks.

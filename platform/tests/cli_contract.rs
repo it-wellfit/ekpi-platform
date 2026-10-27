@@ -254,3 +254,263 @@ fn selftest_runs_but_malformed_arguments_still_fail() {
     );
     cleanup(&dir);
 }
+
+#[test]
+fn audit_log_without_search_is_a_usage_error() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.json");
+    let output = run_in(
+        &dir,
+        &["--audit-log", audit.to_str().expect("utf-8 temp path")],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("`--audit-log` requires `--search`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(!audit.exists(), "a usage error must not write an audit log");
+    cleanup(&dir);
+}
+
+#[test]
+fn llm_without_search_is_a_usage_error() {
+    let dir = temp_dir();
+    let output = run_in(&dir, &["--llm", "mock:test"]);
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("`--llm` requires `--search`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn unsupported_llm_provider_is_rejected_before_audit_write() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.json");
+    let output = run_in(
+        &dir,
+        &[
+            "--search",
+            "變更執行前，須完成風險評估並取得核准紀錄",
+            "--llm",
+            "openai:gpt",
+            "--audit-log",
+            audit.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains(
+            "LLM provider `openai` is not implemented; the only supported provider is `mock`"
+        ),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        !audit.exists(),
+        "provider validation must happen before the audit log write"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn llm_mock_is_labeled_and_requires_a_versioned_citation() {
+    let dir = temp_dir();
+    let output = run_in(
+        &dir,
+        &[
+            "--search",
+            "變更執行前，須完成風險評估並取得核准紀錄",
+            "--llm",
+            "mock:test",
+        ],
+    );
+    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
+    let out = stdout(&output);
+    assert!(
+        stderr(&output).contains("INFO: --llm uses the deterministic mock provider"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        out.contains("provider: mock (no external model)"),
+        "stdout: {out}"
+    );
+    let answer = out
+        .lines()
+        .find(|line| line.starts_with("mock-answer:"))
+        .unwrap_or_else(|| panic!("missing labeled mock answer: {out}"));
+    assert!(
+        answer.contains('[') && answer.contains('@') && answer.contains(']'),
+        "the mock answer must carry an exact [doc_id@version] citation: {answer}"
+    );
+    assert!(
+        !out.contains("provider: openai") && !out.contains("provider: anthropic"),
+        "the mock path must not claim an external provider: {out}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn audit_log_records_a_local_search_event_without_an_identity() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.json");
+    let output = run_in(
+        &dir,
+        &[
+            "--search",
+            "變更執行前，須完成風險評估並取得核准紀錄",
+            "--audit-log",
+            audit.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
+    let contents = std::fs::read_to_string(&audit).expect("read audit log");
+    assert!(
+        contents.contains("\"KnowledgeSearch\""),
+        "audit log: {contents}"
+    );
+    assert!(contents.contains("\"actor\": \"search-cli\""), "{contents}");
+    assert!(
+        contents.contains("\"tenant_id\": \"default\""),
+        "{contents}"
+    );
+    assert!(
+        !contents.contains("session") && !contents.contains("password"),
+        "the local search audit must not invent an identity: {contents}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn import_wellfit_writes_documents_to_the_selected_data_directory() {
+    let dir = temp_dir();
+    let data = dir.join("data");
+    std::fs::create_dir_all(&data).expect("create data dir");
+    let input = dir.join("wellfit.json");
+    std::fs::write(
+        &input,
+        r#"[{"doc_id":"WF-1","title":"Imported","version":"1.0","verbatim_text":"local fixture","permissions":["viewer"]}]"#,
+    )
+    .expect("write import fixture");
+    let output = run_in(
+        &dir,
+        &[
+            "--import-wellfit",
+            input.to_str().expect("utf-8 temp path"),
+            "--data",
+            data.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
+    assert!(
+        stdout(&output).contains("import-wellfit: 1 documents imported"),
+        "stdout: {}",
+        stdout(&output)
+    );
+    let saved =
+        std::fs::read_to_string(data.join("docs.json")).expect("read imported docs database");
+    assert!(
+        saved.contains("\"doc_id\": \"WF-1\""),
+        "saved docs: {saved}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn import_wellfit_refuses_to_overwrite_an_unreadable_docs_database() {
+    let dir = temp_dir();
+    let data = dir.join("data");
+    std::fs::create_dir_all(&data).expect("create data dir");
+    let docs = data.join("docs.json");
+    std::fs::write(&docs, "{ not json").expect("write corrupt docs database");
+    let input = dir.join("wellfit.json");
+    std::fs::write(
+        &input,
+        r#"[{"doc_id":"WF-1","title":"Imported","version":"1.0","verbatim_text":"local fixture"}]"#,
+    )
+    .expect("write import fixture");
+    let output = run_in(
+        &dir,
+        &[
+            "--import-wellfit",
+            input.to_str().expect("utf-8 temp path"),
+            "--data",
+            data.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("load") && stderr(&output).contains("docs.json"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&docs).expect("read preserved docs database"),
+        "{ not json",
+        "a failed import must not overwrite the existing database"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn import_wellfit_refuses_invalid_imported_documents() {
+    let dir = temp_dir();
+    let data = dir.join("data");
+    std::fs::create_dir_all(&data).expect("create data dir");
+    let input = dir.join("wellfit.json");
+    std::fs::write(
+        &input,
+        r#"[{"doc_id":"","title":"Invalid","version":"1.0","verbatim_text":"local fixture"}]"#,
+    )
+    .expect("write invalid import fixture");
+    let output = run_in(
+        &dir,
+        &[
+            "--import-wellfit",
+            input.to_str().expect("utf-8 temp path"),
+            "--data",
+            data.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("imported documents are invalid")
+            && stderr(&output).contains("doc_id empty"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        !data.join("docs.json").exists(),
+        "invalid imported documents must not be saved"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn import_wellfit_cannot_be_silently_combined_with_eval() {
+    let dir = temp_dir();
+    let input = dir.join("wellfit.json");
+    std::fs::write(&input, "[]").expect("write import fixture");
+    let output = run_in(
+        &dir,
+        &[
+            "--import-wellfit",
+            input.to_str().expect("utf-8 temp path"),
+            "--eval",
+            "--test-set",
+            "data/eval/search_eval.json",
+        ],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output)
+            .contains("`--import-wellfit` cannot be combined with `--search` or `--eval`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    cleanup(&dir);
+}

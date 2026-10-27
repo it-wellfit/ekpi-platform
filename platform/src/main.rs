@@ -45,7 +45,7 @@ use ekp_platform::process::{events_sha256, ReplayEvent};
 use ekp_platform::snapshot::DecisionSnapshot;
 use ekp_platform::{params as params_module, validate};
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] | --eval --test-set PATH\n        | --import-wellfit PATH]";
+const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH]\n        [--llm PROVIDER[:MODEL]] | --eval --test-set PATH | --import-wellfit PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -100,6 +100,21 @@ fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+/// Parses `--llm PROVIDER[:MODEL]`. Only the deterministic test double is
+/// implemented; accepting another provider name would let an operator believe
+/// an external model was called when it was not.
+fn parse_llm_spec(spec: &str) -> Result<(&str, &str), String> {
+    let mut parts = spec.splitn(2, ':');
+    let provider = parts.next().unwrap_or_default();
+    let model = parts.next().unwrap_or("default");
+    if provider != "mock" {
+        return Err(format!(
+            "LLM provider `{provider}` is not implemented; the only supported provider is `mock`"
+        ));
+    }
+    Ok((provider, model))
+}
+
 /// Rejects unknown flags and malformed values before any file or report work.
 /// The previous implementation silently ignored unknown flags and treated a
 /// trailing `--out` as "use the default directory", which contradicted the
@@ -148,6 +163,29 @@ fn validate_args(args: &[String]) -> Result<(), String> {
         for flag in REPORT_ONLY_FLAGS {
             if has_flag(args, flag) {
                 return Err(format!("`{flag}` cannot be combined with `{mode}`"));
+            }
+        }
+    }
+    if has_flag(args, "--audit-log") && !search {
+        return Err("`--audit-log` requires `--search`".to_string());
+    }
+    if has_flag(args, "--llm") && !search {
+        return Err("`--llm` requires `--search`".to_string());
+    }
+    if let Some(spec) = flag_value(args, "--llm") {
+        parse_llm_spec(&spec)?;
+    }
+    if has_flag(args, "--import-wellfit") {
+        if search || eval {
+            return Err(
+                "`--import-wellfit` cannot be combined with `--search` or `--eval`".to_string(),
+            );
+        }
+        for flag in REPORT_ONLY_FLAGS {
+            if has_flag(args, flag) {
+                return Err(format!(
+                    "`{flag}` cannot be combined with `--import-wellfit`"
+                ));
             }
         }
     }
@@ -321,22 +359,13 @@ fn run(args: &[String]) -> i32 {
 
         // ── Optional mock RAG demonstration. No external model is called.
         if let Some(llm_spec) = flag_value(args, "--llm") {
-            let parts: Vec<&str> = llm_spec.splitn(2, ':').collect();
-            let (provider, _model) = match parts.as_slice() {
-                [p, m] => (*p, *m),
-                [p] => (*p, "default"),
-                _ => {
-                    eprintln!("FAIL: --llm format is provider:model (e.g., mock:test)");
+            let (_provider, _model) = match parse_llm_spec(&llm_spec) {
+                Ok(parsed) => parsed,
+                Err(message) => {
+                    eprintln!("FAIL: {message}");
                     return 2;
                 }
             };
-            if provider != "mock" {
-                eprintln!(
-                    "FAIL: LLM provider '{}' is not implemented; the only supported provider is 'mock'",
-                    provider
-                );
-                return 2;
-            }
             eprintln!(
                 "INFO: --llm uses the deterministic mock provider; no external model is called."
             );
@@ -404,11 +433,18 @@ fn run(args: &[String]) -> i32 {
             .map(PathBuf::from)
             .unwrap_or_else(default_data_dir);
         let docs_path = data_dir.join("docs.json");
-        let mut db = match DocDatabase::load(&docs_path) {
-            Ok(d) => d,
-            Err(_) => DocDatabase {
+        let mut db = if docs_path.exists() {
+            match DocDatabase::load(&docs_path) {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("FAIL: load {}: {e}", docs_path.display());
+                    return 1;
+                }
+            }
+        } else {
+            DocDatabase {
                 documents: Vec::new(),
-            },
+            }
         };
 
         let import_text = match std::fs::read_to_string(&import_path) {
@@ -479,6 +515,10 @@ fn run(args: &[String]) -> i32 {
             count += 1;
         }
 
+        if let Err(e) = db.validate_shape() {
+            eprintln!("FAIL: imported documents are invalid: {e}");
+            return 1;
+        }
         if let Err(e) = db.save(&docs_path) {
             eprintln!("FAIL: save docs: {e}");
             return 1;
