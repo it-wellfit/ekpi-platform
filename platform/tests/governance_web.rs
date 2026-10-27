@@ -8,11 +8,14 @@ use axum::body::Body;
 use axum::http::{header, Method, Request, StatusCode};
 use ekp_platform::governance::{Ledger, QUALITY_CHECKLIST};
 use ekp_platform::governance_web;
-use ekp_platform::local_auth::AuthStore;
+use ekp_platform::local_auth::{AuthStore, Role};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
+
+const ADMIN_PASSWORD: &str = "correct-horse-battery-staple";
+const VIEWER_PASSWORD: &str = "viewer-password";
 
 fn test_path() -> PathBuf {
     std::env::temp_dir().join(format!(
@@ -24,20 +27,72 @@ fn test_path() -> PathBuf {
 
 fn test_app(path: &PathBuf) -> axum::Router {
     let ledger = Ledger::open(path).expect("test ledger opens");
-    let auth = Arc::new(Mutex::new(AuthStore::new(3600)));
+    let auth = Arc::new(Mutex::new(AuthStore::with_iterations(3600, 1_000)));
+    {
+        let mut store = auth.lock().expect("auth store lock");
+        store
+            .register("tester", ADMIN_PASSWORD, Role::Admin)
+            .expect("test admin registers");
+        store
+            .register("viewer", VIEWER_PASSWORD, Role::Viewer)
+            .expect("test viewer registers");
+    }
     governance_web::router(Arc::new(Mutex::new(ledger)), auth)
 }
 
-async fn post_form(app: &axum::Router, uri: &str, body: &str) -> axum::response::Response {
-    let request = Request::builder()
+async fn post_form_with_cookie(
+    app: &axum::Router,
+    uri: &str,
+    body: &str,
+    cookie: Option<&str>,
+) -> axum::response::Response {
+    let mut builder = Request::builder()
         .method(Method::POST)
         .uri(uri)
         .header(header::HOST, "127.0.0.1:3000")
         .header(header::ORIGIN, "http://127.0.0.1:3000")
-        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
         .body(Body::from(body.to_string()))
         .expect("form request builds");
     app.clone().oneshot(request).await.expect("router responds")
+}
+
+async fn post_form(app: &axum::Router, uri: &str, body: &str) -> axum::response::Response {
+    post_form_with_cookie(app, uri, body, None).await
+}
+
+async fn post_authed(
+    app: &axum::Router,
+    cookie: &str,
+    uri: &str,
+    body: &str,
+) -> axum::response::Response {
+    post_form_with_cookie(app, uri, body, Some(cookie)).await
+}
+
+async fn login(app: &axum::Router, username: &str, password: &str) -> String {
+    let body = format!("username={username}&password={password}");
+    let response = post_form(app, "/login", &body).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let set_cookie = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .expect("login sets a cookie")
+        .to_str()
+        .expect("cookie is ASCII")
+        .to_string();
+    assert!(set_cookie.contains("HttpOnly"));
+    assert!(set_cookie.contains("SameSite=Strict"));
+    assert!(set_cookie.contains("Max-Age="));
+    set_cookie
+        .split(';')
+        .next()
+        .expect("cookie pair")
+        .to_string()
 }
 
 async fn response_text(response: axum::response::Response) -> String {
@@ -121,9 +176,11 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
 async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa() {
     let path = test_path();
     let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/projects",
         "name=Pilot+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
     )
@@ -134,48 +191,54 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
         "/projects"
     );
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/evidence",
         "project_id=PRJ-000001&title=Approval+record&source_system=Microsoft+365&source_url=https%3A%2F%2Fexample.test%2Fapproval&source_version=v1&evidence_type=approval&owner=Alex&actor=Jordan",
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/evidence/EVD-000002/review",
         "result=accepted&actor=QA&note=Version+confirmed",
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/workflows",
         "base_id=&title=Change+control&department=Cross-functional&owner=Process+owner&description=Review+and+approve+changes&stages=Intake%0ARisk+review%0AApproval%0AExecution%0AClose&actor=Jordan",
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/workflows/TPL-000004/1/publish",
         "actor=Process+owner",
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/controls",
         "project_id=PRJ-000001&kind=capa&title=Corrective+action&description=Verify+root+cause+and+effectiveness&owner=Alex&due_date=2026-12-31&actor=Jordan",
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/controls/QMS-000006/status",
         "status=closed&actor=Reviewer&note=Effectiveness+confirmed",
     )
@@ -189,7 +252,7 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
         ("closed", "Effectiveness confirmed"),
     ] {
         let body = format!("status={status}&actor=Reviewer&note={note}");
-        let response = post_form(&app, "/controls/QMS-000006/status", &body).await;
+        let response = post_authed(&app, &cookie, "/controls/QMS-000006/status", &body).await;
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
     }
 
@@ -200,7 +263,7 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
             item.id, item.id, item.id
         ));
     }
-    let response = post_form(&app, "/inspections", &inspection_body).await;
+    let response = post_authed(&app, &cookie, "/inspections", &inspection_body).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let response = app
         .clone()
@@ -215,8 +278,9 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
     assert!(inspection_html.contains("1 份完整檢查紀錄"));
     assert!(inspection_html.contains("REF-QC-01"));
 
-    let response = post_form(
+    let response = post_authed(
         &app,
+        &cookie,
         "/lifecycle",
         "project_id=PRJ-000001&gate_id=G4&decision=exception&non_waivable=yes&reason=Missing+mandatory+evidence&evidence_reference=&risk_acceptor=Sponsor&remediation_due=2026-12-31&actor=Reviewer",
     )
@@ -241,6 +305,125 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
     assert!(audit_html.contains("Effectiveness confirmed"));
     assert!(audit_html.contains("完成品質檢查：PRJ-000001 · 29 項檢查"));
 
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn mutation_requires_authentication() {
+    let path = test_path();
+    let app = test_app(&path);
+    let response = post_form(
+        &app,
+        "/projects",
+        "name=Pilot+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn viewer_role_cannot_mutate() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "viewer", VIEWER_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Pilot+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn login_rejects_a_bad_password_without_a_cookie() {
+    let path = test_path();
+    let app = test_app(&path);
+    let response = post_form(&app, "/login", "username=tester&password=wrong-password").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get("/login")
+                .body(Body::empty())
+                .expect("login GET builds"),
+        )
+        .await
+        .expect("router responds");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response_text(response).await.contains("form"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn oversized_login_body_is_rejected_before_parsing() {
+    let path = test_path();
+    let app = test_app(&path);
+    let body = format!("username=tester&password={}", "a".repeat(70_000));
+    let response = post_form(&app, "/login", &body).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn logout_invalidates_the_session_cookie() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(&app, &cookie, "/logout", "").await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let cleared = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .expect("logout clears the cookie")
+        .to_str()
+        .expect("cookie is ASCII");
+    assert!(cleared.contains("Max-Age=0"));
+    assert!(cleared.contains("SameSite=Strict"));
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Pilot+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn oversized_form_body_is_rejected_before_parsing() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let body = format!("name={}", "a".repeat(70_000));
+    let response = post_authed(&app, &cookie, "/projects", &body).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");

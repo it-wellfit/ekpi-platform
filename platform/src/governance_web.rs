@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Form, Path, Request, State};
+use axum::extract::{Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -22,10 +22,12 @@ use crate::governance::{
     GovernanceSnapshot, Ledger, Project, QualityCheckResult, QualityInspectionInput, Workflow,
     WorkflowDraftInput, QUALITY_CHECKLIST,
 };
-use crate::local_auth::AuthStore;
+use crate::local_auth::{AuthStore, Role};
 
 type SharedLedger = Arc<Mutex<Ledger>>;
 type SharedAuth = Arc<Mutex<AuthStore>>;
+
+const MAX_FORM_BYTES: usize = 64 * 1024;
 
 const CSS: &str = include_str!("../assets/governance.css");
 const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -66,7 +68,6 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .with_state((ledger, auth))
         .layer(middleware::from_fn(same_origin_guard))
         .layer(middleware::from_fn(request_context))
-        .layer(middleware::from_fn(auth_guard))
 }
 
 async fn healthz() -> Json<serde_json::Value> {
@@ -201,45 +202,56 @@ async fn request_context_with(
     response
 }
 
-/// Auth middleware placeholder: auth checks are performed inline in each mutating handler.
-/// Kept as a no-op layer so the layer stack structure is preserved.
-async fn auth_guard(request: Request, next: Next) -> Response {
-    next.run(request).await
-}
-
-/// Extract and validate the session cookie from headers.
-/// Returns `Some(Response)` if the session is invalid (handler should return it),
-/// or `None` if the session is valid (handler should proceed).
-fn check_session(auth: &SharedAuth, headers: &HeaderMap) -> Option<Response> {
-    let token = headers
+fn session_token(headers: &HeaderMap) -> Option<String> {
+    headers
         .get(header::COOKIE)
-        .and_then(|v| v.to_str().ok())
+        .and_then(|value| value.to_str().ok())
         .and_then(|cookie| {
             cookie.split(';').find_map(|part| {
                 let part = part.trim();
-                part.strip_prefix("ekpi_session=").map(String::from)
+                part.strip_prefix("ekpi_session=")
+                    .filter(|token| !token.is_empty())
+                    .map(String::from)
             })
-        });
+        })
+}
 
-    match token {
-        Some(t) => {
-            let store = match auth.lock() {
-                Ok(s) => s,
-                Err(_) => {
-                    return Some(
-                        (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response(),
-                    )
-                }
-            };
-            match store.validate_session(&t) {
-                Some(_) => None,
-                None => {
-                    Some((StatusCode::UNAUTHORIZED, "未登入或會話已過期，請先登入").into_response())
-                }
-            }
+fn unauthorized() -> Response {
+    (StatusCode::UNAUTHORIZED, "authentication required").into_response()
+}
+
+/// Validate the session cookie and require at least the given role.
+/// Returns `Some(Response)` when the request must be rejected.
+fn check_session_with_role(
+    auth: &SharedAuth,
+    headers: &HeaderMap,
+    required: Role,
+) -> Option<Response> {
+    let token = match session_token(headers) {
+        Some(token) => token,
+        None => return Some(unauthorized()),
+    };
+    let store = match auth.lock() {
+        Ok(store) => store,
+        Err(_) => {
+            return Some((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
         }
-        None => Some((StatusCode::UNAUTHORIZED, "未登入或會話已過期，請先登入").into_response()),
+    };
+    match store.validate_session(&token) {
+        Some(session) if session.role >= required => None,
+        Some(_) => Some(
+            (
+                StatusCode::FORBIDDEN,
+                "insufficient role for this operation",
+            )
+                .into_response(),
+        ),
+        None => Some(unauthorized()),
     }
+}
+
+fn check_session(auth: &SharedAuth, headers: &HeaderMap) -> Option<Response> {
+    check_session_with_role(auth, headers, Role::Editor)
 }
 
 async fn login_page() -> Response {
@@ -270,64 +282,82 @@ async fn login_page() -> Response {
 
 async fn login_post(
     State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
-    Form(form): Form<LoginForm>,
+    request: Request,
 ) -> Response {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    let mut store = match auth.lock() {
-        Ok(s) => s,
-        Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response();
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+        Ok(body) => body,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("cannot read login request body: {error}"),
+            )
+                .into_response()
         }
     };
+    let form: LoginForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(form) => form,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, "malformed login form").into_response();
+        }
+    };
+    let username = form.username;
+    let password = form.password;
+    let auth_for_task = auth.clone();
+    let login_result = tokio::task::spawn_blocking(move || {
+        let mut store = auth_for_task
+            .lock()
+            .map_err(|_| "auth store locked".to_string())?;
+        store.login(&username, &password)
+    })
+    .await;
 
-    match store.login(&form.username, &form.password) {
-        Ok(session) => {
-            let max_age = session.expires_at.saturating_sub(now);
+    match login_result {
+        Ok(Ok(session)) => {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            let max_age = session.expires_at.saturating_sub(now).max(1);
+            let secure = if std::env::var("EKPI_COOKIE_SECURE").ok().as_deref() == Some("1") {
+                "; Secure"
+            } else {
+                ""
+            };
+            let cookie = format!(
+                "ekpi_session={}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={max_age}",
+                session.token
+            );
             let mut response = Redirect::to("/").into_response();
             response.headers_mut().insert(
                 header::SET_COOKIE,
-                HeaderValue::from_str(&format!(
-                    "ekpi_session={}; Path=/; HttpOnly; Max-Age={}",
-                    session.token, max_age
-                ))
-                .unwrap(),
+                HeaderValue::from_str(&cookie).unwrap_or_else(|_| {
+                    HeaderValue::from_static("ekpi_session=; Path=/; Max-Age=0")
+                }),
             );
             response
         }
-        Err(_) => (StatusCode::UNAUTHORIZED, "使用者名稱或密碼錯誤").into_response(),
+        Ok(Err(_)) => (StatusCode::UNAUTHORIZED, "invalid username or password").into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "login task failed").into_response(),
     }
 }
 
-async fn logout_post(State((_ledger, auth)): State<(SharedLedger, SharedAuth)>) -> Response {
-    let mut store = match auth.lock() {
-        Ok(s) => s,
-        Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response();
+async fn logout_post(
+    State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    headers: HeaderMap,
+) -> Response {
+    if let Some(token) = session_token(&headers) {
+        if let Ok(mut store) = auth.lock() {
+            store.logout(&token);
         }
-    };
-
-    let token = std::env::var("EKPI_SESSION_TOKEN").ok();
-
-    if let Some(t) = token {
-        store.logout(&t);
     }
 
     let mut response = Redirect::to("/login").into_response();
-    response
-        .headers_mut()
-        .insert(
-            header::SET_COOKIE,
-            HeaderValue::from_static("ekpi_session=; Path=/; Max-Age=0"),
-        )
-        .unwrap();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_static("ekpi_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"),
+    );
     response
 }
-
 #[derive(Deserialize)]
 struct LoginForm {
     username: String,
@@ -388,25 +418,35 @@ fn valid_request_id(value: &str) -> bool {
 async fn same_origin_guard(request: Request, next: Next) -> Response {
     let is_mutation = request.method() != Method::GET && request.method() != Method::HEAD;
     if is_mutation {
-        if let (Some(origin), Some(host)) = (
-            request
-                .headers()
-                .get(header::ORIGIN)
-                .and_then(|v| v.to_str().ok()),
-            request
-                .headers()
-                .get(header::HOST)
-                .and_then(|v| v.to_str().ok()),
-        ) {
-            let expected = format!("http://{host}");
-            if origin != expected {
-                return (StatusCode::FORBIDDEN, "跨來源表單提交已拒絕").into_response();
-            }
+        let headers = request.headers();
+        let origin = headers
+            .get(header::ORIGIN)
+            .and_then(|value| value.to_str().ok());
+        let host = headers
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok());
+        let fetch_site = headers
+            .get("sec-fetch-site")
+            .and_then(|value| value.to_str().ok());
+        let allowed = match origin {
+            Some(origin) => match host {
+                Some(host) => {
+                    origin == format!("http://{host}") || origin == format!("https://{host}")
+                }
+                None => false,
+            },
+            None => matches!(fetch_site, Some("same-origin") | Some("none")),
+        };
+        if !allowed {
+            return (
+                StatusCode::FORBIDDEN,
+                "cross-origin form submission rejected",
+            )
+                .into_response();
         }
     }
     next.run(request).await
 }
-
 async fn dashboard(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("工作總覽", "overview", dashboard_content(&data)),
@@ -428,7 +468,7 @@ async fn create_project(
     if let Some(response) = check_session(&auth, request.headers()) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -478,7 +518,7 @@ async fn link_evidence(
     if let Some(response) = check_session(&auth, request.headers()) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -522,10 +562,10 @@ async fn review_evidence(
     Path(id): Path<String>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
+    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -567,7 +607,7 @@ async fn save_workflow(
     if let Some(response) = check_session(&auth, request.headers()) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -618,10 +658,10 @@ async fn publish_workflow(
     Path((id, version)): Path<(String, u32)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
+    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -663,7 +703,7 @@ async fn create_quality_case(
     if let Some(response) = check_session(&auth, request.headers()) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -706,10 +746,10 @@ async fn update_quality_case(
     Path(id): Path<String>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
+    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -751,7 +791,7 @@ async fn record_inspection(
     if let Some(response) = check_session(&auth, request.headers()) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
@@ -809,10 +849,10 @@ async fn record_gate_decision(
     State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    if let Some(response) = check_session(&auth, request.headers()) {
+    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Approver) {
         return response;
     }
-    let body = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
+    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()

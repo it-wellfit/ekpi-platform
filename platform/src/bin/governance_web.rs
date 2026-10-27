@@ -23,15 +23,39 @@ async fn main() {
     let ledger_state = Arc::new(Mutex::new(ledger));
     let auth_state = Arc::new(Mutex::new(AuthStore::new(3600)));
 
-    // Seed a non-sensitive pilot user for the local trial.
-    if let Err(e) = auth_state
-        .lock()
-        .unwrap()
-        .register("pilot", "pilot123", Role::Editor)
-    {
-        eprintln!("種子使用者註冊（可能已存在）：{e}");
+    // There is deliberately no default account. A local operator must choose
+    // the credentials explicitly; the password is never printed or persisted.
+    match (
+        std::env::var("EKPI_LOCAL_AUTH_USER"),
+        std::env::var("EKPI_LOCAL_AUTH_PASSWORD"),
+    ) {
+        (Ok(username), Ok(password)) => {
+            let role = std::env::var("EKPI_LOCAL_AUTH_ROLE")
+                .ok()
+                .and_then(|value| Role::parse_role(&value))
+                .unwrap_or(Role::Editor);
+            match auth_state
+                .lock()
+                .expect("auth store lock is not poisoned at startup")
+                .register(&username, &password, role)
+            {
+                Ok(()) => println!(
+                    "Local login enabled for user '{}' (role {}).",
+                    username,
+                    role.as_str()
+                ),
+                Err(error) => {
+                    eprintln!("Cannot register EKPI_LOCAL_AUTH_USER: {error}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        _ => {
+            println!(
+                "No local login configured. Set EKPI_LOCAL_AUTH_USER and EKPI_LOCAL_AUTH_PASSWORD before starting the workbench."
+            );
+        }
     }
-
     let app = governance_web::router(ledger_state, auth_state);
     let address = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = match tokio::net::TcpListener::bind(address).await {
