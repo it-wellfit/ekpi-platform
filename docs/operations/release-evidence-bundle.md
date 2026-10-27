@@ -9,7 +9,7 @@
 - **Status:** Local verification record; Phase A **not approved**, Phase B **blocked**
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Verification revision:** `b2bae3e` (code, scripts and benchmark artifact)
+- **Verification revision:** `b2bae3e` (code, scripts and benchmark artifact); `3ee2ee2` (documentation re-check and restore drill)
 - **Environment:** One managed Windows host, Windows PowerShell 5.1, Rust stable from `rust-toolchain.toml`; local loopback only
 - **Repository state:** `main`, no remote, no CI execution
 - **Phase gates:** [phase-gates.md](../quality/phase-gates.md)
@@ -43,6 +43,7 @@ Executed at `b2bae3e` on 2026-10-27 unless the row states another revision.
 | Documentation | `scripts/check-docs.ps1` | Repo root | PASS, 44 required, 494 links in 106 files (includes 10 local untracked legacy pages; a fresh clone checks 96 tracked files) | `b2bae3e` |
 | Secret scan | `scripts/check-secrets.ps1` | Repo root | PASS, 220 files | `b2bae3e` |
 | Supply chain | `scripts/check-supply-chain.ps1` | Repo root | PASS: `cargo deny` advisories/bans/licenses/sources OK; `cargo audit` platform 72 deps, eval 12 deps, 0 vulnerabilities | `b2bae3e` |
+| Canonical check (docs re-check) | `scripts/check.ps1` | Repo root | PASS, 506 links in 106 files; 220 secret-scan files; eval 12, platform 261, schema 20, search 28 cases | `3ee2ee2` |
 
 `platform` test split at `b2bae3e`: 217 unit, 13 CLI contract, 2 edge-case, 10 governance web, 8 integration, 7 search evaluation, 4 web health. The `governance_web` binary has `test = false` in `platform/Cargo.toml` because the host's Application Control intermittently blocks freshly built test harnesses; route coverage is provided by `platform/tests/governance_web.rs` and `platform/tests/web_health.rs`.
 
@@ -101,6 +102,7 @@ Single-class agreement is **not** reported as κ = 1.0 because the chance-agreem
 |---|---|---|---|
 | `7fd0c0b` | `ekpi-platform-2026-10-27-124512.bundle` | `EBFD373C45EC7A556C6B7C59483F16CE42FA77C4E9C35A85BD50C5B8FF34A2FF` | Fresh clone reached `7fd0c0b`; restored `scripts/check.ps1` PASS (eval 12, platform 261) |
 | `56a944f` | `ekpi-platform-2026-10-27-124757.bundle` | `23EA44011711566CC7147767E6FF4258F75030CFFA0507EC98E00323AACE6421` | Fresh clone reached `56a944f`; restored `scripts/check.ps1` PASS; `age` drill encrypted and decrypted byte-identically; `git bundle verify` okay |
+| `3ee2ee2` | `ekpi-platform-2026-10-27-125701.bundle` | `7E21EEEE456F36DE79056508BE718705D6294525D98E39C5F1C80C585C73FE19` | `git bundle verify` okay; automatic TEMP drill **BLOCKED** at `edge_cases` by Application Control (`os error 4551`); manual fresh clone at `%USERPROFILE%\EKPI-restore-drill-3ee2ee2` ran the restored `scripts/check.ps1` and exited 0 (eval 12, platform 261, docs 503 links in 96 tracked files, secrets 220) |
 
 The `56a944f` off-host drill receipt records ciphertext SHA-256 `0DBA33BCC90B94749DAF7547AF524364C5F4567358953E01A3D61260284AC181`, `decryption_verified: true` and `destination_class: local-simulated-off-host`. A drill under `%TEMP%` is **not** an off-host copy.
 
@@ -123,7 +125,7 @@ These drills prove that committed history can be restored and checked locally. T
 5. **No production observability** — local JSON access log, correlation id, aggregate `/metrics` and liveness `/healthz`; no SLO, traces, alerting, on-call or readiness probe (`DEC-16`).
 6. **No AI/LLM capability** — retrieval is deterministic lexical; `--llm` accepts only `mock` and labels output `mock-answer`; no model quality claim (`EVAL-GAP-01`).
 7. **No independent review** — the threat model, audit and this pack are self-assessments; no penetration test or certification.
-8. **Host policy risk** — Windows Application Control intermittently blocks freshly built executables (`os error 4551`). A blocked run is recorded as `Blocked`, never `PASS`.
+8. **Host policy risk** — Windows Application Control intermittently blocks freshly built executables (`os error 4551`). The automatic TEMP drill for `3ee2ee2` was blocked at `edge_cases`; a manual fresh clone of the identical bundle then passed. A blocked run is recorded as `Blocked`, never `PASS`.
 
 ## Sign-off
 
