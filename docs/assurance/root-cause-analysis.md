@@ -51,7 +51,7 @@ PLATFORM_EXIT=0
 
 `eval` has 12 tests in both profiles; self-test, schema and the 28-case search gate pass in release.
 
-At `41beaea`, the automatic restore drill built a fresh debug binary in a clean clone and the canonical `scripts/check.ps1` exited 0 (docs 653/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). A second direct canonical run in the same clone also exited 0. The working tree at the same revision still exited 1 at the 22 CLI contract tests because its existing `platform\target\debug\ekp_platform.exe` was denied. The pass is therefore clean-clone/local, not working-tree or CI evidence.
+At `41beaea` and `6ed236d`, the automatic restore drill built a fresh debug binary in a clean clone and the canonical `scripts/check.ps1` exited 0 (at `6ed236d`: docs 652/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). The working tree at the same revisions still exited 1 at the 22 CLI contract tests because its existing `platform\target\debug\ekp_platform.exe` was denied. The pass is therefore clean-clone/local, not working-tree or CI evidence.
 
 ### Root cause
 
@@ -80,13 +80,13 @@ Earlier blocked attempt:
 - Manual clone `%USERPROFILE%\EKPI-restore-drill-28b68cc`: HEAD `28b68cc`; docs 505 links in 96 tracked files PASS; secrets 220 PASS
 - Restored `scripts/check.ps1`: failed at `eval` Clippy with `proc-macro2` build-script denial (`os error 4551`)
 
-Final assurance bundle:
+Final evidence bundle:
 
-- Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-140645.bundle`
-- SHA-256: `7C5B337A44EB9EA8A791522A107F5FA136299E1BB5CE32755F14448150623B3C`
-- `git bundle verify`: okay, complete history, HEAD `41beaea`
-- Automatic TEMP drill: clone HEAD `41beaea`; restored `scripts/check.ps1` exit 0; `RESTORE DRILL PASSED`
-- Direct clean-clone canonical rerun: exit 0; platform 270, eval 12, self-test 49, schema 20, search 28, docs 653/105, secrets 229
+- Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-141734.bundle`
+- SHA-256: `E3E8C3EE2DF8980A46008A14A7AA1A820D192DA47A99B8ABF0079ADEB3EEA13E`
+- `git bundle verify`: okay, complete history, HEAD `6ed236d`
+- Automatic TEMP drill: clone HEAD `6ed236d`; restored `scripts/check.ps1` exit 0; `RESTORE DRILL PASSED`
+- Clean-clone canonical counts: platform 270, eval 12, self-test 49, schema 20, search 28, docs 652/105, secrets 229
 
 ### Root cause
 
@@ -94,12 +94,12 @@ A fresh clone has no prebuilt `target/` artifacts. Cargo must compile and execut
 
 ### Why `3ee2ee2` passed and `28b68cc` did not
 
-The policy is intermittent and path/artifact dependent. `3ee2ee2` was restore-verified by a manual clone before the policy began denying the relevant build scripts; `28b68cc` was blocked later. `41beaea` then passed automatically. Historical PASSes and blocks do not transfer across revisions. The `c77fec4`, `bc7671a` and `28b68cc` rows remain `BLOCKED` and are not counted; `41beaea` is the current verified restore.
+The policy is intermittent and path/artifact dependent. `3ee2ee2` was restore-verified by a manual clone before the policy began denying the relevant build scripts; `28b68cc` was blocked later. `41beaea` and `6ed236d` then passed automatically. Historical PASSes and blocks do not transfer across revisions. The `c77fec4`, `bc7671a` and `28b68cc` rows remain `BLOCKED` and are not counted; `6ed236d` is the current verified restore.
 
 ### Correct handling
 
-- Keep the `28b68cc` row `BLOCKED`, not PASS; keep the `41beaea` row as a local automatic-restore PASS.
-- Record `41beaea` as the current restore-verified revision; keep `3ee2ee2` as the previous verified revision.
+- Keep the `28b68cc` row `BLOCKED`, not PASS; keep the `41beaea` and `6ed236d` rows as local automatic-restore PASSes.
+- Record `6ed236d` as the current restore-verified revision; keep `41beaea` and `3ee2ee2` as previous verified revisions.
 - Keep the working-tree canonical block visible; the clean-clone PASS does not transfer to the working-tree path.
 - Re-run the restore in an approved environment and record each new result in the [backup log](../operations/backup-log.md).
 - Do not rewrite the bundle, reset history or bypass the check to manufacture a pass.
@@ -123,7 +123,7 @@ Commit `23b8996` (`feat(cli): enforce the mock-only LLM and local audit contract
 - `--import-wellfit` is standalone; it fails closed on an unreadable `docs.json`, does not overwrite it, and validates the imported documents before saving.
 - Missing flag values, unknown flags and mixed modes are usage errors (exit `2`), and do not create report output.
 
-The 22 tests pass in the release profile at `6ae6134` (E-002) and in the `41beaea` clean-clone canonical run (E-020). The working-tree canonical run remains blocked by RC-01, so that path is not a canonical PASS. The clean-clone PASS is local and revision-bound, not CI.
+The 22 tests pass in the release profile at `6ae6134` (E-002) and in the `41beaea`/`6ed236d` clean-clone canonical runs (E-020/E-023). The working-tree canonical run remains blocked by RC-01, so that path is not a canonical PASS. The clean-clone PASS is local and revision-bound, not CI.
 
 ## RC-04/RC-05/RC-06: mock LLM, local audit and legacy import boundaries
 

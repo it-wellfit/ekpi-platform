@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-27
-- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd` (`main`)
-- **Working tree during the re-run:** clean at each named revision; `947cd27`, `a2ba7de` and `41beaea` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
+- **Repository revision for the re-run:** code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
+- **Working tree during the re-run:** clean at each named revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -35,6 +35,8 @@
 | E-019 | LOCAL | Canonical `scripts/check.ps1` (working tree) | `41beaea` | 1 | `BLOCKED` at platform test: 22 CLI contract tests cannot start the existing debug binary (`os error 4551`); docs 53/656/115, secrets 229 and eval 12 passed first |
 | E-020 | LOCAL | Final bundle restore + clean-clone canonical check | `41beaea` | 0 | PASS: bundle verifies, clone HEAD `41beaea`; automatic restore drill and direct canonical check exit 0 (platform 270, eval 12, self-test 49, schema 20, search 28, docs 653/105, secrets 229) |
 | E-021 | LOCAL | Final docs/secrets check (working tree) | `41beaea` | 0 | PASS: 53 required documents, 656 links in 115 files; 229 secret-scan files |
+| E-022 | LOCAL | Documentation and secret checks (final bundle revision) | `6ed236d` | 0 | PASS: 53 required documents, 655 links in 115 files; 229 secret-scan files |
+| E-023 | LOCAL | Final bundle restore + clean-clone canonical check | `6ed236d` | 0 | PASS: bundle verifies, clone HEAD `6ed236d`; automatic restore drill and restored canonical check exit 0 (platform 270, eval 12, self-test 49, schema 20, search 28, docs 652/105, secrets 229) |
 
 ## E-001: canonical check (blocked)
 
@@ -348,6 +350,35 @@ exit 0
 ```
 
 The fresh clone checks 105 tracked files (653 links); the working tree also contains ignored local pages, so it reports 115 files (656 links). Both runs cover all 53 required documents.
+
+## E-022: final bundle-revision docs/secrets check (`6ed236d`)
+
+```text
+PASS: required documents present (53)
+PASS: relative Markdown links resolve (655 links in 115 files)
+Documentation check PASSED
+PASS: no high-signal secret patterns in 229 file(s)
+exit 0
+```
+
+This run followed the documentation reconciliation that removed the stale A4/A8 and final-restore statements. The tracked clone checks 105 files/652 links; the working tree includes ignored local pages.
+
+## E-023: final bundle restore and clean-clone canonical check (`6ed236d`)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/backup.ps1
+```
+
+Observed on 2026-10-27:
+
+- Bundle: `%USERPROFILE%\EKPI-backup\bundles\ekpi-platform-2026-10-27-141734.bundle`
+- SHA-256: `E3E8C3EE2DF8980A46008A14A7AA1A820D192DA47A99B8ABF0079ADEB3EEA13E`
+- Size: 827,919 bytes
+- `git bundle verify`: okay; `refs/heads/main` and `HEAD` both at `6ed236d`; complete history
+- Automatic restore drill: clone to `%TEMP%\ekpi-restore-drill`, HEAD `6ed236d`; restored `scripts/check.ps1` exit 0; `RESTORE DRILL PASSED`
+- Clone check counts: docs 53 required/652 links in 105 tracked files; secrets 229; eval 12 + 10 self-test checks; platform 270 (217 unit, 22 CLI contract, 2 edge, 10 governance web, 8 integration, 7 search evaluation, 4 web health); self-test 49 assertions; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations)
+
+This supersedes E-020 as the current final-bundle evidence. It is still local clean-clone evidence, not CI, staging, production or off-host evidence. The code is unchanged from `41beaea`/`6ae6134`; only documentation changed. The working-tree canonical run was not repeated for this docs-only revision and remains blocked at the 22 CLI contract spawns (`os error 4551`).
 
 ## Reproduction notes
 

@@ -149,7 +149,7 @@ This produces `destination_class: local-simulated-off-host`. It is **not** an of
 7. Record date, bundle path, revision, SHA-256, environment, operator, result and limitations.
 8. If the check fails for a code/data reason, stop the release and fix it. Do not lower the drill.
 
-**Current status:** last verified restore `41beaea`; the final assurance bundle `ekpi-platform-2026-10-27-140645.bundle` verifies, clones to `41beaea` and passes the automatic restore drill with the restored `scripts/check.ps1` exit 0. The earlier `28b68cc` restore remains `BLOCKED` and is not counted. The clean-clone canonical PASS does not make the working-tree run pass; that path is still blocked by host policy.
+**Current status:** last verified restore `6ed236d`; the final evidence bundle `ekpi-platform-2026-10-27-141734.bundle` verifies, clones to `6ed236d` and passes the automatic restore drill with the restored `scripts/check.ps1` exit 0. The earlier `41beaea` bundle also passed; the `28b68cc` restore remains `BLOCKED` and is not counted. The clean-clone canonical PASS does not make the working-tree run pass; that path is still blocked by host policy.
 
 ## Disaster recovery
 
@@ -157,8 +157,8 @@ This produces `destination_class: local-simulated-off-host`. It is **not** an of
 
 | Layer | Evidence | Status |
 | --- | --- | --- |
-| Local Git bundle | Bundle + `git bundle verify` | `41beaea` bundle verifies and clones |
-| Local fresh-clone check | `41beaea` automatic clone + restored `scripts/check.ps1` exit 0 | `PASS` (local) |
+| Local Git bundle | Bundle + `git bundle verify` | `6ed236d` bundle verifies and clones |
+| Local fresh-clone check | `6ed236d` automatic clone + restored `scripts/check.ps1` exit 0 | `PASS` (local) |
 | Encrypted artifact | `56a944f` `age` drill, byte-identical decrypt | `SIMULATED` |
 | Off-host copy | None | `BLOCKED` |
 | Approved RPO/RTO | Proposal only | `BLOCKED` |
