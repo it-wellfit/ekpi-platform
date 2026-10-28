@@ -45,7 +45,7 @@ use ekp_platform::process::{events_sha256, ReplayEvent};
 use ekp_platform::snapshot::DecisionSnapshot;
 use ekp_platform::{params as params_module, validate};
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH]\n        [--llm PROVIDER[:MODEL]] | --eval --test-set PATH | --import-wellfit PATH]";
+const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -63,11 +63,12 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
         .cloned()
 }
 
-const BOOLEAN_FLAGS: [&str; 5] = [
+const BOOLEAN_FLAGS: [&str; 6] = [
     "--selftest",
     "--declared-rules-schema",
     "--coverage-report",
     "--html",
+    "--health",
     "--eval",
 ];
 
@@ -193,6 +194,21 @@ fn validate_args(args: &[String]) -> Result<(), String> {
 }
 
 fn run(args: &[String]) -> i32 {
+    if has_flag(args, "--health") {
+        let data_dir = flag_value(args, "--data")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_data_dir);
+        let status = if data_dir.exists() {
+            "OK"
+        } else {
+            "DEGRADED (data dir missing)"
+        };
+        println!("health: {}", status);
+        println!("version: 0.1.0");
+        println!("data_dir: {}", data_dir.display());
+        return if status == "OK" { 0 } else { 1 };
+    }
+
     if has_flag(args, "--selftest") {
         // The self-test keeps precedence over other modes, but malformed
         // arguments are still rejected so that a typo is never silently
@@ -334,10 +350,11 @@ fn run(args: &[String]) -> i32 {
             latency_ms,
         );
         let event_id = format!(
-            "KS-{}",
+            "KS-{}-{}",
+            std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
+                .map(|d| d.as_nanos())
                 .unwrap_or(0)
         );
         if let Some(path) = audit_log_path {
