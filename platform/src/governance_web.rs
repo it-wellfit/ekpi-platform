@@ -208,17 +208,25 @@ async fn request_context_with(
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(header::COOKIE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|cookie| {
-            cookie.split(';').find_map(|part| {
-                let part = part.trim();
-                part.strip_prefix("ekpi_session=")
-                    .filter(|token| !token.is_empty())
-                    .map(String::from)
-            })
-        })
+    let mut token: Option<String> = None;
+    for header in headers.get_all(header::COOKIE) {
+        let cookie = match header.to_str() {
+            Ok(c) => c,
+            // A header that is not valid visible ASCII cannot be interpreted;
+            // fail closed rather than ignoring it and accepting a second one.
+            Err(_) => return None,
+        };
+        for part in cookie.split(';') {
+            let part = part.trim();
+            if let Some(value) = part.strip_prefix("ekpi_session=") {
+                if value.is_empty() || token.is_some() {
+                    return None;
+                }
+                token = Some(value.to_string());
+            }
+        }
+    }
+    token
 }
 
 fn unauthorized() -> Response {
@@ -440,15 +448,89 @@ fn valid_request_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
+/// Accept only loopback authorities: `localhost`, IPv4 loopback addresses and
+/// `[::1]`, optionally followed by a numeric port. The Host header is compared
+/// byte-for-byte against an allowlist after lowercasing; it is never resolved
+/// through DNS, so a hostile resolver cannot redirect the check.
+fn is_loopback_host(value: &str) -> bool {
+    if value.is_empty()
+        || value
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+    {
+        return false;
+    }
+    let lower = value.to_ascii_lowercase();
+    let (host, port) = if let Some(rest) = lower.strip_prefix('[') {
+        let Some(end) = rest.find(']') else {
+            return false;
+        };
+        let host = &rest[..end];
+        let after = &rest[end + 1..];
+        if after.is_empty() {
+            (host, None)
+        } else if let Some(port) = after.strip_prefix(':') {
+            (host, Some(port))
+        } else {
+            return false;
+        }
+    } else {
+        match lower.rsplit_once(':') {
+            Some((host, port)) => {
+                // A bare IPv6 address is not a valid Host value; IPv6 must be
+                // bracketed. Reject any leftover colon instead of guessing.
+                if host.contains(':') {
+                    return false;
+                }
+                (host, Some(port))
+            }
+            None => (lower.as_str(), None),
+        }
+    };
+    if let Some(port) = port {
+        if port.is_empty()
+            || port.len() > 5
+            || !port.bytes().all(|byte| byte.is_ascii_digit())
+            || !matches!(port.parse::<u16>(), Ok(1..=u16::MAX))
+        {
+            return false;
+        }
+    }
+    if host == "localhost" || host == "::1" {
+        return true;
+    }
+    host.parse::<std::net::Ipv4Addr>()
+        .map(|address| address.is_loopback())
+        .unwrap_or(false)
+}
+
+fn forbidden_cross_origin() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        "cross-origin form submission rejected",
+    )
+        .into_response()
+}
+
 async fn same_origin_guard(request: Request, next: Next) -> Response {
+    let headers = request.headers();
+    let mut host_values = headers.get_all(header::HOST).iter();
+    let host = match host_values.next() {
+        None => None,
+        Some(value) => {
+            if host_values.next().is_some() {
+                return forbidden_cross_origin();
+            }
+            match value.to_str() {
+                Ok(value) if is_loopback_host(value) => Some(value),
+                _ => return forbidden_cross_origin(),
+            }
+        }
+    };
     let is_mutation = request.method() != Method::GET && request.method() != Method::HEAD;
     if is_mutation {
-        let headers = request.headers();
         let origin = headers
             .get(header::ORIGIN)
-            .and_then(|value| value.to_str().ok());
-        let host = headers
-            .get(header::HOST)
             .and_then(|value| value.to_str().ok());
         let fetch_site = headers
             .get("sec-fetch-site")
@@ -456,18 +538,15 @@ async fn same_origin_guard(request: Request, next: Next) -> Response {
         let allowed = match origin {
             Some(origin) => match host {
                 Some(host) => {
-                    origin == format!("http://{host}") || origin == format!("https://{host}")
+                    origin.eq_ignore_ascii_case(&format!("http://{host}"))
+                        || origin.eq_ignore_ascii_case(&format!("https://{host}"))
                 }
                 None => false,
             },
             None => matches!(fetch_site, Some("same-origin") | Some("none")),
         };
         if !allowed {
-            return (
-                StatusCode::FORBIDDEN,
-                "cross-origin form submission rejected",
-            )
-                .into_response();
+            return forbidden_cross_origin();
         }
     }
     next.run(request).await
@@ -1773,6 +1852,63 @@ mod tests {
         let latest = latest_workflows(&versions);
         assert_eq!(latest.len(), 1);
         assert_eq!(latest[0].version, 2);
+    }
+
+    #[test]
+    fn only_loopback_authorities_are_accepted() {
+        for host in [
+            "localhost",
+            "LOCALHOST",
+            "localhost:3000",
+            "127.0.0.1",
+            "127.0.0.1:3000",
+            "127.255.255.254:8080",
+            "[::1]",
+            "[::1]:3000",
+        ] {
+            assert!(is_loopback_host(host), "{host} must be accepted");
+        }
+        for host in [
+            "",
+            "localhost.",
+            "localhost:",
+            "localhost:abc",
+            "localhost:3000:80",
+            "localhost :3000",
+            " attacker.example",
+            "attacker.example",
+            "127.0.0.1.attacker.example",
+            "10.0.0.1",
+            "192.168.1.1:3000",
+            "::1",
+            "::1:3000",
+            "[::2]",
+            "[::1]extra",
+            "[::1]:",
+            "[::1]:99999",
+            "2130706433",
+            "0x7f.0.0.1",
+        ] {
+            assert!(!is_loopback_host(host), "{host:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn malformed_cookie_header_fails_closed() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_static("ekpi_session=valid-token"),
+        );
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_bytes(b"ekpi_session=\x80invalid").expect("non-ASCII header"),
+        );
+        assert_eq!(
+            session_token(&headers),
+            None,
+            "an unparseable Cookie header must not be ignored"
+        );
     }
 }
 

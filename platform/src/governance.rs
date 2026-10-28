@@ -7,14 +7,16 @@
 //! local prototype store, not an enterprise WORM or identity service.
 
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::docs::sha256_hex;
+use crate::local_io::open_for_append;
+use crate::local_lock::LocalFileLock;
 
 const GENESIS_HASH: &str = "GENESIS";
 
@@ -343,6 +345,7 @@ pub struct GovernanceSnapshot {
 pub struct Ledger {
     path: PathBuf,
     snapshot: GovernanceSnapshot,
+    _lock: LocalFileLock,
 }
 
 #[derive(Serialize)]
@@ -357,23 +360,34 @@ struct EventBody<'a> {
 impl Ledger {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, String> {
         let path = path.into();
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create ledger directory {}: {e}", parent.display()))?;
+        }
+        let lock = LocalFileLock::acquire(&path)?;
         let mut snapshot = GovernanceSnapshot::default();
         if path.exists() {
-            let file = fs::File::open(&path)
-                .map_err(|e| format!("open ledger {}: {e}", path.display()))?;
-            let reader = BufReader::new(file);
-            let mut previous = GENESIS_HASH.to_string();
-            for (index, line) in reader.lines().enumerate() {
-                let line = line.map_err(|e| format!("read ledger line {}: {e}", index + 1))?;
+            let contents = fs::read_to_string(&path)
+                .map_err(|e| format!("read ledger {}: {e}", path.display()))?;
+            if !contents.is_empty() && !contents.ends_with('\n') {
+                return Err(format!(
+                    "ledger {} has a truncated final line; refusing to load",
+                    path.display()
+                ));
+            }
+            for (index, line) in contents.lines().enumerate() {
                 if line.trim().is_empty() {
                     return Err(format!("ledger line {} is empty", index + 1));
                 }
-                let event: LedgerEvent = serde_json::from_str(&line)
+                let event: LedgerEvent = serde_json::from_str(line)
                     .map_err(|e| format!("parse ledger line {}: {e}", index + 1))?;
                 if event.sequence != index as u64 + 1 {
                     return Err(format!("ledger sequence mismatch at line {}", index + 1));
                 }
-                if event.previous_sha256 != previous {
+                if event.previous_sha256 != previous_hash(&snapshot) {
                     return Err(format!("ledger predecessor mismatch at line {}", index + 1));
                 }
                 let expected = event_hash(
@@ -386,12 +400,16 @@ impl Ledger {
                 if event.sha256 != expected {
                     return Err(format!("ledger hash mismatch at line {}", index + 1));
                 }
-                previous = event.sha256.clone();
-                apply_event(&mut snapshot, &event);
+                apply_event(&mut snapshot, &event)
+                    .map_err(|error| format!("ledger line {}: {error}", index + 1))?;
                 snapshot.events.push(event);
             }
         }
-        Ok(Self { path, snapshot })
+        Ok(Self {
+            path,
+            snapshot,
+            _lock: lock,
+        })
     }
 
     pub fn snapshot(&self) -> GovernanceSnapshot {
@@ -663,48 +681,7 @@ impl Ledger {
             return Err("請先選擇有效的專案".to_string());
         }
         validate_actor(&inspection.reviewer)?;
-        if inspection.results.len() != QUALITY_CHECKLIST.len() {
-            return Err(format!(
-                "品質檢查必須逐項判定全部 {} 個項目",
-                QUALITY_CHECKLIST.len()
-            ));
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        for result in &inspection.results {
-            let definition = QUALITY_CHECKLIST
-                .iter()
-                .find(|item| item.id == result.item_id)
-                .ok_or_else(|| format!("未知的檢查項目 {}", result.item_id))?;
-            let _ = definition;
-            if !seen.insert(result.item_id.as_str()) {
-                return Err(format!("檢查項目 {} 重複", result.item_id));
-            }
-            if !["pass", "fail", "not_applicable"].contains(&result.result.as_str()) {
-                return Err(format!("{} 尚未選擇有效判定", result.item_id));
-            }
-            if result.result == "pass" {
-                validate_text("符合項目的證據參照", &result.evidence_reference, 2048)?;
-            }
-            if result.result == "fail" {
-                validate_text("不符合項目的說明", &result.note, 1000)?;
-                validate_text("缺失編號", &result.issue_id, 80)?;
-            }
-            if result.result == "not_applicable" {
-                validate_text("不適用理由", &result.note, 1000)?;
-            }
-            if !result.note.trim().is_empty() {
-                validate_text("檢查備註", &result.note, 1000)?;
-            }
-            if !result.evidence_reference.trim().is_empty() {
-                validate_text("證據參照", &result.evidence_reference, 2048)?;
-            }
-            if !result.issue_id.trim().is_empty() {
-                validate_text("缺失編號", &result.issue_id, 80)?;
-            }
-        }
-        if seen.len() != QUALITY_CHECKLIST.len() {
-            return Err("檢查項目不完整，請確認 QC-01 至 QC-29 都各出現一次".to_string());
-        }
+        validate_inspection_results(&inspection.results)?;
         let id = self.next_id("INSP");
         self.append(
             &inspection.reviewer,
@@ -802,23 +779,23 @@ impl Ledger {
 
     fn append(&mut self, actor: &str, payload: EventPayload) -> Result<(), String> {
         validate_actor(actor)?;
+        let actor = clean(actor);
         let sequence = self.snapshot.events.len() as u64 + 1;
-        let previous_sha256 = self
-            .snapshot
-            .events
-            .last()
-            .map(|e| e.sha256.clone())
-            .unwrap_or_else(|| GENESIS_HASH.to_string());
+        let previous_sha256 = previous_hash(&self.snapshot);
         let timestamp_unix = now_unix()?;
-        let hash = event_hash(sequence, timestamp_unix, actor, &payload, &previous_sha256)?;
+        let hash = event_hash(sequence, timestamp_unix, &actor, &payload, &previous_sha256)?;
         let event = LedgerEvent {
             sequence,
             timestamp_unix,
-            actor: clean(actor),
+            actor,
             payload,
             previous_sha256,
             sha256: hash,
         };
+        let mut next_snapshot = self.snapshot.clone();
+        apply_event(&mut next_snapshot, &event)?;
+        next_snapshot.events.push(event.clone());
+
         if let Some(parent) = self
             .path
             .parent()
@@ -827,61 +804,352 @@ impl Ledger {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("create ledger directory {}: {e}", parent.display()))?;
         }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .map_err(|e| format!("append ledger {}: {e}", self.path.display()))?;
-        serde_json::to_writer(&mut file, &event)
-            .map_err(|e| format!("encode ledger event: {e}"))?;
-        file.write_all(b"\n")
-            .map_err(|e| format!("write ledger line ending: {e}"))?;
-        file.sync_data()
-            .map_err(|e| format!("flush ledger event: {e}"))?;
-        apply_event(&mut self.snapshot, &event);
-        self.snapshot.events.push(event);
+        let mut line =
+            serde_json::to_vec(&event).map_err(|e| format!("encode ledger event: {e}"))?;
+        line.push(b'\n');
+        let mut file = open_for_append(&self.path)?;
+        let original_len = file
+            .metadata()
+            .map_err(|e| format!("inspect ledger {}: {e}", self.path.display()))?
+            .len();
+        if let Err(error) = file.write_all(&line).and_then(|_| file.sync_all()) {
+            let rollback = file.set_len(original_len).and_then(|_| file.sync_all());
+            return Err(match rollback {
+                Ok(()) => format!(
+                    "write ledger event to {}: {error}; partial write rolled back",
+                    self.path.display()
+                ),
+                Err(rollback_error) => format!(
+                    "write ledger event to {}: {error}; rollback failed: {rollback_error}",
+                    self.path.display()
+                ),
+            });
+        }
+        self.snapshot = next_snapshot;
         Ok(())
     }
 }
 
-fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) {
+fn previous_hash(snapshot: &GovernanceSnapshot) -> String {
+    snapshot
+        .events
+        .last()
+        .map(|event| event.sha256.clone())
+        .unwrap_or_else(|| GENESIS_HASH.to_string())
+}
+
+fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result<(), String> {
     match &event.payload {
-        EventPayload::ProjectCreated(project) => snapshot.projects.push(project.clone()),
-        EventPayload::EvidenceLinked(evidence) => snapshot.evidence.push(evidence.clone()),
+        EventPayload::ProjectCreated(project) => {
+            validate_text("專案名稱", &project.name, 120)?;
+            validate_text("部門", &project.department, 80)?;
+            validate_text("負責人", &project.owner, 80)?;
+            if snapshot.projects.iter().any(|item| item.id == project.id) {
+                return Err(format!("duplicate project id {}", project.id));
+            }
+            if !["low", "medium", "high", "critical"].contains(&project.risk_tier.as_str()) {
+                return Err(format!("invalid risk tier for project {}", project.id));
+            }
+            snapshot.projects.push(project.clone());
+        }
+        EventPayload::EvidenceLinked(evidence) => {
+            validate_text("證據標題", &evidence.title, 160)?;
+            validate_text("來源系統", &evidence.source_system, 80)?;
+            validate_source_url(&evidence.source_url)?;
+            validate_text("來源版本", &evidence.source_version, 80)?;
+            validate_text("證據類型", &evidence.evidence_type, 80)?;
+            validate_text("負責人", &evidence.owner, 80)?;
+            if !snapshot
+                .projects
+                .iter()
+                .any(|project| project.id == evidence.project_id)
+            {
+                return Err(format!(
+                    "evidence {} references missing project {}",
+                    evidence.id, evidence.project_id
+                ));
+            }
+            if snapshot.evidence.iter().any(|item| item.id == evidence.id) {
+                return Err(format!("duplicate evidence id {}", evidence.id));
+            }
+            snapshot.evidence.push(evidence.clone());
+        }
         EventPayload::EvidenceReviewed(review) => {
+            if !["accepted", "changes_requested"].contains(&review.result.as_str()) {
+                return Err(format!(
+                    "review of {} has an invalid result {}",
+                    review.evidence_id, review.result
+                ));
+            }
+            validate_actor(&review.reviewer)?;
+            if review.result == "changes_requested" {
+                validate_text("退回說明", &review.note, 1000)?;
+            }
+            if !review.note.trim().is_empty() {
+                validate_text("審查備註", &review.note, 1000)?;
+            }
+            if !snapshot
+                .evidence
+                .iter()
+                .any(|evidence| evidence.id == review.evidence_id)
+            {
+                return Err(format!(
+                    "review references missing evidence {}",
+                    review.evidence_id
+                ));
+            }
             snapshot
                 .reviews
                 .insert(review.evidence_id.clone(), review.clone());
         }
-        EventPayload::WorkflowSaved(workflow) => snapshot.workflows.push(workflow.clone()),
+        EventPayload::WorkflowSaved(workflow) => {
+            if workflow.status != "draft"
+                || workflow.published_at.is_some()
+                || workflow.published_by.is_some()
+            {
+                return Err(format!(
+                    "workflow {}@{} must be saved as an unpublished draft",
+                    workflow.id, workflow.version
+                ));
+            }
+            validate_text("流程名稱", &workflow.title, 120)?;
+            validate_text("部門", &workflow.department, 80)?;
+            validate_text("流程負責人", &workflow.owner, 80)?;
+            validate_text("流程目的", &workflow.description, 1500)?;
+            if workflow.stages.is_empty() || workflow.stages.len() > 30 {
+                return Err(format!(
+                    "workflow {}@{} must have 1 to 30 stages",
+                    workflow.id, workflow.version
+                ));
+            }
+            for stage in &workflow.stages {
+                validate_text("階段名稱", stage, 120)?;
+            }
+            if snapshot
+                .workflows
+                .iter()
+                .any(|item| item.id == workflow.id && item.version == workflow.version)
+            {
+                return Err(format!(
+                    "duplicate workflow version {}@{}",
+                    workflow.id, workflow.version
+                ));
+            }
+            if workflow.version == 1 {
+                if snapshot.workflows.iter().any(|item| item.id == workflow.id) {
+                    return Err(format!(
+                        "workflow {} starts at version 1 after a later version exists",
+                        workflow.id
+                    ));
+                }
+            } else if !snapshot
+                .workflows
+                .iter()
+                .any(|item| item.id == workflow.id && item.version == workflow.version - 1)
+            {
+                return Err(format!(
+                    "workflow {}@{} has no predecessor version",
+                    workflow.id, workflow.version
+                ));
+            }
+            snapshot.workflows.push(workflow.clone());
+        }
         EventPayload::WorkflowPublished(publication) => {
-            if let Some(workflow) = snapshot
+            validate_actor(&publication.reviewer)?;
+            let workflow = snapshot
                 .workflows
                 .iter_mut()
-                .find(|w| w.id == publication.id && w.version == publication.version)
-            {
-                workflow.status = "published".to_string();
-                workflow.published_at = Some(publication.published_at);
-                workflow.published_by = Some(publication.reviewer.clone());
+                .find(|item| item.id == publication.id && item.version == publication.version)
+                .ok_or_else(|| {
+                    format!(
+                        "publication references missing workflow {}@{}",
+                        publication.id, publication.version
+                    )
+                })?;
+            if workflow.status != "draft" {
+                return Err(format!(
+                    "workflow {}@{} is not a draft",
+                    publication.id, publication.version
+                ));
             }
+            workflow.status = "published".to_string();
+            workflow.published_at = Some(publication.published_at);
+            workflow.published_by = Some(publication.reviewer.clone());
         }
-        EventPayload::QualityCaseCreated(case) => snapshot.cases.push(case.clone()),
+        EventPayload::QualityCaseCreated(case) => {
+            if !["risk", "change", "finding", "capa"].contains(&case.kind.as_str()) {
+                return Err(format!("invalid quality case kind {}", case.kind));
+            }
+            if case.status != "open" || case.closure_note.is_some() {
+                return Err(format!(
+                    "quality case {} must start open and unclosed",
+                    case.id
+                ));
+            }
+            validate_text("案件標題", &case.title, 160)?;
+            validate_text("案件內容", &case.description, 2000)?;
+            validate_text("負責人", &case.owner, 80)?;
+            validate_date("期限", &case.due_date)?;
+            if !snapshot
+                .projects
+                .iter()
+                .any(|project| project.id == case.project_id)
+            {
+                return Err(format!(
+                    "quality case {} references missing project {}",
+                    case.id, case.project_id
+                ));
+            }
+            if snapshot.cases.iter().any(|item| item.id == case.id) {
+                return Err(format!("duplicate quality case id {}", case.id));
+            }
+            snapshot.cases.push(case.clone());
+        }
         EventPayload::QualityCaseUpdated(update) => {
-            if let Some(case) = snapshot.cases.iter_mut().find(|c| c.id == update.id) {
-                case.status = update.status.clone();
-                case.updated_at = update.updated_at;
-                if update.status == "closed" {
-                    case.closure_note = Some(update.note.clone());
-                }
+            validate_actor(&update.actor)?;
+            if update.status == "closed" && update.note.trim().is_empty() {
+                return Err(format!(
+                    "quality case {} cannot close without a closure note",
+                    update.id
+                ));
+            }
+            if !update.note.trim().is_empty() {
+                validate_text("處理備註", &update.note, 1200)?;
+            }
+            let case = snapshot
+                .cases
+                .iter_mut()
+                .find(|item| item.id == update.id)
+                .ok_or_else(|| format!("update references missing quality case {}", update.id))?;
+            if !["open", "in_progress", "verification", "closed"].contains(&update.status.as_str())
+            {
+                return Err(format!("invalid quality case status {}", update.status));
+            }
+            if update.status == "closed" && case.kind == "capa" && case.status != "verification" {
+                return Err(format!(
+                    "CAPA {} cannot close before verification",
+                    update.id
+                ));
+            }
+            case.status = update.status.clone();
+            case.updated_at = update.updated_at;
+            if update.status == "closed" {
+                case.closure_note = Some(update.note.clone());
             }
         }
         EventPayload::QualityInspectionRecorded(inspection) => {
-            snapshot.inspections.push(inspection.clone())
+            validate_actor(&inspection.reviewer)?;
+            validate_inspection_results(&inspection.results)?;
+            if !snapshot
+                .projects
+                .iter()
+                .any(|project| project.id == inspection.project_id)
+            {
+                return Err(format!(
+                    "inspection {} references missing project {}",
+                    inspection.id, inspection.project_id
+                ));
+            }
+            if snapshot
+                .inspections
+                .iter()
+                .any(|item| item.id == inspection.id)
+            {
+                return Err(format!("duplicate inspection id {}", inspection.id));
+            }
+            snapshot.inspections.push(inspection.clone());
         }
         EventPayload::GateDecisionRecorded(decision) => {
-            snapshot.gate_decisions.push(decision.clone())
+            validate_actor(&decision.actor)?;
+            if decision.decision != "go" {
+                validate_text("決議原因", &decision.reason, 1200)?;
+            }
+            if decision.decision == "exception" {
+                validate_text("風險接受者", &decision.risk_acceptor, 80)?;
+                validate_date("補救期限", &decision.remediation_due)?;
+            }
+            if !decision.evidence_reference.trim().is_empty() {
+                validate_text("證據參照", &decision.evidence_reference, 2048)?;
+            }
+            if !snapshot
+                .projects
+                .iter()
+                .any(|project| project.id == decision.project_id)
+            {
+                return Err(format!(
+                    "gate decision {} references missing project {}",
+                    decision.id, decision.project_id
+                ));
+            }
+            if !["G1", "G2", "G3", "G4", "G5"].contains(&decision.gate_id.as_str()) {
+                return Err(format!("invalid gate id {}", decision.gate_id));
+            }
+            if !["go", "hold", "exception"].contains(&decision.decision.as_str()) {
+                return Err(format!("invalid gate decision {}", decision.decision));
+            }
+            if decision.decision == "exception" && decision.non_waivable {
+                return Err(format!(
+                    "gate decision {} waives a non-waivable requirement",
+                    decision.id
+                ));
+            }
+            if snapshot
+                .gate_decisions
+                .iter()
+                .any(|item| item.id == decision.id)
+            {
+                return Err(format!("duplicate gate decision id {}", decision.id));
+            }
+            snapshot.gate_decisions.push(decision.clone());
         }
     }
+    Ok(())
+}
+
+fn validate_inspection_results(results: &[QualityCheckResult]) -> Result<(), String> {
+    if results.len() != QUALITY_CHECKLIST.len() {
+        return Err(format!(
+            "品質檢查必須逐項判定全部 {} 個項目",
+            QUALITY_CHECKLIST.len()
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for result in results {
+        if !QUALITY_CHECKLIST
+            .iter()
+            .any(|item| item.id == result.item_id)
+        {
+            return Err(format!("未知的檢查項目 {}", result.item_id));
+        }
+        if !seen.insert(result.item_id.as_str()) {
+            return Err(format!("檢查項目 {} 重複", result.item_id));
+        }
+        if !["pass", "fail", "not_applicable"].contains(&result.result.as_str()) {
+            return Err(format!("{} 尚未選擇有效判定", result.item_id));
+        }
+        match result.result.as_str() {
+            "pass" => validate_text("符合項目的證據參照", &result.evidence_reference, 2048)?,
+            "fail" => {
+                validate_text("不符合項目的說明", &result.note, 1000)?;
+                validate_text("缺失編號", &result.issue_id, 80)?;
+            }
+            "not_applicable" => validate_text("不適用理由", &result.note, 1000)?,
+            _ => unreachable!(),
+        }
+        if !result.note.trim().is_empty() {
+            validate_text("檢查備註", &result.note, 1000)?;
+        }
+        if !result.evidence_reference.trim().is_empty() {
+            validate_text("證據參照", &result.evidence_reference, 2048)?;
+        }
+        if !result.issue_id.trim().is_empty() {
+            validate_text("缺失編號", &result.issue_id, 80)?;
+        }
+    }
+    if seen.len() != QUALITY_CHECKLIST.len() {
+        return Err("檢查項目不完整，請確認 QC-01 至 QC-29 都各出現一次".to_string());
+    }
+    Ok(())
 }
 
 fn event_hash(
@@ -1233,6 +1501,270 @@ mod tests {
         let text = fs::read_to_string(&path).expect("ledger reads");
         fs::write(&path, text.replace("原始名稱", "竄改名稱")).expect("tampered copy writes");
         assert!(Ledger::open(&path).is_err());
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    fn hashed_event(
+        sequence: u64,
+        timestamp_unix: u64,
+        actor: &str,
+        payload: EventPayload,
+        previous: &str,
+    ) -> LedgerEvent {
+        let sha256 =
+            event_hash(sequence, timestamp_unix, actor, &payload, previous).expect("event hashes");
+        LedgerEvent {
+            sequence,
+            timestamp_unix,
+            actor: actor.to_string(),
+            payload,
+            previous_sha256: previous.to_string(),
+            sha256,
+        }
+    }
+
+    #[test]
+    fn actor_is_trimmed_before_hashing_and_reloads() {
+        let path = test_path();
+        let mut ledger = Ledger::open(&path).expect("new ledger opens");
+        ledger
+            .record_project("空白操作者", "PMO", "Alex", "low", " Jordan ")
+            .expect("project records");
+        drop(ledger);
+
+        let reloaded = Ledger::open(&path).expect("trimmed actor must reload and verify");
+        assert_eq!(reloaded.snapshot().events[0].actor, "Jordan");
+        reloaded.verify().expect("reloaded chain verifies");
+        drop(reloaded);
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_a_publication_for_a_missing_workflow() {
+        let path = test_path();
+        let payload = EventPayload::WorkflowPublished(WorkflowPublication {
+            id: "TPL-999999".to_string(),
+            version: 1,
+            reviewer: "Reviewer".to_string(),
+            published_at: 1_700_000_000,
+        });
+        let event = hashed_event(1, 1_700_000_000, "Reviewer", payload, GENESIS_HASH);
+        fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("event encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("dangling publication is refused");
+        assert!(
+            error.contains("流程") || error.contains("workflow"),
+            "{error}"
+        );
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_evidence_for_a_missing_project() {
+        let path = test_path();
+        let payload = EventPayload::EvidenceLinked(Evidence {
+            id: "EVD-999999".to_string(),
+            project_id: "PRJ-999999".to_string(),
+            title: "Orphan evidence".to_string(),
+            source_system: "System".to_string(),
+            source_url: "https://example.test/evidence".to_string(),
+            source_version: "v1".to_string(),
+            evidence_type: "approval".to_string(),
+            owner: "Alex".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let event = hashed_event(1, 1_700_000_000, "Jordan", payload, GENESIS_HASH);
+        fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("event encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("orphan evidence is refused");
+        assert!(
+            error.contains("專案") || error.contains("project"),
+            "{error}"
+        );
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_duplicate_project_ids() {
+        let path = test_path();
+        let first_payload = EventPayload::ProjectCreated(Project {
+            id: "PRJ-000001".to_string(),
+            name: "First".to_string(),
+            department: "PMO".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "low".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let first = hashed_event(1, 1_700_000_000, "Jordan", first_payload, GENESIS_HASH);
+        let second_payload = EventPayload::ProjectCreated(Project {
+            id: "PRJ-000001".to_string(),
+            name: "Duplicate".to_string(),
+            department: "PMO".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "low".to_string(),
+            created_at: 1_700_000_001,
+        });
+        let second = hashed_event(2, 1_700_000_001, "Jordan", second_payload, &first.sha256);
+        fs::write(
+            &path,
+            format!(
+                "{}\n{}\n",
+                serde_json::to_string(&first).expect("first encodes"),
+                serde_json::to_string(&second).expect("second encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("duplicate project id is refused");
+        assert!(error.contains("duplicate project id"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_a_workflow_without_its_predecessor() {
+        let path = test_path();
+        let payload = EventPayload::WorkflowSaved(Workflow {
+            id: "TPL-000001".to_string(),
+            version: 2,
+            title: "Orphan version".to_string(),
+            department: "PMO".to_string(),
+            owner: "Alex".to_string(),
+            description: "No version 1 exists".to_string(),
+            stages: vec!["Intake".to_string()],
+            status: "draft".to_string(),
+            created_at: 1_700_000_000,
+            published_at: None,
+            published_by: None,
+        });
+        let event = hashed_event(1, 1_700_000_000, "Jordan", payload, GENESIS_HASH);
+        fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("event encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("orphan workflow version is refused");
+        assert!(error.contains("predecessor"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn ledger_refuses_a_truncated_final_line() {
+        let path = test_path();
+        let mut ledger = Ledger::open(&path).expect("new ledger opens");
+        ledger
+            .record_project("截斷測試", "PMO", "Alex", "low", "Jordan")
+            .expect("project records");
+        drop(ledger);
+
+        let text = fs::read_to_string(&path).expect("ledger reads");
+        fs::write(&path, text.trim_end_matches('\n')).expect("truncate final newline");
+        let error = Ledger::open(&path).expect_err("truncated final line is refused");
+        assert!(error.contains("truncated"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_an_inspection_with_an_unknown_checklist_item() {
+        let path = test_path();
+        let project = EventPayload::ProjectCreated(Project {
+            id: "PRJ-000001".to_string(),
+            name: "Inspection project".to_string(),
+            department: "QA".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "high".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let first = hashed_event(1, 1_700_000_000, "Jordan", project, GENESIS_HASH);
+        let mut results: Vec<QualityCheckResult> = QUALITY_CHECKLIST
+            .iter()
+            .map(|item| QualityCheckResult {
+                item_id: item.id.to_string(),
+                result: "not_applicable".to_string(),
+                note: "not used in this project".to_string(),
+                evidence_reference: String::new(),
+                issue_id: String::new(),
+            })
+            .collect();
+        results[0].item_id = "QC-99".to_string();
+        let inspection = EventPayload::QualityInspectionRecorded(QualityInspection {
+            id: "INSP-000002".to_string(),
+            project_id: "PRJ-000001".to_string(),
+            reviewer: "Reviewer".to_string(),
+            created_at: 1_700_000_001,
+            results,
+        });
+        let second = hashed_event(2, 1_700_000_001, "Reviewer", inspection, &first.sha256);
+        fs::write(
+            &path,
+            format!(
+                "{}\n{}\n",
+                serde_json::to_string(&first).expect("first encodes"),
+                serde_json::to_string(&second).expect("second encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("invalid checklist item is refused");
+        assert!(error.contains("QC-99"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_a_quality_case_with_an_invalid_kind() {
+        let path = test_path();
+        let project = EventPayload::ProjectCreated(Project {
+            id: "PRJ-000001".to_string(),
+            name: "Case project".to_string(),
+            department: "QA".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "medium".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let first = hashed_event(1, 1_700_000_000, "Jordan", project, GENESIS_HASH);
+        let case = EventPayload::QualityCaseCreated(QualityCase {
+            id: "QC-000002".to_string(),
+            project_id: "PRJ-000001".to_string(),
+            kind: "arbitrary".to_string(),
+            title: "Crafted case".to_string(),
+            description: "Invalid kind".to_string(),
+            owner: "Alex".to_string(),
+            due_date: "2026-12-31".to_string(),
+            status: "open".to_string(),
+            created_at: 1_700_000_001,
+            updated_at: 1_700_000_001,
+            closure_note: None,
+        });
+        let second = hashed_event(2, 1_700_000_001, "Jordan", case, &first.sha256);
+        fs::write(
+            &path,
+            format!(
+                "{}\n{}\n",
+                serde_json::to_string(&first).expect("first encodes"),
+                serde_json::to_string(&second).expect("second encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("invalid quality case kind is refused");
+        assert!(error.contains("invalid quality case kind"), "{error}");
         fs::remove_file(path).expect("test ledger removed");
     }
 }

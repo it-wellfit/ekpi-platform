@@ -47,21 +47,57 @@ impl Platform {
 
     pub fn decide(&self, case: &ekp_eval::types::Case) -> EngineOutcome {
         let mut causal_results: Vec<CausalAnalysisResult> = Vec::new();
-        for r in &case.rules {
-            let h = CausalHypothesis {
-                id: format!("causal-{}", r),
-                claim: format!("sequencing constraint on {}", r),
-                cause: "rule_sequencing".to_string(),
-                effect: "process_compliance".to_string(),
-                relation_type: CausalRelationType::NormativeDependency,
-                temporal_order_established: true,
-                identification_strategy: IdentificationStrategy::ExpertJudgment,
-                confounders: Vec::new(),
-                evidence_for: vec!["rule text".to_string()],
-                evidence_against: Vec::new(),
-                data_sources: vec!["SOP".to_string()],
-            };
-            causal_results.push(CausalAnalyzer::analyze(&h));
+        let resolved_for_causal = self.rules.resolve_declared(&case.rules, &case.doc_versions);
+        for r in &resolved_for_causal {
+            if let Some(rec) = r.record {
+                let cause = format!(
+                    "rule:{} ({}@{})",
+                    rec.rule_id, rec.rule_id, rec.rule_version
+                );
+                let effect = format!(
+                    "process compliance for {}",
+                    rec.subject.actor_role.as_deref().unwrap_or("unknown")
+                );
+                let claim = format!("sequencing constraint on {} must hold", rec.rule_id);
+                let evidence_for: Vec<String> = rec
+                    .evidence_requirements
+                    .iter()
+                    .map(|er| format!("{} (min={})", er.evidence_type, er.min_count))
+                    .collect();
+                let data_sources: Vec<String> = vec![format!(
+                    "{}@{}",
+                    rec.source.document_id, rec.source.document_version
+                )];
+                let h = CausalHypothesis {
+                    id: format!("causal-{}-{}", rec.rule_id, rec.rule_version),
+                    claim,
+                    cause,
+                    effect,
+                    relation_type: CausalRelationType::NormativeDependency,
+                    temporal_order_established: !rec.sequencing.required_before.is_empty(),
+                    identification_strategy: IdentificationStrategy::ExpertJudgment,
+                    confounders: Vec::new(),
+                    evidence_for,
+                    evidence_against: Vec::new(),
+                    data_sources,
+                };
+                causal_results.push(CausalAnalyzer::analyze(&h));
+            } else {
+                let h = CausalHypothesis {
+                    id: format!("causal-unresolved-{}", r.declared_ref),
+                    claim: format!("unresolved rule: {}", r.declared_ref),
+                    cause: "unresolved".to_string(),
+                    effect: "insufficient_evidence".to_string(),
+                    relation_type: CausalRelationType::NormativeDependency,
+                    temporal_order_established: false,
+                    identification_strategy: IdentificationStrategy::InsufficientData,
+                    confounders: Vec::new(),
+                    evidence_for: Vec::new(),
+                    evidence_against: Vec::new(),
+                    data_sources: Vec::new(),
+                };
+                causal_results.push(CausalAnalyzer::analyze(&h));
+            }
         }
 
         let mut notes: Vec<String> = Vec::new();
@@ -238,12 +274,16 @@ impl Platform {
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     let on_violation = &rec.sequencing.on_violation;
-                    let dur_days: i64 = dur_iso
-                        .trim_start_matches('P')
-                        .trim_end_matches('D')
-                        .parse()
-                        .unwrap_or(0);
-                    if dur_days > 0 && !ref_act.is_empty() {
+                    // Parse only the unambiguous day/time subset of ISO 8601:
+                    // PnW, PnD, PTnH, PTnM, PTnS and combinations such as
+                    // P1DT2H30M. Calendar months and years are rejected because
+                    // their length is not fixed.
+                    let dur_days = parse_iso_duration_days(dur_iso);
+                    if !dur_iso.is_empty() && dur_days.is_none() {
+                        notes.push("invalid_deadline_duration".to_string());
+                    }
+                    if let Some(dur_days) = dur_days.filter(|days| *days > 0 && !ref_act.is_empty())
+                    {
                         let anchor_ts = case
                             .events
                             .iter()
@@ -325,7 +365,7 @@ impl Platform {
                 if let Some(rec) = r.record {
                     for c in &rec.source.clause_refs {
                         from_rules.push(format!(
-                            "{}@{} §{}",
+                            "{}@{} \u{00a7}{}",
                             rec.source.document_id, rec.source.document_version, c.section
                         ));
                     }
@@ -333,6 +373,8 @@ impl Platform {
             }
             if from_rules.is_empty() {
                 case.citations.clone()
+            } else if case.citations.is_empty() {
+                from_rules
             } else {
                 let case_set: std::collections::BTreeSet<&str> =
                     case.citations.iter().map(|s| s.as_str()).collect();
@@ -499,6 +541,65 @@ impl Platform {
     }
 }
 
+/// Parse the unambiguous day/time subset of ISO 8601 durations.
+///
+/// Supported components are `W` (weeks), `D` (days) in the date part and
+/// `H`, `M`, `S` in the time part, in that order, for example `P2D`,
+/// `P1W2D`, `PT36H` or `P1DT2H30M`. Calendar months and years are rejected
+/// because their length is not fixed. The result is whole days, truncated
+/// toward zero, so sub-day durations are `Some(0)`.
+fn parse_iso_duration_days(value: &str) -> Option<i64> {
+    let body = value.trim().strip_prefix('P')?;
+    if body.is_empty() {
+        return None;
+    }
+    let mut chars = body.chars().peekable();
+    let mut in_time = false;
+    let mut last_rank: Option<u8> = None;
+    let mut total_seconds: i64 = 0;
+    let mut parsed_component = false;
+    while let Some(ch) = chars.next() {
+        if ch == 'T' {
+            if in_time {
+                return None;
+            }
+            in_time = true;
+            chars.peek()?;
+            continue;
+        }
+        if !ch.is_ascii_digit() {
+            return None;
+        }
+        let mut number = ch.to_digit(10)? as i64;
+        while let Some(next) = chars.peek().copied() {
+            let Some(digit) = next.to_digit(10) else {
+                break;
+            };
+            number = number.checked_mul(10)?.checked_add(digit as i64)?;
+            chars.next();
+        }
+        let unit = chars.next()?;
+        let (rank, seconds_per_unit) = match (in_time, unit) {
+            (false, 'W') => (0, 7 * 86_400),
+            (false, 'D') => (1, 86_400),
+            (true, 'H') => (2, 3_600),
+            (true, 'M') => (3, 60),
+            (true, 'S') => (4, 1),
+            _ => return None,
+        };
+        if last_rank.is_some_and(|previous| rank <= previous) {
+            return None;
+        }
+        last_rank = Some(rank);
+        total_seconds = total_seconds.checked_add(number.checked_mul(seconds_per_unit)?)?;
+        parsed_component = true;
+    }
+    if !parsed_component {
+        return None;
+    }
+    Some(total_seconds / 86_400)
+}
+
 fn date_diff_days(a: &str, c: &str) -> i64 {
     let a = &a[..a.len().min(10)];
     let c = &c[..c.len().min(10)];
@@ -564,5 +665,29 @@ mod tests {
         }));
         assert!(Platform::subject_activities(&condition).is_empty());
         assert!(Platform::subject_activities(&None).is_empty());
+    }
+
+    #[test]
+    fn iso_duration_parser_accepts_day_and_time_components() {
+        use super::parse_iso_duration_days;
+        assert_eq!(parse_iso_duration_days("P2D"), Some(2));
+        assert_eq!(parse_iso_duration_days("P1W"), Some(7));
+        assert_eq!(parse_iso_duration_days("P1W2D"), Some(9));
+        assert_eq!(parse_iso_duration_days("PT36H"), Some(1));
+        assert_eq!(parse_iso_duration_days("P1DT2H30M"), Some(1));
+        assert_eq!(parse_iso_duration_days("PT23H59M59S"), Some(0));
+        assert_eq!(parse_iso_duration_days("P0D"), Some(0));
+        assert_eq!(parse_iso_duration_days("  P2D  "), Some(2));
+    }
+
+    #[test]
+    fn iso_duration_parser_rejects_ambiguous_or_malformed_values() {
+        use super::parse_iso_duration_days;
+        for value in [
+            "", "P", "PT", "2D", "P2", "P-1D", "p2d", "P1M", "P1Y", "P1X", "P1D2H", "P1DT",
+            "PT1H2H", "PT30M1H", "P1HT2H", "P1W1W",
+        ] {
+            assert_eq!(parse_iso_duration_days(value), None, "{value:?}");
+        }
     }
 }

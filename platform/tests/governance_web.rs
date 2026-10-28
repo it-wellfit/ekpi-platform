@@ -489,3 +489,96 @@ async fn cross_origin_mutating_request_is_rejected() {
         std::fs::remove_file(path).expect("test ledger removed");
     }
 }
+
+#[tokio::test]
+async fn foreign_host_header_is_rejected_even_when_origin_matches() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/projects")
+        .header(header::HOST, "attacker.example")
+        .header(header::ORIGIN, "http://attacker.example")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::COOKIE, cookie.as_str())
+        .body(Body::from(
+            "name=Pilot&department=PMO&owner=Alex&risk_tier=low",
+        ))
+        .expect("foreign-host request builds");
+    let response = app.clone().oneshot(request).await.expect("router responds");
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
+    assert!(response_text(response).await.contains("0 筆事件"));
+
+    let request = Request::get("/")
+        .header(header::HOST, "attacker.example")
+        .body(Body::empty())
+        .expect("foreign-host GET builds");
+    let response = app.clone().oneshot(request).await.expect("router responds");
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn loopback_alternative_hosts_are_allowed() {
+    let path = test_path();
+    let app = test_app(&path);
+    for host in ["LOCALHOST:3000", "[::1]:3000", "127.0.0.2:3000"] {
+        let request = Request::get("/healthz")
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .expect("request builds");
+        let response = app.clone().oneshot(request).await.expect("router responds");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "loopback host {host} must be accepted"
+        );
+    }
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn duplicate_host_headers_are_rejected() {
+    let path = test_path();
+    let app = test_app(&path);
+    let request = Request::get("/healthz")
+        .header(header::HOST, "localhost:3000")
+        .header(header::HOST, "localhost:3000")
+        .body(Body::empty())
+        .expect("request builds");
+    let response = app.clone().oneshot(request).await.expect("router responds");
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn duplicate_session_cookies_are_rejected() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let duplicated = format!("{cookie}; {cookie}");
+    let response = get_with_cookie(&app, "/", Some(&duplicated)).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "ambiguous duplicate session cookies must be rejected"
+    );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}

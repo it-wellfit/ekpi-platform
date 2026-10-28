@@ -33,6 +33,7 @@ const MIN_USERNAME_LEN: usize = 1;
 const MAX_USERNAME_LEN: usize = 64;
 const MAX_FAILED_LOGINS: u32 = 5;
 const LOCKOUT_WINDOW_SECS: u64 = 300;
+const INVALID_CREDENTIALS: &str = "invalid username or password";
 const DUMMY_SALT: &str = "00000000000000000000000000000000";
 const DUMMY_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -163,17 +164,23 @@ impl AuthStore {
     pub fn login(&mut self, username: &str, password: &str) -> Result<Session, String> {
         let now = now_secs();
         self.clear_expired_lockout(username, now);
-        if self.is_locked_out(username, now) {
-            return Err("too many failed login attempts; try again later".to_string());
-        }
-
-        let snapshot = self.users.get(username).map(|user| {
-            (
-                user.salt.clone(),
-                user.iterations,
-                user.password_hash.clone(),
-            )
-        });
+        let locked_out = self.is_locked_out(username, now);
+        // Validate the shape before using the username as a lookup key. An
+        // invalid name is treated exactly like an unknown account and still
+        // pays the password-hash cost below, so the response time does not
+        // reveal whether a padded or control-character name exists.
+        let snapshot = if validate_username(username).is_ok() {
+            self.users.get(username).map(|user| {
+                (
+                    user.salt.clone(),
+                    user.iterations,
+                    user.password_hash.clone(),
+                )
+            })
+        } else {
+            None
+        };
+        let user_exists = snapshot.is_some();
         let (salt, iterations, expected_hash) = snapshot.unwrap_or_else(|| {
             (
                 DUMMY_SALT.to_string(),
@@ -183,16 +190,16 @@ impl AuthStore {
         });
         let candidate = hash_password(password, &salt, iterations);
         let password_matches = bool::from(candidate.as_bytes().ct_eq(expected_hash.as_bytes()));
-        let user_exists = self.users.contains_key(username);
 
-        if !(password_matches && user_exists) {
+        if locked_out || !(password_matches && user_exists) {
             // Lockout state is only useful for accounts that exist. Tracking
             // arbitrary usernames would let an unauthenticated caller grow the
-            // failure map without bound.
-            if user_exists {
+            // failure map without bound. Every failure path returns the same
+            // message, so neither account existence nor lockout state leaks.
+            if user_exists && !locked_out {
                 self.record_failure(username, now);
             }
-            return Err("invalid username or password".to_string());
+            return Err(INVALID_CREDENTIALS.to_string());
         }
 
         self.failed_logins.remove(username);
@@ -287,6 +294,9 @@ fn validate_username(username: &str) -> Result<(), String> {
     }
     if username.chars().any(|c| c.is_control()) {
         return Err("username must not contain control characters".to_string());
+    }
+    if username.chars().any(char::is_whitespace) {
+        return Err("username must not contain whitespace".to_string());
     }
     Ok(())
 }
@@ -383,14 +393,50 @@ mod tests {
     }
 
     #[test]
-    fn repeated_failures_trigger_a_lockout() {
+    fn repeated_failures_trigger_a_lockout_without_leaking_it() {
         let mut store = fast_store();
         store.register("alice", "secret123", Role::Editor).unwrap();
         for _ in 0..MAX_FAILED_LOGINS {
-            assert!(store.login("alice", "wrong-password").is_err());
+            let error = store.login("alice", "wrong-password").unwrap_err();
+            assert_eq!(error, "invalid username or password");
         }
-        let error = store.login("alice", "secret123").unwrap_err();
-        assert!(error.contains("too many failed login attempts"));
+        // The correct password must still be rejected during the window, but
+        // the response must not reveal that the account is locked out.
+        let locked = store.login("alice", "secret123").unwrap_err();
+        assert_eq!(locked, "invalid username or password");
+        let unknown = store.login("nobody", "secret123").unwrap_err();
+        assert_eq!(locked, unknown);
+    }
+
+    #[test]
+    fn an_expired_lockout_allows_the_correct_password_again() {
+        let mut store = fast_store();
+        store.register("alice", "secret123", Role::Editor).unwrap();
+        store
+            .failed_logins
+            .insert("alice".to_string(), (MAX_FAILED_LOGINS, 0));
+        let session = store
+            .login("alice", "secret123")
+            .expect("lockout window is expired");
+        assert!(store.validate_session(&session.token).is_some());
+    }
+
+    #[test]
+    fn usernames_with_whitespace_or_controls_are_rejected() {
+        let mut store = fast_store();
+        for username in [" alice", "alice ", "al ice", "alice\n", "ali\tce"] {
+            let error = store
+                .register(username, "password1", Role::Viewer)
+                .expect_err("ambiguous username is rejected");
+            assert!(
+                error.contains("whitespace") || error.contains("control"),
+                "{username:?}: {error}"
+            );
+            assert!(
+                store.login(username, "password1").is_err(),
+                "{username:?} must not authenticate"
+            );
+        }
     }
 
     #[test]

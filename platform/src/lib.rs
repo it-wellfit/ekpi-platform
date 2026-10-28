@@ -20,6 +20,8 @@ pub mod governance;
 pub mod governance_web;
 pub mod knowledge_graph;
 pub mod local_auth;
+mod local_io;
+mod local_lock;
 pub mod multimodal;
 pub mod ocr;
 pub mod params;
