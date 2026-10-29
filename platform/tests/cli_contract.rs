@@ -570,6 +570,36 @@ fn audit_log_rejects_a_legacy_single_object_file() {
 }
 
 #[test]
+fn audit_log_refuses_a_whitespace_only_file_without_modifying_it() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.jsonl");
+    std::fs::write(&audit, "\n").expect("write whitespace-only audit log");
+    let before = std::fs::read_to_string(&audit).expect("read whitespace-only log");
+
+    let output = run_in(
+        &dir,
+        &[
+            "--search",
+            "變更執行前，須完成風險評估並取得核准紀錄",
+            "--audit-log",
+            audit.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("line 1 is empty"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&audit).expect("read log after refusal"),
+        before,
+        "a whitespace-only file must not be rewritten in place"
+    );
+    cleanup(&dir);
+}
+
+#[test]
 fn import_wellfit_writes_documents_to_the_selected_data_directory() {
     let dir = temp_dir();
     let data = dir.join("data");

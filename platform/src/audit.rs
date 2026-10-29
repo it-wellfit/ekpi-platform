@@ -232,7 +232,10 @@ pub fn read_jsonl(path: &Path) -> Result<AuditLog, String> {
             return Err(format!("read audit log {}: {error}", path.display()));
         }
     };
-    if contents.trim().is_empty() {
+    // Only a zero-byte file is an empty log. A file that contains whitespace or
+    // blank lines is corrupt: accepting it here would let the next append create
+    // a file that this same reader rejects forever.
+    if contents.is_empty() {
         return Ok(AuditLog::new());
     }
     if contents.trim_start().starts_with('{') {
@@ -830,6 +833,53 @@ mod tests {
 
         let error = read_jsonl(&file.0).expect_err("blank line must be refused");
         assert!(error.contains("empty"), "{error}");
+    }
+
+    #[test]
+    fn read_jsonl_refuses_a_whitespace_only_file() {
+        for contents in ["\n", " \n", " ", "\r\n", "\n\n"] {
+            let file = TempAuditFile::new();
+            fs::write(&file.0, contents).expect("write whitespace-only log");
+
+            let error = read_jsonl(&file.0)
+                .expect_err("a whitespace-only file is corrupt, not an empty log");
+            assert!(
+                error.contains("empty") || error.contains("truncated"),
+                "{contents:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn zero_byte_audit_file_is_still_an_empty_log() {
+        let file = TempAuditFile::new();
+        fs::write(&file.0, "").expect("write zero-byte log");
+
+        let log = read_jsonl(&file.0).expect("a zero-byte file is an empty log");
+        assert!(log.is_empty());
+    }
+
+    #[test]
+    fn append_jsonl_refuses_a_whitespace_only_file_without_poisoning_it() {
+        let file = TempAuditFile::new();
+        fs::write(&file.0, "\n").expect("write whitespace-only log");
+        let before = fs::read(&file.0).expect("read before append");
+
+        let error = append_jsonl(
+            &file.0,
+            "A1",
+            AuditEventType::DocumentImport,
+            "alice",
+            "T1",
+            "first",
+        )
+        .expect_err("a whitespace-only log must not be appended to");
+        assert!(error.contains("empty"), "{error}");
+        assert_eq!(
+            fs::read(&file.0).expect("read after append"),
+            before,
+            "a refused append must not modify the corrupt file"
+        );
     }
 
     #[test]
