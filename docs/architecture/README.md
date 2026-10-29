@@ -89,8 +89,8 @@ The two binaries define the served surface. Modules that are compiled and unit-t
 3. `/healthz`, `/metrics`, `/login` and `/assets/*` are public. Every ledger-backed GET requires a `viewer` session; mutations require `editor` or `approver` as documented in the web-route contract.
 4. GET routes render server-side Maud HTML with CSS only; there is no JavaScript and no client-side state.
 5. POST routes append a validated event to the JSONL ledger, then redirect or re-render. The ledger actor is the validated local session username for mutations; it is not an enterprise-verified identity, and a local administrator can rewrite the ledger.
-6. Every event carries a sequence number, timestamp, actor, payload, previous hash and SHA-256 hash. The audit page verifies chain continuity.
-7. Mutating requests with a foreign `Origin` are rejected before the handler; a missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`. Responses carry CSP, `nosniff`, frame-deny and referrer-policy headers.
+6. Every event carries a sequence number, timestamp, actor, payload, previous hash and SHA-256 hash. The audit page verifies chain continuity. Replay validates each event actor, each creating payload's record ID, workflow versions, references and the quality-case transition graph before admitting it to the snapshot.
+7. Mutating requests with a foreign `Origin` are rejected before the handler; a missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`. A repeated or non-UTF-8 `Origin` or `Sec-Fetch-Site` header is refused, and a present `Host` must be a single loopback authority. Responses carry CSP, `nosniff`, frame-deny and referrer-policy headers.
 
 ## Deployment boundary
 

@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At the current `c827351` revision the inventory is **332 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6.
+- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `bbe49eb` the release profile has **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§7.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -161,10 +161,36 @@ This section records the regression baseline added by `fix: fail closed on healt
 | --- | --- |
 | `cargo fmt -- --check` / `cargo clippy --locked --all-targets -- -D warnings` (both crates) | Exit 0 |
 | `eval` `cargo test --locked` | 12 passed; self-test 10 checks |
-| `platform` unit / CLI contract / governance web / integration / search evaluation / web health | 250 / 28 / 15 / 8 / 7 / 4 passed (**332** executed) |
+| `platform` unit / CLI contract / governance web / integration / search evaluation / web health | 250 / 28 / 15 / 8 / 7 / 4 passed (**312** executed; the earlier `332` was an arithmetic error) |
 | `platform` `edge_cases` | **NOT RUN** — harness denied before start (`os error 4551`, Application Control policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`) after nine retries |
 | `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
 | Docs / secrets | 53 required documents, 667 links in 115 files / 231 files |
 | Canonical `scripts/check.ps1` | **BLOCKED**: exit 1 at platform `cargo test --locked` on `edge_cases`; not a PASS |
 
 Evidence: [E-029](../assurance/test-evidence.md#e-029-hardening-re-run-and-host-policy-block-c827351) and [phase gates](../quality/phase-gates.md). The canonical block is an environment/host-policy block, not a source failure, but it still prevents a current canonical PASS. Record it as `Blocked`; do not replace the canonical command with the individual targets.
+
+## 7. Revision record: `bbe49eb` defect-hardening regression (2026-10-29)
+
+This section records the regression baseline added by `fix: fail closed on replay, audit and header ambiguity`. It supplements, and does not replace, the area checklists above. Each defect below was first reproduced by a failing test, then fixed; no test expectation was changed to match new behavior.
+
+### New behavior to preserve
+
+- The `--search` audit payload is serialized as a JSON object. Quotes, backslashes, control characters and newlines in the query must keep the event valid JSON.
+- `audit::read_jsonl` validates every existing event's `id`, `actor`, `tenant_id` and payload structure, not only the timestamp, duplicate IDs and hash chain.
+- Ledger replay validates the event actor, every creating payload's record ID, workflow version 0 and the quality-case transition graph. `save_workflow` uses `checked_add`.
+- Quality cases allow only `open → in_progress`, `in_progress → verification`, `verification → in_progress`, `verification → closed`, plus same-state note updates. A closed case cannot be reopened until a new due date and approval can be captured. The CAPA-specific closure message keeps precedence over the generic transition message.
+- A mutation with a repeated or non-UTF-8 `Origin` or `Sec-Fetch-Site` header is refused; the server never resolves ambiguity by taking the first value.
+- `--selftest` is mutually exclusive with every other flag. After the self-test, any additional argument (including a valid mode flag) is a usage error; malformed arguments still fail after the self-test.
+- The BPMN scanner advances by the full ASCII prefix length, so multibyte text after a tag name cannot cause an out-of-boundary slice panic.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt -- --check` / `cargo clippy --locked --all-targets -- -D warnings` (both crates) | Exit 0 |
+| `eval` `cargo test --locked` / `--selftest` | 12 passed / 10 checks |
+| `platform` unit / CLI contract / edge cases / governance web / integration / search evaluation / web health | 257 / 30 / 2 / 17 / 8 / 7 / 4 passed (**325** executed) |
+| `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
+| Canonical `scripts/check.ps1` | Recorded separately in E-031; the release profile is not a substitute |
+
+Evidence: [E-030](../assurance/test-evidence.md#e-030-defect-hardening-re-run-bbe49eb) and [phase gates](../quality/phase-gates.md). The host Application Control policy remained intermittent: several freshly rebuilt harnesses were denied on first attempt, then retried on the same canonical path and passed. No binary was renamed, copied, moved or pointed at another target directory. A persistent denial is recorded as `Blocked`, not `PASS`.
