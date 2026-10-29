@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **277 tests** in the canonical debug profile: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records.
+- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At the current `c827351` revision the inventory is **332 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -143,3 +143,28 @@ The existing automated route test checks semantic page headings, CSP presence, s
 - [ ] For a UI change, record keyboard, screen-reader, contrast, narrow-screen, and existing-route checks where applicable.
 - [ ] For high-risk behavior, add applicable denial, stale/conflicting version, duplicate/retry, failed approval, and recovery cases; preserve fail-closed behavior.
 - [ ] Keep prototype behavior claims separate from target-product requirements and unimplemented integrations.
+
+## 6. Revision record: `c827351` hardening regression (2026-10-29)
+
+This section records the regression baseline added by `fix: fail closed on health checks and remove policy workarounds`. It supplements, and does not replace, the area checklists above.
+
+### New behavior to preserve
+
+- `--health` validates arguments before printing any status. It accepts only `--data DIR`; every other flag, including `--selftest`, `--search`, `--eval`, report/export flags and unknown flags, is a usage error (exit `2`).
+- `--health` prints `health: OK` and exits `0` only when `<data>/rules.json`, `docs.json` and `processes.json` exist as files; a missing file prints `health: DEGRADED (missing: ...)` and exits `1`. It does not parse the files, so `OK` is liveness, not readiness or data validity.
+- Tests launch the binary only through `CARGO_BIN_EXE_ekp_platform` in the crate's canonical `target` directory. The `EKP_PLATFORM_BIN` override and the committed absolute `target-dir` override were removed; do not reintroduce them or copy/rename a blocked harness.
+- `platform/Cargo.toml` and `eval/Cargo.toml` each declare `[workspace]`, so an unrelated parent manifest cannot capture either crate.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt -- --check` / `cargo clippy --locked --all-targets -- -D warnings` (both crates) | Exit 0 |
+| `eval` `cargo test --locked` | 12 passed; self-test 10 checks |
+| `platform` unit / CLI contract / governance web / integration / search evaluation / web health | 250 / 28 / 15 / 8 / 7 / 4 passed (**332** executed) |
+| `platform` `edge_cases` | **NOT RUN** — harness denied before start (`os error 4551`, Application Control policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`) after nine retries |
+| `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
+| Docs / secrets | 53 required documents, 667 links in 115 files / 231 files |
+| Canonical `scripts/check.ps1` | **BLOCKED**: exit 1 at platform `cargo test --locked` on `edge_cases`; not a PASS |
+
+Evidence: [E-029](../assurance/test-evidence.md#e-029-hardening-re-run-and-host-policy-block-c827351) and [phase gates](../quality/phase-gates.md). The canonical block is an environment/host-policy block, not a source failure, but it still prevents a current canonical PASS. Record it as `Blocked`; do not replace the canonical command with the individual targets.

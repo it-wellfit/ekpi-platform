@@ -2,7 +2,7 @@
 
 - **Status:** Active for the local prototype; **not** a production threat model and not a security certification
 - **Owner:** Engineering; security owner/approver `UNASSIGNED`
-- **Last reviewed:** 2026-10-27
+- **Last reviewed:** 2026-10-29
 - **Canonical threat model:** [architecture/threat-model.md](../architecture/threat-model.md) (TH-01–TH-15)
 - **Security requirements:** [governance/07](../governance/07-security-integration-spec-v1.md)
 - **Readiness:** [production readiness](../operations/production-readiness.md)
@@ -39,7 +39,7 @@ If any assumption changes, stop and revise this model before deployment. Exposin
 | Process evidence and case data | Forbidden transitions/evidence gaps must not be released | Replay tests, hard gates |
 | Retrieval corpus and eval set | Search must cite the right source and abstain when evidence is weak | Fixed set, citation checks, threshold, refusal cases |
 | Decision snapshots and reports | Audit/reproduction record | Deterministic generation; not signed |
-| Governance ledger | Local record of governed actions | Append-only JSONL hash chain; not WORM |
+| Governance ledger | Local record of governed actions | Append-only JSONL hash chain with a single-host OS writer lock; not WORM |
 | Local credentials/environment | Leakage compromises local access | Env-only password, PBKDF2 hash, no default account |
 | Build/dependency integrity | Supply-chain compromise can alter behavior | Lockfiles, pinned toolchain, audit, SBOM |
 | Backups | Recovery after loss | Local bundle + restore drill; no off-host copy |
@@ -49,12 +49,12 @@ If any assumption changes, stop and revise this model before deployment. Exposin
 | Boundary | Trust assumption | Control | Residual risk |
 | --- | --- | --- | --- |
 | Operator ↔ local process | Operator is trusted to start the process and choose data paths | Host account permissions; local session for data pages | A local administrator can read/rewrite the ledger and process memory |
-| Browser ↔ loopback HTTP | Browser is the UI; no public network | Loopback bind, session cookie, same-origin/fetch-metadata guard, CSP, `HttpOnly`/`SameSite=Strict`, body cap | No enterprise CSRF token, no TLS, no WAF; local malware can act as the user |
+| Browser ↔ loopback HTTP | Browser is the UI; no public network | Loopback bind, single loopback `Host` header (duplicate/blank/non-loopback refused), session cookie, duplicate or malformed cookies unauthenticated, same-origin/fetch-metadata guard, CSP, `HttpOnly`/`SameSite=Strict`, body cap | No enterprise CSRF token, no TLS, no WAF; local malware can act as the user |
 | Process ↔ filesystem | Operator-chosen paths; local ledger path | Path handling by the operator; append + `sync_data` | A filesystem administrator can rewrite/truncate the ledger; no external anchor |
 | Repository ↔ supply chain | Dependencies/actions/skills are external | Lockfiles, pinned toolchain, `cargo audit`/`cargo deny`, secret scan, SBOM | Actions are tag-pinned, CI has not run, SBOM is not signed/attested |
 | Data ↔ external services | None in the served path | No connector, no LLM, no PM4Py | A future provider integration would create a new boundary requiring policy |
 | Search corpus ↔ caller | `--search` runs as the local operator; no identity | Library `PermissionContext` filter, synthetic eval cases | `--search` has no authenticated identity; no tenant enforcement |
-| Credential boundary | One env-provided account | PBKDF2-HMAC-SHA256 600k, CSPRNG salt/token, constant-time compare, lockout | No MFA, recovery, persistent identity, access review; env/host account is the effective store |
+| Credential boundary | One env-provided account | PBKDF2-HMAC-SHA256 600k, CSPRNG salt/token, constant-time compare, five-failure lockout; one generic failure message, lockout state not disclosed, invalid usernames pay a dummy hash and do not grow lockout state | No MFA, recovery, persistent identity, access review; env/host account is the effective store |
 | Backup boundary | Local disk and local clone | Git bundle + fresh-clone drill; local `age` drill | No off-host copy, no key custody, no RPO/RTO, no immutable storage |
 
 ## Threat analysis
@@ -64,9 +64,9 @@ The canonical IDs are retained. The assurance column records the current evidenc
 | Canonical ID | Threat | Current control | Assurance test/evidence | Residual risk |
 | --- | --- | --- | --- | --- |
 | TH-01 | Prompt injection changes a verdict or triggers a tool | Engine treats source text as data; deterministic engine decides; injection cases assert no rule change | Adversarial cases in the 67-case corpus; mock provider has no tools | A future LLM/agent path could reintroduce the risk; not implemented today |
-| TH-02 | Ledger edited, truncated or reordered | Append-only JSONL, sequence, previous hash, SHA-256, `sync_data`, audit continuity check | `audit` unit tests; ledger route tests | A filesystem administrator can rewrite the whole chain; no WORM or external anchor |
-| TH-03 | Cross-site form submission mutates data | Same-origin guard; missing `Origin` only with `Sec-Fetch-Site: same-origin`/`none`; `SameSite=Strict`; CSP; no JS | 11 governance-web route tests; manual review | Local CSRF hardening, not an enterprise CSRF token or identity review |
-| TH-04 | Unauthorized local user reads/changes data | Loopback, host permissions, local session, Viewer/Editor/Approver checks on data routes; mutation actor taken from the validated session | 11 route tests (including an actor-impersonation regression) + 11 local-auth unit tests | Local process-memory identity; no IdP/MFA/recovery/access review; local admin can read memory |
+| TH-02 | Ledger edited, truncated or reordered | Append-only JSONL, sequence, previous hash, SHA-256, `sync_data`, single-host OS writer lock, replay reference/transition validation; search audit v2 uses a domain separator + length-prefixed fields, UTC timestamp and unique event ID, with rollback on a failed append | `audit` 19 unit tests (tamper, legacy, truncated, duplicate ID, rollback, concurrent appenders); ledger route tests; `local_lock` tests | A filesystem administrator can rewrite the whole chain; no WORM or external anchor |
+| TH-03 | Cross-site form submission mutates data | Same-origin guard; a single loopback `Host` is required; missing `Origin` only with `Sec-Fetch-Site: same-origin`/`none`; `SameSite=Strict`; CSP; no JS | 15 governance-web route tests + 5 parser unit tests; manual review | Local CSRF hardening, not an enterprise CSRF token or identity review |
+| TH-04 | Unauthorized local user reads/changes data | Loopback, host permissions, local session, Viewer/Editor/Approver checks on data routes; mutation actor taken from the validated session; duplicate/blank/non-UTF-8 Host or cookie values fail closed | 15 route tests (including an actor-impersonation regression) + 5 parser unit tests + 13 local-auth unit tests | Local process-memory identity; no IdP/MFA/recovery/access review; local admin can read memory |
 | TH-05 | Tenant data leaks across records | No tenant context is constructed by the CLI/web app; `tenant` is library-only | Library `PermissionContext` tests and synthetic role cases | No tenant isolation or tenant-scoped storage; do not claim tenant isolation |
 | TH-06 | Secret or sensitive data committed | `.env` ignored, secret scan, docs prohibit real data, placeholders only, no password logging | E-005/E-017 secret scan (229 files at the latest docs commit); `.env.example` review | Ledger/reports can contain sensitive text typed by an operator; no DLP; process env holds the password |
 | TH-07 | Backup missing or cannot be restored | Local bundle + restore drill; `age` drill | E-007 (earlier blocked), E-008 (earlier PASS), E-009 (simulated), E-020/E-023 (`41beaea`/`6ed236d` restore + clean-clone canonical PASS), E-027 (current `499e0d1` restore PASS) | No off-host copy, approved RPO/RTO, key custody or scheduled drill; the host policy has blocked working-tree runs before and has no named exception owner |
@@ -77,13 +77,13 @@ The canonical IDs are retained. The assurance column records the current evidenc
 | TH-12 | Data loss on the single local machine | Git history, bundle procedure, restore drill | E-007/E-008 | No automatic off-host backup or monitoring |
 | TH-13 | Search returns a restricted/wrong document or fabricates an answer | Verbatim citations, weak-score abstention, fixed cases, permission cases | E-003: 20/20, 8/8, 4 role cases, 0 violations | `--search` has no identity; lexical matching can miss/paraphrase; no semantic/LLM eval |
 | TH-14 | Document text injects instructions through search output | Retrieved text is quoted, not executed; injection directive detected | Adversarial cases | A future summarizer could follow quoted instructions |
-| TH-15 | Offline/online guessing of the local password | PBKDF2 600k, random salt, CSPRNG token, constant-time compare, dummy hash, 5-failure/300 s lockout | 11 local-auth unit tests | Lockout is in-process and resets on restart; no MFA, source rate limit or recovery |
+| TH-15 | Offline/online guessing of the local password | PBKDF2 600k, random salt, CSPRNG token, constant-time compare, dummy hash, five-failure/300 s lockout; failures and lockout return one generic message; invalid usernames do not create lockout state | 13 local-auth unit tests (generic failure, lockout non-disclosure, dummy-hash path, username shape, expiry) | Lockout is in-process and resets on restart; no MFA, source rate limit or recovery |
 
 ## Additional assurance threats
 
 | ID | Threat | Why it matters here | Current mitigation | Residual risk / target |
 | --- | --- | --- | --- | --- |
-| AST-01 | Host Application Control blocks build/test execution | Interfered with canonical acceptance and earlier restores; could tempt a team to lower the gate | Recorded as `BLOCKED`; release-profile coverage retained; the `41beaea` clean clone passed the canonical check; no gate change | Working-tree canonical and earlier restores remain blocked until a scoped exception or clean runner exists |
+| AST-01 | Host Application Control blocks build/test execution | Interfered with canonical acceptance and earlier restores; could tempt a team to lower the gate | Recorded as `BLOCKED`; release-profile coverage retained; clean clones at `41beaea`/`6ed236d` passed the canonical check; no gate change; the absolute target-dir override and `EKP_PLATFORM_BIN` test override were removed | Current `c827351` working-tree canonical is blocked at `edge_cases` (`os error 4551`); earlier restores remain blocked until a scoped exception or clean runner exists |
 | AST-02 | A blocked check is misreported as PASS | Would invalidate the entire evidence chain | Status vocabulary; matrix separates `PASS`/`BLOCKED`/`NOT RUN`; no row claims a working-tree or CI canonical PASS | Requires reviewer discipline and automated link/claim checks |
 | AST-03 | Local admin rewrites ledger and backup | The ledger is not WORM; a bundle can be replaced | Hash chain detects accidental edits; backup log records hashes | No external anchor, signature, object lock or separation of duties |
 | AST-04 | Real data enters a synthetic-data workflow | Privacy/legal exposure and invalid evaluation | Docs prohibit real data; env/data path is operator-controlled | No DLP or classification enforcement; B8 blocked |
@@ -99,7 +99,7 @@ These ratings are meaningful only for the local, synthetic-data, single-user pro
 | Risk | Likelihood | Impact | Rating | Basis |
 | --- | --- | --- | --- | --- |
 | Local admin tampering with ledger/backup | Medium | High | **High** | No WORM, no external anchor, local disk |
-| Final backup unrecoverable | Medium | High | **High** | `41beaea` and `6ed236d` restore locally; the earlier `28b68cc` restore is `BLOCKED`; no off-host copy |
+| Final backup unrecoverable | Medium | High | **High** | `41beaea` and `6ed236d` restore locally; the earlier `28b68cc` restore is `BLOCKED`; the current `c827351` revision is not bundled; no off-host copy |
 | Secret/sensitive text in ledger or report | Medium | Medium | **Medium** | Operator-entered content; no DLP |
 | Password guessing on local login | Low | Medium | **Medium** | 600k PBKDF2 + lockout; no MFA |
 | Supply-chain compromise | Low | High | **Medium** | Lockfiles/audit/SBOM, but CI/SHA pinning absent |
@@ -113,6 +113,8 @@ If the service is exposed beyond loopback, all ratings become invalid and the mo
 
 - The local session is a real control for casual local access, but it is not enterprise authentication.
 - The role checks are enforced on the served routes and covered by tests, but the identity source is a single startup account, not an IdP.
+- Login failures return one generic message, lockout state is not disclosed, invalid usernames pay a dummy hash and do not grow lockout state, and duplicate/malformed session cookies plus duplicate/non-loopback `Host` values fail closed. These reduce local disclosure and request-routing risk; they do not provide enterprise identity.
+- The ledger is protected by a single-host OS writer lock and replay validates references and transitions. Search audit v2 uses a domain-separated, length-prefixed hash with unique IDs and rolls back a failed append. None of this makes the ledger WORM or externally anchored.
 - There is no tenant boundary. The `tenant` module is library-only. Cross-tenant tests do not exist because there is no tenant-scoped storage or identity claim.
 - The ledger actor is the validated local session username for web mutations, but the session is process-memory only, so the ledger is not proof of an enterprise-verified identity. Submitted form `actor`/`reviewer` fields are ignored. The CLI search audit uses the fixed `search-cli` label.
 - A local administrator can read or rewrite the ledger and process memory. The hash chain is tamper-evident against accidental edits, not WORM.

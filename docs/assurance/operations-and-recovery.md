@@ -149,7 +149,7 @@ This produces `destination_class: local-simulated-off-host`. It is **not** an of
 7. Record date, bundle path, revision, SHA-256, environment, operator, result and limitations.
 8. If the check fails for a code/data reason, stop the release and fix it. Do not lower the drill.
 
-**Current status:** last verified restore `499e0d1`; the current evidence bundle `ekpi-platform-2026-10-27-170750.bundle` verifies, clones to `499e0d1` and passes the automatic restore drill with the restored `scripts/check.ps1` exit 0 (docs 657/105, platform 277). The earlier `6ed236d` and `41beaea` bundles also passed; the `28b68cc` restore remains `BLOCKED` and is not counted. The working tree also passed the canonical check at `4697aa1`, `718db57`, `32f2b36` and `604a2a5`; the earlier `41beaea` block remains historical, and no CI run exists.
+**Current status:** last verified restore `499e0d1`; the current evidence bundle `ekpi-platform-2026-10-27-170750.bundle` verifies, clones to `499e0d1` and passes the automatic restore drill with the restored `scripts/check.ps1` exit 0 (docs 657/105, platform 277). The earlier `6ed236d` and `41beaea` bundles also passed; the `28b68cc` restore remains `BLOCKED` and is not counted. The working tree also passed the canonical check at `4697aa1`, `718db57`, `32f2b36` and `604a2a5`; the earlier `41beaea` block remains historical, and no CI run exists. The later `c827351` revision is **not yet bundled** and its canonical check is `BLOCKED` at the `edge_cases` harness (`os error 4551`), so it has no restore or canonical PASS yet.
 
 ## Disaster recovery
 

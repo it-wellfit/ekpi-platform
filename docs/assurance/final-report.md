@@ -1,12 +1,24 @@
 # Final assurance report
 
-- **Status:** Final for the 2026-10-27 local evidence baseline; **Phase A not approved**, **Phase B blocked**
+- **Status:** Final for the 2026-10-27 local evidence baseline, with a [2026-10-29 addendum](#0-2026-10-29-addendum-current-revision); **Phase A not approved**, **Phase B blocked**
 - **Owner:** Engineering + QA; business, security, operations, data and independent-review roles `UNASSIGNED`
-- **Evidence revision:** `604a2a5` (current working-tree canonical PASS); `32f2b36` (preceding canonical PASS); `718db57` (code change and earlier canonical PASS); `499e0d1` (current evidence bundle: automatic restore PASS); `6ed236d` (final evidence bundle clean-clone canonical PASS and automatic restore PASS); previous assurance bundle `41beaea`; code baseline `6ae6134`; release-profile checks re-run 2026-10-27
+- **Evidence revision:** `c827351` (current hardening revision; canonical **BLOCKED** at `edge_cases`); `604a2a5` (last working-tree canonical PASS); `32f2b36` (preceding canonical PASS); `718db57` (code change and earlier canonical PASS); `499e0d1` (current evidence bundle: automatic restore PASS); `6ed236d` (final evidence bundle clean-clone canonical PASS and automatic restore PASS); previous assurance bundle `41beaea`; code baseline `6ae6134`; release-profile checks re-run 2026-10-27
 - **Environment:** Single managed Windows 11 host; Windows PowerShell 5.1; Rust 1.99.1; local loopback only; no remote, CI, staging or production
 - **Matrix:** [phase-a-b-matrix.md](phase-a-b-matrix.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
 - **Blockers:** [external-blockers.md](external-blockers.md)
+
+## 0. 2026-10-29 addendum (current revision)
+
+The 2026-10-27 sections below are retained unchanged as history. This addendum records the later hardening revision and must be read first for current status.
+
+- **Current revision:** `c827351bc0ecf1db589d58b1b57b068360d12195` — `fix: fail closed on health checks and remove policy workarounds`.
+- **Current canonical result:** **BLOCKED**, not PASS. `scripts/check.ps1` exited 1 at the platform `cargo test --locked` step because the `edge_cases` harness could not start: `os error 4551`, Application Control policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`, path `platform\target\debug\deps\edge_cases-111f9e750cab1c27.exe`. The harness was retried nine times and invoked directly with `--list`; every attempt was denied.
+- **What still ran on `c827351`:** docs 53 required/667 links in 115 files PASS; secrets 231 files PASS; eval fmt, Clippy, 12 tests and 10 self-test checks PASS; platform fmt and Clippy PASS; unit **250**, CLI contract **28**, governance web **15**, integration **8**, search evaluation **7** and web health **4** PASS (**332** executed tests); the 2 `edge_cases` tests are **NOT RUN**. Platform `--selftest` 49 assertions, schema 20 records, search gate 28 cases (20/20, 8/8, 4 role cases, 0 violations) and `--health` `health: OK` all exited 0. Details in [E-029](test-evidence.md#e-029-hardening-re-run-and-host-policy-block-c827351).
+- **Engineering change:** `--health` now validates arguments first, accepts only `--data`, checks `rules.json`/`docs.json`/`processes.json`, and returns 0/1/2 for OK/DEGRADED/usage error (four new CLI contract tests). The absolute temp `target-dir` override and the `EKP_PLATFORM_BIN` test override were removed; tests use only `CARGO_BIN_EXE_ekp_platform` in the crate target directory. Both crates declare `[workspace]` so an unrelated parent manifest cannot capture them.
+- **Phase A:** still **NOT APPROVED**. A1 `NOT MET`; A2/A3/A5/A6/A7/A9/A10/A11 `PARTIAL`; A4 is **`BLOCKED`** at `c827351` (historical `MET` at `604a2a5`/`6ed236d` only); A8 `MET` only for the local `499e0d1` restore scope, and `c827351` is not yet bundled.
+- **Phase B:** still **BLOCKED** (B1/B4/B5/B6/B8 blocked; B2/B3/B7 partial).
+- **Boundary:** this addendum is local evidence on one managed host. It is not CI, staging, production, off-host, independent review, user acceptance or a security certification. No gate was lowered and no blocked test was counted as a pass.
 
 ## 1. What was completed
 
@@ -55,7 +67,8 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 
 | Check | Command (working directory) | Exit | Result |
 | --- | --- | --- | --- |
-| Canonical gate (working tree, current) | `scripts/check.ps1` (root) | **0** | **PASS**: docs 53 required/660 links in 115 files, secrets 229, eval 12, platform 277, self-test 49, schema 20, search 28 (`604a2a5`) |
+| Canonical gate (working tree, current) | `scripts/check.ps1` (root) | **1** | **BLOCKED**: platform `edge_cases` harness denied (`os error 4551`) at `c827351`; 250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation and 4 web health pass individually; 2 edge tests NOT RUN (E-029) |
+| Canonical gate (working tree, 2026-10-27 historical) | `scripts/check.ps1` (root) | **0** | **PASS**: docs 53 required/660 links in 115 files, secrets 229, eval 12, platform 277, self-test 49, schema 20, search 28 (`604a2a5`) |
 | Canonical gate (working tree, previous) | `scripts/check.ps1` (root) | **0** | **PASS**: docs 53 required/660 links in 115 files, secrets 229, eval 12, platform 277, self-test 49, schema 20, search 28 (`32f2b36`) |
 | Canonical gate (working tree, earlier) | `scripts/check.ps1` (root) | **0** | **PASS**: docs 53 required/657 links in 115 files, secrets 229, eval 12, platform 277, self-test 49, schema 20, search 28 (`718db57`) |
 | Canonical gate (working tree, historical) | `scripts/check.ps1` (root) | **1** | **BLOCKED** at platform test: 22 CLI contract tests could not start the existing debug binary (`os error 4551`) (`41beaea`) |
@@ -95,7 +108,7 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | A1 User value | **NOT MET** | No named pilot owner or representative user; no real workflow record. Prepared runbook and synthetic tests are not user acceptance. |
 | A2 Functional correctness | **PARTIAL** | Release-profile tests and 67-case corpus pass; canonical passes in the working tree at `718db57`/`32f2b36`/`604a2a5` and the clean clone at `6ed236d`; target AT-01–AT-31 not run. |
 | A3 Data correctness | **PARTIAL** | Version/state/replay/schema tests pass; no real-workflow dataset, independent review or DB transaction semantics. |
-| A4 Engineering quality | **MET** (local) | Working tree at `604a2a5`: canonical `scripts/check.ps1` exit 0, platform 277, docs 53/660/115 (`32f2b36`: 660; `718db57`: 657). Fresh clone at `6ed236d`: exit 0, platform 270. No CI or named host-policy exception owner. |
+| A4 Engineering quality | **BLOCKED** (current); **MET** (historical) | At `c827351` the canonical `scripts/check.ps1` exits 1 because the `edge_cases` harness is denied (`os error 4551`); six other platform targets pass, 332 executed tests, 2 edge tests NOT RUN. Historical `MET`: working tree at `604a2a5` (canonical exit 0, platform 277, docs 53/660/115) and fresh clone at `6ed236d` (exit 0, platform 270). No CI or named host-policy exception owner. |
 | A5 Security | **PARTIAL** | Local session/role/CSRF hardening tested; no IdP, MFA, recovery, persistent identity, access review or tenant isolation. |
 | A6 Maintainability | **PARTIAL** | Docs/runbooks exist; no named operator or handoff dry run. |
 | A7 Traceability | **PARTIAL** | Register links requirements/code/tests/releases; no pilot run ID or validated row. |
@@ -104,7 +117,7 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | A10 Docs/handoff | **PARTIAL** | Docs map and evidence current; no pilot handoff record. |
 | A11 Review/improvement | **PARTIAL** | Local self-review/retro; no independent reviewer or second annotator. |
 
-**Phase A decision: NOT APPROVED.** A1 is the decisive unmet requirement. A4 is `MET` on the local working-tree and clean-clone scope; A8 is `MET` on the local restore scope; A2/A3/A5/A6/A7/A9/A10/A11 remain `PARTIAL`. No combination of release-profile tests, simulated drills or self-review can close A1 or the enterprise-identity, AI and independent-review gaps.
+**Phase A decision: NOT APPROVED.** A1 is the decisive unmet requirement. A4 is `BLOCKED` at the current `c827351` revision and remains historical `MET` only at `604a2a5`/`6ed236d`; A8 is `MET` on the local restore scope at `499e0d1`; A2/A3/A5/A6/A7/A9/A10/A11 remain `PARTIAL`. No combination of release-profile tests, simulated drills or self-review can close A1 or the enterprise-identity, AI and independent-review gaps.
 
 ## 4. Phase B status
 
@@ -145,7 +158,7 @@ Detailed unlock steps, minimum access and acceptance criteria are in [external-b
 ### What can be proven
 
 - The repository is a runnable local prototype with a deterministic adjudication core and a loopback governance workbench.
-- On `718db57`/`32f2b36`/`604a2a5`, the canonical debug profile passes: platform 277, eval 12; self-test 49 assertions; schema 20 records; search gate 28 cases with 20/20 top-1, 8/8 refusals, 4 role cases and 0 violations.
+- On `718db57`/`32f2b36`/`604a2a5`, the canonical debug profile passed: platform 277, eval 12; self-test 49 assertions; schema 20 records; search gate 28 cases with 20/20 top-1, 8/8 refusals, 4 role cases and 0 violations. At the current `c827351` revision the canonical check is blocked at the `edge_cases` harness (`os error 4551`); 332 other platform tests pass individually and 2 edge tests are NOT RUN.
 - Format, Clippy, docs links, secret patterns and dependency audits pass locally on the named revision.
 - Local Git bundles for `3ee2ee2`, `41beaea` and `6ed236d` were restored and checked successfully; the `56a944f` `age` drill encrypted and decrypted byte-identically to a local-simulated destination.
 - A local session login, role checks, session-derived mutation actors, CSRF guard, CSP and request limits are implemented and tested.
@@ -158,7 +171,7 @@ Detailed unlock steps, minimum access and acceptance criteria are in [external-b
 
 ### What cannot be proven
 
-- That the canonical `scripts/check.ps1` is reproducible on a different host or in CI. It passes in the working tree at `604a2a5` and a fresh clone at `6ed236d`, but there is no CI run and no named host-policy exception owner.
+- That the canonical `scripts/check.ps1` is reproducible on a different host or in CI. It passed in the working tree at `604a2a5` and a fresh clone at `6ed236d`, but the current `c827351` run is blocked at the `edge_cases` harness (`os error 4551`), and there is no CI run or named host-policy exception owner.
 - That the earlier `28b68cc` revision can be restored and checked on this host; it remains `BLOCKED` and is not counted.
 - That the system is production-ready, secure, compliant, enterprise-authenticated, tenant-isolated, scalable or AI-validated.
 - That CI, PR review, branch protection, a real pilot, independent review, off-host backup, approved RPO/RTO or a production deployment exists.
@@ -166,6 +179,6 @@ Detailed unlock steps, minimum access and acceptance criteria are in [external-b
 
 ### Decision
 
-**Phase A: not approved.** A1 is `NOT MET`; the pilot, enterprise-identity, AI and independent-review gaps remain. A4 and A8 are `MET` only on the local clean-clone/restore scope. **Phase B: blocked.**
+**Phase A: not approved.** A1 is `NOT MET`; the pilot, enterprise-identity, AI and independent-review gaps remain. A4 is `BLOCKED` at the current `c827351` revision and `MET` only on the historical local clean-clone/working-tree scope; A8 is `MET` only on the local restore scope. **Phase B: blocked.**
 
 The correct next actions are, in order: establish the pilot owner and real workflow for A1/A7; obtain independent review for A11; make the canonical check reproducible in the approved working environment or CI; then execute the Phase B identity, data, AI, SLO and off-host recovery work. Until those are evidenced and signed, no production or compliance claim is valid.
