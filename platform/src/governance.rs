@@ -400,6 +400,8 @@ impl Ledger {
                 if event.sha256 != expected {
                     return Err(format!("ledger hash mismatch at line {}", index + 1));
                 }
+                validate_actor(&event.actor)
+                    .map_err(|error| format!("ledger line {}: {error}", index + 1))?;
                 apply_event(&mut snapshot, &event)
                     .map_err(|error| format!("ledger line {}: {error}", index + 1))?;
                 snapshot.events.push(event);
@@ -536,7 +538,11 @@ impl Ledger {
                     .filter(|w| w.id == id)
                     .max_by_key(|w| w.version)
                     .ok_or_else(|| "找不到來源流程模板".to_string())?;
-                (id.to_string(), prior.version + 1)
+                let next_version = prior
+                    .version
+                    .checked_add(1)
+                    .ok_or_else(|| "流程版本已達上限，無法建立新版本".to_string())?;
+                (id.to_string(), next_version)
             }
             None => (self.next_id("TPL"), 1),
         };
@@ -643,13 +649,22 @@ impl Ledger {
         if !["open", "in_progress", "verification", "closed"].contains(&status) {
             return Err("請選擇有效的事件狀態".to_string());
         }
-        validate_actor(actor)?;
+        // Give the CAPA-specific refusal precedence: it tells the reviewer the
+        // required next step, while the generic transition message would only
+        // restate the current state.
         if status == "closed" && case.kind == "capa" {
             if case.status != "verification" {
                 return Err("CAPA 必須先進入待複驗狀態，複驗通過後才能結案".to_string());
             }
             validate_text("CAPA 成效驗證紀錄", note, 1200)?;
         }
+        if !quality_case_transition_allowed(&case.status, status) {
+            return Err(format!(
+                "品質事件狀態不可由「{}」直接轉為「{}」",
+                case.status, status
+            ));
+        }
+        validate_actor(actor)?;
         if status == "closed" && note.trim().is_empty() {
             return Err("結案前必須記錄複驗或結案依據".to_string());
         }
@@ -841,6 +856,7 @@ fn previous_hash(snapshot: &GovernanceSnapshot) -> String {
 fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result<(), String> {
     match &event.payload {
         EventPayload::ProjectCreated(project) => {
+            validate_record_id("專案編號", &project.id)?;
             validate_text("專案名稱", &project.name, 120)?;
             validate_text("部門", &project.department, 80)?;
             validate_text("負責人", &project.owner, 80)?;
@@ -853,6 +869,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             snapshot.projects.push(project.clone());
         }
         EventPayload::EvidenceLinked(evidence) => {
+            validate_record_id("證據編號", &evidence.id)?;
             validate_text("證據標題", &evidence.title, 160)?;
             validate_text("來源系統", &evidence.source_system, 80)?;
             validate_source_url(&evidence.source_url)?;
@@ -903,6 +920,13 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
                 .insert(review.evidence_id.clone(), review.clone());
         }
         EventPayload::WorkflowSaved(workflow) => {
+            validate_record_id("流程編號", &workflow.id)?;
+            if workflow.version == 0 {
+                return Err(format!(
+                    "workflow {} version 0 is invalid; use version 1 or later",
+                    workflow.id
+                ));
+            }
             if workflow.status != "draft"
                 || workflow.published_at.is_some()
                 || workflow.published_by.is_some()
@@ -955,6 +979,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             snapshot.workflows.push(workflow.clone());
         }
         EventPayload::WorkflowPublished(publication) => {
+            validate_record_id("流程編號", &publication.id)?;
             validate_actor(&publication.reviewer)?;
             let workflow = snapshot
                 .workflows
@@ -977,6 +1002,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             workflow.published_by = Some(publication.reviewer.clone());
         }
         EventPayload::QualityCaseCreated(case) => {
+            validate_record_id("品質事件編號", &case.id)?;
             if !["risk", "change", "finding", "capa"].contains(&case.kind.as_str()) {
                 return Err(format!("invalid quality case kind {}", case.kind));
             }
@@ -1031,6 +1057,12 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
                     update.id
                 ));
             }
+            if !quality_case_transition_allowed(&case.status, &update.status) {
+                return Err(format!(
+                    "quality case {} cannot move from {} to {}",
+                    update.id, case.status, update.status
+                ));
+            }
             case.status = update.status.clone();
             case.updated_at = update.updated_at;
             if update.status == "closed" {
@@ -1038,6 +1070,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             }
         }
         EventPayload::QualityInspectionRecorded(inspection) => {
+            validate_record_id("檢查編號", &inspection.id)?;
             validate_actor(&inspection.reviewer)?;
             validate_inspection_results(&inspection.results)?;
             if !snapshot
@@ -1060,6 +1093,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             snapshot.inspections.push(inspection.clone());
         }
         EventPayload::GateDecisionRecorded(decision) => {
+            validate_record_id("關卡決議編號", &decision.id)?;
             validate_actor(&decision.actor)?;
             if decision.decision != "go" {
                 validate_text("決議原因", &decision.reason, 1200)?;
@@ -1193,6 +1227,37 @@ fn now_unix() -> Result<u64, String> {
 
 fn validate_actor(value: &str) -> Result<(), String> {
     validate_text("操作者姓名", value, 80)
+}
+
+/// Record identifiers are generated as ASCII `<PREFIX>-<digits>` and are used
+/// as lookup keys and URL path segments. Replay must reject a crafted empty,
+/// oversized or non-ASCII identifier before it enters the snapshot.
+fn validate_record_id(label: &str, value: &str) -> Result<(), String> {
+    let valid = !value.is_empty()
+        && value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("{label}格式無效"))
+    }
+}
+
+/// Allowed quality-case state changes. Same-state updates are allowed so an
+/// owner can append a progress note. A failed verification returns to
+/// `in_progress`; reopening a closed case is deliberately unsupported until a
+/// new due date and approval can be captured as a separate controlled event.
+fn quality_case_transition_allowed(from: &str, to: &str) -> bool {
+    from == to
+        || matches!(
+            (from, to),
+            ("open", "in_progress")
+                | ("in_progress", "verification")
+                | ("verification", "in_progress")
+                | ("verification", "closed")
+        )
 }
 
 fn validate_text(label: &str, value: &str, max_chars: usize) -> Result<(), String> {
@@ -1536,6 +1601,203 @@ mod tests {
         assert_eq!(reloaded.snapshot().events[0].actor, "Jordan");
         reloaded.verify().expect("reloaded chain verifies");
         drop(reloaded);
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_an_event_with_an_invalid_actor() {
+        let path = test_path();
+        let payload = EventPayload::ProjectCreated(Project {
+            id: "PRJ-000001".to_string(),
+            name: "文件治理試點".to_string(),
+            department: "PMO".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "medium".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let event = hashed_event(1, 1_700_000_000, "   ", payload, GENESIS_HASH);
+        fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("event encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("an invalid event actor is refused");
+        assert!(error.contains("操作者姓名"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn quality_case_rejects_skipped_transitions_and_reopening() {
+        let path = test_path();
+        let mut ledger = Ledger::open(&path).expect("new ledger opens");
+        let project_id = ledger
+            .record_project("品質改善", "QA", "Alex", "medium", "Jordan")
+            .expect("project records");
+        let case_id = ledger
+            .create_quality_case(
+                &project_id,
+                "finding",
+                "缺失",
+                "確認根因並完成矯正",
+                "Alex",
+                "2026-12-31",
+                "Jordan",
+            )
+            .expect("finding records");
+
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "closed", "Reviewer", "直接結案")
+                .is_err(),
+            "a case must not skip verification"
+        );
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "verification", "Owner", "跳過處理")
+                .is_err(),
+            "a case must not move straight from open to verification"
+        );
+        ledger
+            .update_quality_case(&case_id, "in_progress", "Owner", "已開始處理")
+            .expect("open to in_progress is allowed");
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "closed", "Reviewer", "尚未複驗")
+                .is_err(),
+            "in_progress to closed must be refused"
+        );
+        ledger
+            .update_quality_case(&case_id, "verification", "Owner", "提出複驗")
+            .expect("in_progress to verification is allowed");
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "open", "Owner", "退回待處理")
+                .is_err(),
+            "verification must not move back to open"
+        );
+        ledger
+            .update_quality_case(&case_id, "closed", "Reviewer", "有效性已確認")
+            .expect("verification to closed is allowed");
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "in_progress", "Owner", "直接重開")
+                .is_err(),
+            "a closed case must not move directly back to in_progress"
+        );
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "open", "Owner", "重開但無新期限")
+                .is_err(),
+            "reopening without a new due date is not supported"
+        );
+        drop(ledger);
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_a_quality_case_that_skips_verification() {
+        let path = test_path();
+        let project = EventPayload::ProjectCreated(Project {
+            id: "PRJ-000001".to_string(),
+            name: "品質改善".to_string(),
+            department: "QA".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "medium".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let first = hashed_event(1, 1_700_000_000, "Jordan", project, GENESIS_HASH);
+        let case = EventPayload::QualityCaseCreated(QualityCase {
+            id: "QMS-000002".to_string(),
+            project_id: "PRJ-000001".to_string(),
+            kind: "finding".to_string(),
+            title: "缺失".to_string(),
+            description: "確認根因並完成矯正".to_string(),
+            owner: "Alex".to_string(),
+            due_date: "2026-12-31".to_string(),
+            status: "open".to_string(),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_000,
+            closure_note: None,
+        });
+        let second = hashed_event(2, 1_700_000_001, "Jordan", case, &first.sha256);
+        let closed = EventPayload::QualityCaseUpdated(QualityCaseUpdate {
+            id: "QMS-000002".to_string(),
+            status: "closed".to_string(),
+            actor: "Reviewer".to_string(),
+            note: "直接結案".to_string(),
+            updated_at: 1_700_000_002,
+        });
+        let third = hashed_event(3, 1_700_000_002, "Reviewer", closed, &second.sha256);
+        let lines = [first, second, third]
+            .iter()
+            .map(|event| serde_json::to_string(event).expect("event encodes"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, format!("{lines}\n")).expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("an invalid transition is refused");
+        assert!(error.contains("cannot move from open to closed"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_an_empty_record_id() {
+        let path = test_path();
+        let payload = EventPayload::ProjectCreated(Project {
+            id: String::new(),
+            name: "文件治理試點".to_string(),
+            department: "PMO".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "medium".to_string(),
+            created_at: 1_700_000_000,
+        });
+        let event = hashed_event(1, 1_700_000_000, "Jordan", payload, GENESIS_HASH);
+        fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("event encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("an empty record id is refused");
+        assert!(error.contains("專案編號"), "{error}");
+        fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_workflow_version_zero() {
+        let path = test_path();
+        let payload = EventPayload::WorkflowSaved(Workflow {
+            id: "TPL-999999".to_string(),
+            version: 0,
+            title: "無效版本".to_string(),
+            department: "QA".to_string(),
+            owner: "Alex".to_string(),
+            description: "版本必須從 1 開始".to_string(),
+            stages: vec!["提出".to_string()],
+            status: "draft".to_string(),
+            created_at: 1_700_000_000,
+            published_at: None,
+            published_by: None,
+        });
+        let event = hashed_event(1, 1_700_000_000, "Creator", payload, GENESIS_HASH);
+        fs::write(
+            &path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("event encodes")
+            ),
+        )
+        .expect("crafted ledger writes");
+
+        let error = Ledger::open(&path).expect_err("version zero is refused");
+        assert!(error.contains("version 1 or later"), "{error}");
         fs::remove_file(path).expect("test ledger removed");
     }
 

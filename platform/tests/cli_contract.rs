@@ -316,6 +316,30 @@ fn selftest_runs_but_malformed_arguments_still_fail() {
 }
 
 #[test]
+fn selftest_refuses_a_valid_mode_flag_it_would_otherwise_ignore() {
+    let dir = temp_dir();
+    let output = run_in(&dir, &["--selftest", "--search", "變更核准"]);
+    assert_eq!(
+        exit_code(&output),
+        2,
+        "stdout: {} stderr: {}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stderr(&output).contains("`--selftest` cannot be combined with `--search`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        !stdout(&output).contains("results:"),
+        "search mode must not run or be silently skipped: stdout: {}",
+        stdout(&output)
+    );
+    cleanup(&dir);
+}
+
+#[test]
 fn audit_log_without_search_is_a_usage_error() {
     let dir = temp_dir();
     let audit = dir.join("audit.json");
@@ -456,6 +480,32 @@ fn audit_log_appends_a_verified_chain_across_runs() {
         !contents.contains("session") && !contents.contains("password"),
         "the local search audit must not invent an identity: {contents}"
     );
+    cleanup(&dir);
+}
+
+#[test]
+fn audit_payload_remains_valid_json_for_hostile_query_characters() {
+    let dir = temp_dir();
+    let audit = dir.join("audit.jsonl");
+    let query = "change \"quoted\" \\ path\nsecond line";
+    let output = run_in(
+        &dir,
+        &[
+            "--search",
+            query,
+            "--audit-log",
+            audit.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
+
+    let log = ekp_platform::audit::read_jsonl(&audit).expect("valid JSONL audit chain");
+    assert_eq!(log.len(), 1);
+    let payload: serde_json::Value = serde_json::from_str(&log.events[0].payload)
+        .expect("the audit payload must itself be valid JSON");
+    assert_eq!(payload["query"], query);
+    assert_eq!(payload["result_count"], 0);
+    assert!(payload["citations"].is_array());
     cleanup(&dir);
 }
 

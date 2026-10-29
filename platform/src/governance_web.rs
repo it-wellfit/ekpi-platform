@@ -512,29 +512,43 @@ fn forbidden_cross_origin() -> Response {
         .into_response()
 }
 
+/// Return a header's single value. A repeated header, or a value that is not
+/// valid visible ASCII, is rejected: different intermediaries may pick
+/// different copies, so treating either one as authoritative is ambiguous.
+fn single_header_value<'a>(
+    headers: &'a HeaderMap,
+    name: &HeaderName,
+) -> Result<Option<&'a str>, ()> {
+    let mut values = headers.get_all(name).iter();
+    match values.next() {
+        None => Ok(None),
+        Some(value) => {
+            if values.next().is_some() {
+                return Err(());
+            }
+            value.to_str().map(Some).map_err(|_| ())
+        }
+    }
+}
+
 async fn same_origin_guard(request: Request, next: Next) -> Response {
     let headers = request.headers();
-    let mut host_values = headers.get_all(header::HOST).iter();
-    let host = match host_values.next() {
-        None => None,
-        Some(value) => {
-            if host_values.next().is_some() {
-                return forbidden_cross_origin();
-            }
-            match value.to_str() {
-                Ok(value) if is_loopback_host(value) => Some(value),
-                _ => return forbidden_cross_origin(),
-            }
-        }
+    let host = match single_header_value(headers, &header::HOST) {
+        Ok(Some(value)) if is_loopback_host(value) => Some(value),
+        Ok(None) => None,
+        _ => return forbidden_cross_origin(),
     };
     let is_mutation = request.method() != Method::GET && request.method() != Method::HEAD;
     if is_mutation {
-        let origin = headers
-            .get(header::ORIGIN)
-            .and_then(|value| value.to_str().ok());
-        let fetch_site = headers
-            .get("sec-fetch-site")
-            .and_then(|value| value.to_str().ok());
+        let origin = match single_header_value(headers, &header::ORIGIN) {
+            Ok(value) => value,
+            Err(()) => return forbidden_cross_origin(),
+        };
+        let fetch_site =
+            match single_header_value(headers, &HeaderName::from_static("sec-fetch-site")) {
+                Ok(value) => value,
+                Err(()) => return forbidden_cross_origin(),
+            };
         let allowed = match origin {
             Some(origin) => match host {
                 Some(host) => {

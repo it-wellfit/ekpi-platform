@@ -166,7 +166,8 @@ impl BpmnModel {
 
         for (tag, etype) in &tag_types {
             let mut search_pos = 0;
-            while let Some(pos) = xml[search_pos..].find(&format!("<{}", tag)) {
+            let prefix = format!("<{}", tag);
+            while let Some(pos) = xml[search_pos..].find(&prefix) {
                 let abs_pos = search_pos + pos;
                 // Extract id
                 let id = extract_attr(xml, abs_pos, "id");
@@ -179,13 +180,14 @@ impl BpmnModel {
                         attributes: std::collections::BTreeMap::new(),
                     });
                 }
-                search_pos = abs_pos + tag.len() + 1;
+                search_pos = abs_pos + prefix.len();
             }
         }
 
         // Extract sequence flows
+        let flow_prefix = "<bpmn:sequenceFlow";
         let mut search_pos = 0;
-        while let Some(pos) = xml[search_pos..].find("<bpmn:sequenceFlow") {
+        while let Some(pos) = xml[search_pos..].find(flow_prefix) {
             let abs_pos = search_pos + pos;
             let id = extract_attr(xml, abs_pos, "id").unwrap_or_default();
             let source = extract_attr(xml, abs_pos, "sourceRef").unwrap_or_default();
@@ -198,7 +200,7 @@ impl BpmnModel {
                     condition: None,
                 });
             }
-            search_pos = abs_pos + 20;
+            search_pos = abs_pos + flow_prefix.len();
         }
 
         Ok(model)
@@ -219,6 +221,14 @@ fn extract_attr(xml: &str, pos: usize, attr: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_does_not_panic_on_multibyte_text_after_a_tag_name() {
+        // A malformed document must return a model or an error, never panic
+        // while advancing the scan position.
+        let _ = BpmnModel::parse("<bpmn:task中");
+        let _ = BpmnModel::parse("<bpmn:sequenceFlow中");
+    }
 
     #[test]
     fn parse_simple_bpmn() {

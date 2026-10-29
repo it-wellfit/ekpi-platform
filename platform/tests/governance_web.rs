@@ -566,6 +566,68 @@ async fn duplicate_host_headers_are_rejected() {
 }
 
 #[tokio::test]
+async fn duplicate_origin_headers_are_rejected() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/projects")
+        .header(header::HOST, "127.0.0.1:3000")
+        .header(header::ORIGIN, "http://127.0.0.1:3000")
+        .header(header::ORIGIN, "https://untrusted.example")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::COOKIE, cookie.as_str())
+        .body(Body::from(
+            "name=Pilot&department=PMO&owner=Alex&risk_tier=low",
+        ))
+        .expect("duplicate-origin request builds");
+    let response = app.clone().oneshot(request).await.expect("router responds");
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "an ambiguous Origin header must be rejected"
+    );
+    let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
+    assert!(response_text(response).await.contains("0 筆事件"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn duplicate_sec_fetch_site_headers_are_rejected() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/projects")
+        .header(header::HOST, "127.0.0.1:3000")
+        .header("sec-fetch-site", "same-origin")
+        .header("sec-fetch-site", "cross-site")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::COOKIE, cookie.as_str())
+        .body(Body::from(
+            "name=Pilot&department=PMO&owner=Alex&risk_tier=low",
+        ))
+        .expect("duplicate-fetch-site request builds");
+    let response = app.clone().oneshot(request).await.expect("router responds");
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "an ambiguous Sec-Fetch-Site header must be rejected"
+    );
+    let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
+    assert!(response_text(response).await.contains("0 筆事件"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
 async fn duplicate_session_cookies_are_rejected() {
     let path = test_path();
     let app = test_app(&path);

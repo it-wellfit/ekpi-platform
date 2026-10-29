@@ -209,7 +209,7 @@ fn validate_args(args: &[String]) -> Result<(), String> {
 }
 
 fn health_report(data_dir: &Path) -> bool {
-    // Liveness only: the three core seed files must be present and readable as
+    // Liveness only: the three core seed files must be present as regular
     // files. This deliberately does not parse them, open a database or call a
     // dependency; a deeper readiness probe belongs to the web `/healthz` route.
     let required = ["rules.json", "docs.json", "processes.json"];
@@ -254,7 +254,14 @@ fn run(args: &[String]) -> i32 {
             return code;
         }
         return match validate_args(args) {
-            Ok(()) => 0,
+            Ok(()) => match args.iter().find(|arg| arg.as_str() != "--selftest") {
+                Some(other) => {
+                    eprintln!("FAIL: `--selftest` cannot be combined with `{other}`");
+                    eprintln!("{USAGE}");
+                    2
+                }
+                None => 0,
+            },
             Err(message) => {
                 eprintln!("FAIL: {message}");
                 2
@@ -378,13 +385,17 @@ fn run(args: &[String]) -> i32 {
         } else {
             query.to_string()
         };
-        let payload = format!(
-            r#"{{"query":"{}","result_count":{},"citations":{},"latency_ms":{}}}"#,
-            truncated_query.replace('"', "\\\""),
-            result_count,
-            serde_json::to_string(&citation_ids).unwrap_or_else(|_| "[]".to_string()),
-            latency_ms,
-        );
+        // Serialize the nested payload instead of interpolating the query.
+        // A query can contain quotes, backslashes, control characters or a
+        // newline; hand-built JSON would produce a syntactically invalid
+        // payload inside an otherwise valid audit event.
+        let payload = serde_json::json!({
+            "query": truncated_query,
+            "result_count": result_count,
+            "citations": citation_ids,
+            "latency_ms": latency_ms,
+        })
+        .to_string();
         let event_id = format!(
             "KS-{}-{}",
             std::process::id(),

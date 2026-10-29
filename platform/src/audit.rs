@@ -282,6 +282,17 @@ pub fn read_jsonl(path: &Path) -> Result<AuditLog, String> {
                 event.id
             ));
         }
+        validate_event_field("id", &event.id, MAX_ID_CHARS)
+            .and_then(|_| validate_event_field("actor", &event.actor, MAX_ACTOR_CHARS))
+            .and_then(|_| validate_event_field("tenant_id", &event.tenant_id, MAX_TENANT_CHARS))
+            .and_then(|_| validate_payload(&event.payload))
+            .map_err(|error| {
+                format!(
+                    "audit log {} line {}: {error}; refusing to append",
+                    path.display(),
+                    index + 1
+                )
+            })?;
         if event.timestamp.is_empty() || !valid_utc_timestamp(&event.timestamp) {
             return Err(format!(
                 "audit log {} line {} has a missing or invalid UTC timestamp; \
@@ -322,14 +333,7 @@ pub fn append_jsonl(
     validate_event_field("id", id, MAX_ID_CHARS)?;
     validate_event_field("actor", actor, MAX_ACTOR_CHARS)?;
     validate_event_field("tenant_id", tenant_id, MAX_TENANT_CHARS)?;
-    if payload.trim().is_empty() {
-        return Err("audit event payload must not be empty".to_string());
-    }
-    if payload.chars().count() > MAX_PAYLOAD_CHARS {
-        return Err(format!(
-            "audit event payload exceeds {MAX_PAYLOAD_CHARS} characters"
-        ));
-    }
+    validate_payload(payload)?;
 
     if let Some(parent) = path
         .parent()
@@ -387,6 +391,18 @@ fn validate_event_field(label: &str, value: &str, max_chars: usize) -> Result<()
     }
     if value.chars().any(char::is_control) {
         return Err(format!("audit event {label} contains a control character"));
+    }
+    Ok(())
+}
+
+fn validate_payload(payload: &str) -> Result<(), String> {
+    if payload.trim().is_empty() {
+        return Err("audit event payload must not be empty".to_string());
+    }
+    if payload.chars().count() > MAX_PAYLOAD_CHARS {
+        return Err(format!(
+            "audit event payload exceeds {MAX_PAYLOAD_CHARS} characters"
+        ));
     }
     Ok(())
 }
@@ -814,6 +830,67 @@ mod tests {
 
         let error = read_jsonl(&file.0).expect_err("blank line must be refused");
         assert!(error.contains("empty"), "{error}");
+    }
+
+    #[test]
+    fn read_jsonl_refuses_structurally_invalid_existing_events() {
+        let cases = [
+            ("empty id", "", "alice", "T1", "data", "id"),
+            ("blank actor", "A1", "   ", "T1", "data", "actor"),
+            (
+                "control character in tenant",
+                "A1",
+                "alice",
+                "T1\n",
+                "data",
+                "tenant_id",
+            ),
+            ("empty payload", "A1", "alice", "T1", "", "payload"),
+        ];
+        for (label, id, actor, tenant, payload, field) in cases {
+            let file = TempAuditFile::new();
+            let event = AuditEvent::new(
+                id,
+                AuditEventType::DocumentImport,
+                actor,
+                tenant,
+                payload,
+                GENESIS_HASH,
+            );
+            fs::write(
+                &file.0,
+                format!(
+                    "{}\n",
+                    serde_json::to_string(&event).expect("crafted event encodes")
+                ),
+            )
+            .expect("crafted event writes");
+
+            let error =
+                read_jsonl(&file.0).expect_err("a structurally invalid existing event is refused");
+            assert!(error.contains(field), "{label}: {error}");
+        }
+
+        let file = TempAuditFile::new();
+        let payload = "x".repeat(MAX_PAYLOAD_CHARS + 1);
+        let event = AuditEvent::new(
+            "A1",
+            AuditEventType::DocumentImport,
+            "alice",
+            "T1",
+            &payload,
+            GENESIS_HASH,
+        );
+        fs::write(
+            &file.0,
+            format!(
+                "{}\n",
+                serde_json::to_string(&event).expect("oversized event encodes")
+            ),
+        )
+        .expect("oversized event writes");
+        let error = read_jsonl(&file.0).expect_err("an oversized payload is refused");
+        assert!(error.contains("payload"), "{error}");
     }
 
     #[test]
