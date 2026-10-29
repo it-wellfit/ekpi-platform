@@ -477,7 +477,7 @@ Observed on 2026-10-27 at clean `604a2a5` (working tree clean): exit 0, `=== ALL
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
-Observed on 2026-10-29 at `c827351bc0ecf1db589d58b1b57b068360d12195` (working tree clean for tracked files; unrelated untracked `.opencode` skill packs were not part of the revision):
+Observed on 2026-10-29 at `c827351bc0ecf1db589d58b1b57b068360d12195` (code files clean at that revision; the 2026-10-29 documentation edits later recorded in `de419d1` were present but uncommitted during the run; unrelated `.opencode` skill changes were not part of the revision):
 
 - Canonical exit **1**, stopped at the platform `cargo test --locked` step. The `edge_cases` harness could not start: `平台應用程式控制原則已封鎖此檔案 (os error 4551)` / Application Control policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`. The path was `platform\target\debug\deps\edge_cases-111f9e750cab1c27.exe`. The final re-run after the 2026-10-29 documentation updates is saved at `%TEMP%\ekpi-canonical-20261029-094042.log`.
 - The canonical run completed the checks before that point: docs 53 required/667 links in 115 files PASS; secrets 231 files PASS; eval fmt, clippy, 12 tests and 10 self-test checks PASS; platform fmt and clippy PASS; platform unit tests 250 PASS; CLI contract tests 28 PASS.
