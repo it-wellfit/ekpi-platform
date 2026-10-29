@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `bbe49eb` the release profile has **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§7.
+- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `b2d8afc` the release profile has **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§8.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -191,6 +191,30 @@ This section records the regression baseline added by `fix: fail closed on repla
 | `eval` `cargo test --locked` / `--selftest` | 12 passed / 10 checks |
 | `platform` unit / CLI contract / edge cases / governance web / integration / search evaluation / web health | 257 / 30 / 2 / 17 / 8 / 7 / 4 passed (**325** executed) |
 | `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
-| Canonical `scripts/check.ps1` | Recorded separately in E-031; the release profile is not a substitute |
+| Canonical `scripts/check.ps1` | **BLOCKED** at docs HEAD `17df06a`: docs 674/115 and secrets 231 PASS; eval 12 + 10 self-test checks PASS; platform fmt/Clippy and 257 lib tests PASS; all 30 CLI contract tests could not spawn the debug `ekp_platform.exe` (`os error 4551`); same-path retry identical (E-031) |
 
 Evidence: [E-030](../assurance/test-evidence.md#e-030-defect-hardening-re-run-bbe49eb) and [phase gates](../quality/phase-gates.md). The host Application Control policy remained intermittent: several freshly rebuilt harnesses were denied on first attempt, then retried on the same canonical path and passed. No binary was renamed, copied, moved or pointed at another target directory. A persistent denial is recorded as `Blocked`, not `PASS`.
+
+## 8. Revision record: `b2d8afc` follow-up defect hardening (2026-10-29)
+
+This section records the regression baseline added by `fix: close remaining replay actor, cookie and BPMN attribute gaps`. It supplements, and does not replace, the area checklists above. Each defect below was first reproduced by a failing test on the release profile, then fixed; no test expectation was changed to match new behavior.
+
+### New behavior to preserve
+
+- A request with more than one `Cookie` header line is unauthenticated, even when only one line carries `ekpi_session`. The server never scans a later line after seeing an earlier one.
+- Replay requires `EvidenceReviewed.reviewer`, `WorkflowPublished.reviewer`, `QualityCaseUpdated.actor`, `QualityInspectionRecorded.reviewer` and `GateDecisionRecorded.actor` to equal the top-level `event.actor`; a mismatch is refused.
+- BPMN attribute lookup stops at the end of the current tag and requires a name delimiter, so a tag without `id` cannot borrow a later tag's `id` and `data-id` is not read as `id`.
+- BPMN tag search requires a delimiter after the prefix, so `<bpmn:taskSequence>` is not parsed as `<bpmn:task>`.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt -- --check` / `cargo clippy --release --locked --all-targets -- -D warnings` (both crates) | Exit 0 |
+| `eval` `cargo test --release --locked` / `--selftest` | 12 passed / 10 checks |
+| `platform` unit / CLI contract / governance web / integration / search evaluation / web health | 262 / 30 / 18 / 8 / 7 / 4 passed (**329** executed) |
+| `platform` `edge_cases` | **BLOCKED** at spawn (`os error 4551`, Application Control) on four same-path attempts; 2 tests NOT RUN, not counted |
+| `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
+| Canonical `scripts/check.ps1` at `b2d8afc` | Recorded from the observed run in E-032; not inferred from the release profile |
+
+Evidence: [E-032](../assurance/test-evidence.md#e-032-second-defect-hardening-re-run-b2d8afc) and [phase gates](../quality/phase-gates.md). The six new regression tests were observed failing before the fix: four BPMN attribute/tag cases, one replay actor case and one duplicate-Cookie header-line case. The 2 edge tests remain `Blocked`; a green release profile is not a canonical PASS.
