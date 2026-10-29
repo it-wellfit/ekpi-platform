@@ -83,7 +83,7 @@ The canonical IDs are retained. The assurance column records the current evidenc
 
 | ID | Threat | Why it matters here | Current mitigation | Residual risk / target |
 | --- | --- | --- | --- | --- |
-| AST-01 | Host Application Control blocks build/test execution | Interfered with canonical acceptance and earlier restores; could tempt a team to lower the gate | Recorded as `BLOCKED`; release-profile coverage retained; clean clones at `41beaea`/`6ed236d` passed the canonical check; no gate change; the absolute target-dir override and `EKP_PLATFORM_BIN` test override were removed | The `c827351` canonical check is blocked at `edge_cases`, the `bbe49eb` canonical check at docs HEAD `17df06a` is blocked at the debug CLI binary, and `b2d8afc` has 2 `edge_cases` tests blocked at spawn (`os error 4551`, E-032); earlier restores remain blocked until a scoped exception or clean runner exists |
+| AST-01 | Host Application Control blocks build/test execution | Interfered with canonical acceptance and earlier restores; could tempt a team to lower the gate | Recorded as `BLOCKED`; release-profile coverage retained; clean clones at `41beaea`/`6ed236d` passed the canonical check; no gate change; the absolute target-dir override and `EKP_PLATFORM_BIN` test override were removed | The `c827351` canonical check is blocked at `edge_cases`, the `bbe49eb` canonical check at docs HEAD `17df06a` is blocked at the debug CLI binary, `b2d8afc` has 2 `edge_cases` tests blocked at spawn (`os error 4551`, E-032), and `21e23d6` has 27 tests blocked across three harnesses plus its canonical entry point blocked (E-033); earlier restores remain blocked until a scoped exception or clean runner exists |
 | AST-02 | A blocked check is misreported as PASS | Would invalidate the entire evidence chain | Status vocabulary; matrix separates `PASS`/`BLOCKED`/`NOT RUN`; no row claims a working-tree or CI canonical PASS | Requires reviewer discipline and automated link/claim checks |
 | AST-03 | Local admin rewrites ledger and backup | The ledger is not WORM; a bundle can be replaced | Hash chain detects accidental edits; backup log records hashes | No external anchor, signature, object lock or separation of duties |
 | AST-04 | Real data enters a synthetic-data workflow | Privacy/legal exposure and invalid evaluation | Docs prohibit real data; env/data path is operator-controlled | No DLP or classification enforcement; B8 blocked |
@@ -99,7 +99,7 @@ These ratings are meaningful only for the local, synthetic-data, single-user pro
 | Risk | Likelihood | Impact | Rating | Basis |
 | --- | --- | --- | --- | --- |
 | Local admin tampering with ledger/backup | Medium | High | **High** | No WORM, no external anchor, local disk |
-| Final backup unrecoverable | Medium | High | **High** | `41beaea` and `6ed236d` restore locally; the earlier `28b68cc` restore is `BLOCKED`; `c827351`, `bbe49eb` and `b2d8afc` are not bundled; no off-host copy |
+| Final backup unrecoverable | Medium | High | **High** | `41beaea` and `6ed236d` restore locally; the earlier `28b68cc` restore is `BLOCKED`; `c827351`, `bbe49eb`, `b2d8afc` and `21e23d6` are not bundled; no off-host copy |
 | Secret/sensitive text in ledger or report | Medium | Medium | **Medium** | Operator-entered content; no DLP |
 | Password guessing on local login | Low | Medium | **Medium** | 600k PBKDF2 + lockout; no MFA |
 | Supply-chain compromise | Low | High | **Medium** | Lockfiles/audit/SBOM, but CI/SHA pinning absent |

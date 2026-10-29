@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-29
-- **Repository revision for the re-run:** current hardening revision `b2d8afc450a2b39364efc6a54ee27cd7bce28066`; preceding hardening revision `bbe49eb2ef3bd829ab51dcb340d4184250b2f050`; earlier hardening revision `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
-- **Working tree during the re-run:** code files committed at `b2d8afc`; the E-032 documentation edits were uncommitted during the run; unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
+- **Repository revision for the re-run:** current hardening revision `21e23d6e5526caca5234cb651bbbad348d535996`; preceding hardening revision `b2d8afc450a2b39364efc6a54ee27cd7bce28066`; earlier hardening revisions `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
+- **Working tree during the re-run:** code files committed at `21e23d6`; the E-033 documentation edits were uncommitted during the run; unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -46,6 +46,7 @@
 | E-030 | LOCAL | Defect-hardening re-run: release tests, replay/audit/CSRF regressions and runtime checks | `bbe49eb` | 0 | PASS for every executed target: platform **325** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health), eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK. Canonical entry point is BLOCKED in E-031 (debug CLI binary) |
 | E-031 | LOCAL | Canonical entry point on the final docs revision | `17df06a` (code `bbe49eb`) | 1 | **BLOCKED**, not PASS: docs 53 required/674 links in 115 files and secrets 231 PASS; eval fmt/Clippy/12 tests/10 self-test checks PASS; platform fmt/Clippy PASS; platform lib **257** PASS; then `cargo test --locked` stopped at `cli_contract` because the debug `ekp_platform.exe` was denied before spawn (`os error 4551`, Application Control) for all 30 tests. A same-path retry gave the identical result. The debug binary also failed to start directly; the release binary's `--health` returned OK. No rename, copy, move or alternate target directory was used |
 | E-032 | LOCAL | Second defect-hardening re-run: regression red/green, release tests, runtime checks and canonical entry point | `b2d8afc` | 1 (canonical); 0 per executed release target; combined `cargo test --release --locked` 101 | PASS for every executed release-profile target: platform **329** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health); **2 edge tests BLOCKED** at spawn (`os error 4551`) after four same-path attempts. Eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK. Six new regression tests were observed failing before the fix. **Canonical `scripts/check.ps1` is BLOCKED, exit 1:** run 1 stopped at the debug lib harness; run 2 passed docs 677/115, secrets 231, eval and platform fmt/Clippy plus 262 lib tests, then stopped at the `cli_contract` harness (`os error 4551`) |
+| E-033 | LOCAL | Audit whitespace-only fail-open fix: red/green regression, release tests, runtime checks and canonical entry point | `21e23d6` | 1 (canonical); 0 per executed release target | PASS for every executed release-profile target: platform **308** (265 unit, 31 CLI contract, 8 integration, 4 web health); **27 tests BLOCKED** at spawn (`governance_web` 18 after two attempts, `search_eval` 7 after two attempts, `edge_cases` 2). Eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK; fmt and Clippy pass in both crates. Three new unit tests and one CLI contract test cover the whitespace-only fix. **Canonical `scripts/check.ps1` is BLOCKED, exit 1 on two same-command attempts:** both stopped at the debug lib harness (`os error 4551`) after docs 677/115, secrets 231, eval and platform fmt/Clippy passed |
 
 ## E-001: canonical check (blocked)
 
@@ -243,7 +244,7 @@ The documents use repository-relative locators, not the local absolute path or u
 
 ## E-011: historical full gate (`b2bae3e`)
 
-`gate.ps1 -IncludeSmoke` at `b2bae3e` (2026-10-27) reported 13/13 PASS, including docs, secrets, both crates, schema, search and smoke/export. This is historical. It is not a current `6ae6134` pass and does not clear the current canonical block. At `c827351`, the behavioral evidence is the 312 individually executed platform tests plus 49 self-test assertions, schema 20 and search 28; the canonical check remains Blocked at `edge_cases` (E-029). At `bbe49eb`, every platform target (325) and both crates' release checks pass; the canonical entry point is **BLOCKED** in E-031 at the debug CLI binary (`os error 4551`). At `b2d8afc`, 329 executed platform tests and both crates' release checks pass, while the 2 `edge_cases` tests are BLOCKED at spawn and the canonical entry point is BLOCKED at the debug lib and `cli_contract` harnesses (E-032). The release profile at `23b8996` and `6ae6134` is historical behavioral evidence, not a current canonical PASS.
+`gate.ps1 -IncludeSmoke` at `b2bae3e` (2026-10-27) reported 13/13 PASS, including docs, secrets, both crates, schema, search and smoke/export. This is historical. It is not a current `6ae6134` pass and does not clear the current canonical block. At `c827351`, the behavioral evidence is the 312 individually executed platform tests plus 49 self-test assertions, schema 20 and search 28; the canonical check remains Blocked at `edge_cases` (E-029). At `bbe49eb`, every platform target (325) and both crates' release checks pass; the canonical entry point is **BLOCKED** in E-031 at the debug CLI binary (`os error 4551`). At `b2d8afc`, 329 executed platform tests and both crates' release checks pass, while the 2 `edge_cases` tests are BLOCKED at spawn and the canonical entry point is BLOCKED at the debug lib and `cli_contract` harnesses (E-032). At `21e23d6`, 308 executed platform tests and both crates' release checks pass, while 27 tests across three harnesses are BLOCKED at spawn and the canonical entry point is BLOCKED at the debug lib harness (E-033). The release profile at `23b8996` and `6ae6134` is historical behavioral evidence, not a current canonical PASS.
 
 ## E-012: benchmark (historical, `56a944f` / `b2bae3e`)
 
@@ -651,6 +652,73 @@ Observed on 2026-10-29 at `b2d8afc450a2b39364efc6a54ee27cd7bce28066` (code commi
 
 The canonical debug profile therefore has **no PASS** at `b2d8afc`. The release-profile evidence above (329 executed tests) is behavioral coverage only and is not substituted for the canonical result. No binary was renamed, copied, moved or pointed at an alternate target directory, and the repository-level `target-dir` override or `EKP_PLATFORM_BIN` test override was not reintroduced.
 
+## E-033: audit whitespace-only fail-open fix (`21e23d6`)
+
+```powershell
+cd platform
+cargo fmt -- --check
+cargo clippy --release --locked --all-targets -- -D warnings
+cargo test --release --locked --lib
+cargo test --release --locked --test cli_contract
+cargo test --release --locked --test edge_cases
+cargo test --release --locked --test governance_web
+cargo test --release --locked --test integration
+cargo test --release --locked --test search_eval
+cargo test --release --locked --test web_health
+cargo run --release --locked --bin ekp_platform -- --selftest
+cargo run --release --locked --bin ekp_platform -- --declared-rules-schema
+cargo run --release --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
+cargo run --release --locked --bin ekp_platform -- --health
+
+cd ..\eval
+cargo fmt -- --check
+cargo clippy --release --locked --all-targets -- -D warnings
+cargo test --release --locked
+cargo run --release --locked -- --selftest
+```
+
+Observed on 2026-10-29 at `21e23d6e5526caca5234cb651bbbad348d535996` (code committed; the E-033 documentation edits were uncommitted during the run):
+
+| Target | Count | Exit |
+| --- | --- | --- |
+| Platform unit (`--lib`) | 265 | 0 |
+| Platform CLI contract | 31 | 0 |
+| Platform edge cases | **BLOCKED**, 0 executed of 2 | 1 |
+| Platform governance web | **BLOCKED**, 0 executed of 18 | 1 (two same-path attempts) |
+| Platform integration | 8 | 0 |
+| Platform search evaluation | **BLOCKED**, 0 executed of 7 | 1 (two same-path attempts) |
+| Platform web health | 4 | 0 |
+| **Platform executed and passing** | **308** | 0 per completed target |
+| Eval unit/integration tests | 12 | 0 |
+| Eval self-test checks | 10 | 0 |
+| Platform self-test assertions | 49 | 0 |
+| Declared-rules schema records | 20 | 0 |
+| Search gate cases | 28 (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) | 0 |
+| `--health` | `health: OK` | 0 |
+
+The defect was an audit fail-open: `read_jsonl` treated `contents.trim().is_empty()` as an empty log. A file containing only `"\n"` was therefore accepted, the next append wrote an event after the blank line, and every subsequent read rejected line 1 as empty, permanently poisoning the log. The fix treats only a zero-byte file as empty; every non-empty file must be valid JSONL with a trailing newline and no blank lines.
+
+Red/green evidence:
+
+- With only the one-line guard reverted in the working tree, `read_jsonl_refuses_a_whitespace_only_file` failed: it expected an error but received `AuditLog { events: [] }`.
+- After restoring the `21e23d6` content, the full lib target passed **265/265** and the CLI contract passed **31/31**. A later single-test retry was denied by host Application Control (`os error 4551`) after the temporary rebuild, so the green evidence is the earlier full-lib and CLI-contract runs, not that retry.
+- The fix adds three unit tests (whitespace-only file, zero-byte file, append refusal without modification) and one CLI-contract test (whitespace-only file refused without modification). No test was deleted, renamed to hide a failure, or weakened.
+
+### Canonical entry-point result
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-10-29 at `21e23d6`, **exit 1 — BLOCKED, not PASS**:
+
+- **First canonical run:** documentation PASS (53 required documents, 677 links in 115 files); secrets PASS (231 files); eval fmt, Clippy, 12 tests and 10 self-test checks PASS; platform fmt and Clippy PASS; then the debug `ekp_platform` lib harness could not start (`os error 4551`, Application Control) and `scripts/check.ps1` printed `FAIL: platform test`.
+- **Second canonical run (same command, same paths, no workaround):** the same pre-test checks passed with the same counts, then the same debug lib harness was denied (`os error 4551`) and the script printed `FAIL: platform test` again.
+
+The canonical debug profile therefore has **no PASS** at `21e23d6`. The release-profile evidence above (308 executed tests) is behavioral coverage only. No binary was renamed, copied, moved or pointed at an alternate target directory, and the repository-level `target-dir` override or `EKP_PLATFORM_BIN` test override was not reintroduced.
+
+After the E-033 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 680 relative links in 115 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check, not a canonical run.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -666,5 +734,5 @@ The canonical debug profile therefore has **no PASS** at `b2d8afc`. The release-
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI; the earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), and `b2d8afc` has 2 edge tests blocked at spawn (E-032). There is still no CI run.
+- It does not show that the canonical check is reproducible on a different host or in CI; the earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` has 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` has 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.

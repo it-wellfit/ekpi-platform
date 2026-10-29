@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `b2d8afc` the release profile has **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§8.
+- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile has **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§9.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -218,3 +218,26 @@ This section records the regression baseline added by `fix: close remaining repl
 | Canonical `scripts/check.ps1` at `b2d8afc` | Recorded from the observed run in E-032; not inferred from the release profile |
 
 Evidence: [E-032](../assurance/test-evidence.md#e-032-second-defect-hardening-re-run-b2d8afc) and [phase gates](../quality/phase-gates.md). The six new regression tests were observed failing before the fix: four BPMN attribute/tag cases, one replay actor case and one duplicate-Cookie header-line case. The 2 edge tests remain `Blocked`; a green release profile is not a canonical PASS.
+
+## 9. Revision record: `21e23d6` audit whitespace-only fail-open fix (2026-10-29)
+
+This section records the regression baseline added by `fix: reject whitespace-only audit logs before append`. It supplements, and does not replace, the area checklists and §8. The defect was reproduced by a failing test before the fix; no test expectation was changed to match new behavior.
+
+### New behavior to preserve
+
+- Only a zero-byte audit file is an empty log. A file containing any whitespace, a blank line, or a missing trailing newline is corrupt and is refused before append.
+- `append_jsonl` refuses a whitespace-only file without modifying it, so a refused append cannot turn a readable file into one that `read_jsonl` rejects forever.
+- A legacy single-object audit file is still refused with migration guidance and is not rewritten in place.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt -- --check` / `cargo clippy --release --locked --all-targets -- -D warnings` (both crates) | Exit 0 |
+| `eval` `cargo test --release --locked` / `--selftest` | 12 passed / 10 checks |
+| `platform` unit / CLI contract / integration / web health | 265 / 31 / 8 / 4 passed (**308** executed) |
+| `platform` `governance_web` / `search_eval` / `edge_cases` | **BLOCKED** at spawn (`os error 4551`, Application Control); `governance_web` 18 and `search_eval` 7 after two same-path attempts each, `edge_cases` 2; not counted |
+| `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
+| Canonical `scripts/check.ps1` at `21e23d6` | **BLOCKED** on two same-command attempts, both at the debug lib harness (`os error 4551`); recorded from the observed runs in E-033, not inferred from the release profile |
+
+Evidence: [E-033](../assurance/test-evidence.md#e-033-audit-whitespace-only-fail-open-fix-21e23d6) and [phase gates](../quality/phase-gates.md). The four new regression tests are three unit tests (whitespace-only file, zero-byte file, append refusal without modification) and one CLI-contract test (whitespace-only file refused without modification). `read_jsonl_refuses_a_whitespace_only_file` was observed failing with `AuditLog { events: [] }` before the fix; after restoring the fix, the full lib target passed 265/265 and the CLI contract passed 31/31. The 27 host-blocked tests and the blocked canonical entry point are not a PASS.
