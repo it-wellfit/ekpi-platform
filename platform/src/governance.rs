@@ -899,6 +899,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
                 ));
             }
             validate_actor(&review.reviewer)?;
+            require_payload_actor(&event.actor, &review.reviewer, "evidence review")?;
             if review.result == "changes_requested" {
                 validate_text("退回說明", &review.note, 1000)?;
             }
@@ -981,6 +982,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
         EventPayload::WorkflowPublished(publication) => {
             validate_record_id("流程編號", &publication.id)?;
             validate_actor(&publication.reviewer)?;
+            require_payload_actor(&event.actor, &publication.reviewer, "workflow publication")?;
             let workflow = snapshot
                 .workflows
                 .iter_mut()
@@ -1033,6 +1035,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
         }
         EventPayload::QualityCaseUpdated(update) => {
             validate_actor(&update.actor)?;
+            require_payload_actor(&event.actor, &update.actor, "quality case update")?;
             if update.status == "closed" && update.note.trim().is_empty() {
                 return Err(format!(
                     "quality case {} cannot close without a closure note",
@@ -1072,6 +1075,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
         EventPayload::QualityInspectionRecorded(inspection) => {
             validate_record_id("檢查編號", &inspection.id)?;
             validate_actor(&inspection.reviewer)?;
+            require_payload_actor(&event.actor, &inspection.reviewer, "quality inspection")?;
             validate_inspection_results(&inspection.results)?;
             if !snapshot
                 .projects
@@ -1095,6 +1099,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
         EventPayload::GateDecisionRecorded(decision) => {
             validate_record_id("關卡決議編號", &decision.id)?;
             validate_actor(&decision.actor)?;
+            require_payload_actor(&event.actor, &decision.actor, "gate decision")?;
             if decision.decision != "go" {
                 validate_text("決議原因", &decision.reason, 1200)?;
             }
@@ -1227,6 +1232,23 @@ fn now_unix() -> Result<u64, String> {
 
 fn validate_actor(value: &str) -> Result<(), String> {
     validate_text("操作者姓名", value, 80)
+}
+
+/// A payload that repeats the acting identity must repeat the same value as
+/// the event envelope. Otherwise a crafted event could show one actor in the
+/// chain while attributing an approval, publication or decision to another.
+fn require_payload_actor(
+    event_actor: &str,
+    payload_actor: &str,
+    label: &str,
+) -> Result<(), String> {
+    if event_actor == payload_actor {
+        Ok(())
+    } else {
+        Err(format!(
+            "{label} payload actor {payload_actor} does not match event actor {event_actor}"
+        ))
+    }
 }
 
 /// Record identifiers are generated as ASCII `<PREFIX>-<digits>` and are used
@@ -1628,6 +1650,143 @@ mod tests {
         let error = Ledger::open(&path).expect_err("an invalid event actor is refused");
         assert!(error.contains("操作者姓名"), "{error}");
         fs::remove_file(path).expect("test ledger removed");
+    }
+
+    #[test]
+    fn replay_refuses_payload_actors_that_differ_from_the_event_actor() {
+        let project = Project {
+            id: "PRJ-000001".to_string(),
+            name: "文件治理試點".to_string(),
+            department: "PMO".to_string(),
+            owner: "Alex".to_string(),
+            risk_tier: "medium".to_string(),
+            created_at: 1_700_000_000,
+        };
+        let evidence = Evidence {
+            id: "EVD-000002".to_string(),
+            project_id: project.id.clone(),
+            title: "來源文件".to_string(),
+            source_system: "DMS".to_string(),
+            source_url: "https://example.test/doc".to_string(),
+            source_version: "v1".to_string(),
+            evidence_type: "document".to_string(),
+            owner: "Alex".to_string(),
+            created_at: 1_700_000_000,
+        };
+        let workflow = Workflow {
+            id: "TPL-000002".to_string(),
+            version: 1,
+            title: "變更管理".to_string(),
+            department: "跨部門".to_string(),
+            owner: "流程負責人".to_string(),
+            description: "記錄評估、核准和結案".to_string(),
+            stages: vec!["提出".to_string()],
+            status: "draft".to_string(),
+            created_at: 1_700_000_000,
+            published_at: None,
+            published_by: None,
+        };
+        let case = QualityCase {
+            id: "QMS-000002".to_string(),
+            project_id: project.id.clone(),
+            kind: "finding".to_string(),
+            title: "缺失".to_string(),
+            description: "確認根因並完成矯正".to_string(),
+            owner: "Alex".to_string(),
+            due_date: "2026-12-31".to_string(),
+            status: "open".to_string(),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_000,
+            closure_note: None,
+        };
+        let inspection_results = QUALITY_CHECKLIST
+            .iter()
+            .map(|item| QualityCheckResult {
+                item_id: item.id.to_string(),
+                result: "not_applicable".to_string(),
+                note: "本試點不適用".to_string(),
+                evidence_reference: String::new(),
+                issue_id: String::new(),
+            })
+            .collect::<Vec<_>>();
+
+        let base_snapshot = || {
+            let mut snapshot = GovernanceSnapshot::default();
+            snapshot.projects.push(project.clone());
+            snapshot.evidence.push(evidence.clone());
+            snapshot.workflows.push(workflow.clone());
+            snapshot.cases.push(case.clone());
+            snapshot
+        };
+
+        let payloads = [
+            (
+                "evidence review",
+                EventPayload::EvidenceReviewed(EvidenceReview {
+                    evidence_id: evidence.id.clone(),
+                    result: "accepted".to_string(),
+                    reviewer: "Mallory".to_string(),
+                    note: String::new(),
+                    reviewed_at: 1_700_000_001,
+                }),
+            ),
+            (
+                "workflow publication",
+                EventPayload::WorkflowPublished(WorkflowPublication {
+                    id: workflow.id.clone(),
+                    version: workflow.version,
+                    reviewer: "Mallory".to_string(),
+                    published_at: 1_700_000_001,
+                }),
+            ),
+            (
+                "quality case update",
+                EventPayload::QualityCaseUpdated(QualityCaseUpdate {
+                    id: case.id.clone(),
+                    status: "in_progress".to_string(),
+                    actor: "Mallory".to_string(),
+                    note: "處理中".to_string(),
+                    updated_at: 1_700_000_001,
+                }),
+            ),
+            (
+                "quality inspection",
+                EventPayload::QualityInspectionRecorded(QualityInspection {
+                    id: "INSP-000001".to_string(),
+                    project_id: project.id.clone(),
+                    reviewer: "Mallory".to_string(),
+                    created_at: 1_700_000_001,
+                    results: inspection_results.clone(),
+                }),
+            ),
+            (
+                "gate decision",
+                EventPayload::GateDecisionRecorded(GateDecision {
+                    id: "GATE-000001".to_string(),
+                    project_id: project.id.clone(),
+                    gate_id: "G1".to_string(),
+                    decision: "go".to_string(),
+                    actor: "Mallory".to_string(),
+                    reason: String::new(),
+                    evidence_reference: String::new(),
+                    risk_acceptor: String::new(),
+                    remediation_due: String::new(),
+                    non_waivable: false,
+                    created_at: 1_700_000_001,
+                }),
+            ),
+        ];
+
+        for (label, payload) in payloads {
+            let mut snapshot = base_snapshot();
+            let event = hashed_event(1, 1_700_000_000, "Jordan", payload, GENESIS_HASH);
+            let error = apply_event(&mut snapshot, &event)
+                .expect_err("a payload actor that differs from the event actor is refused");
+            assert!(
+                error.contains("does not match"),
+                "{label} must be refused: {error}"
+            );
+        }
     }
 
     #[test]

@@ -644,3 +644,28 @@ async fn duplicate_session_cookies_are_rejected() {
         std::fs::remove_file(path).expect("test ledger removed");
     }
 }
+
+#[tokio::test]
+async fn duplicate_cookie_header_lines_are_rejected_even_when_only_one_has_a_session() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    // Two Cookie header lines are ambiguous even when only one of them carries
+    // the session pair. The server must not scan the second line after seeing
+    // an unrelated first line.
+    let request = Request::get("/")
+        .header(header::COOKIE, "theme=dark")
+        .header(header::COOKIE, cookie.as_str())
+        .body(Body::empty())
+        .expect("request builds");
+    let response = app.clone().oneshot(request).await.expect("router responds");
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "duplicate Cookie header lines must not be resolved to one session"
+    );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}

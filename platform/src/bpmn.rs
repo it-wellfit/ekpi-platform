@@ -133,23 +133,18 @@ impl BpmnModel {
     /// Parse BPMN XML (simplified: extracts id, name, type from tags).
     pub fn parse(xml: &str) -> Result<Self, String> {
         let mut model = BpmnModel::default();
-        // Extract process id and name
-        if let Some(start) = xml.find("<bpmn:process") {
-            if let Some(id_start) = xml[start..].find("id=\"") {
-                let id_val_start = start + id_start + 4;
-                if let Some(id_end) = xml[id_val_start..].find('"') {
-                    model.id = xml[id_val_start..id_val_start + id_end].to_string();
-                }
+        // Extract process id and name from the process start tag only.
+        if let Some(process_pos) = find_tag(xml, "<bpmn:process", 0) {
+            if let Some(id) = extract_attr(xml, process_pos, "id") {
+                model.id = id;
             }
-            if let Some(name_start) = xml[start..].find("name=\"") {
-                let name_val_start = start + name_start + 6;
-                if let Some(name_end) = xml[name_val_start..].find('"') {
-                    model.name = xml[name_val_start..name_val_start + name_end].to_string();
-                }
+            if let Some(name) = extract_attr(xml, process_pos, "name") {
+                model.name = name;
             }
         }
 
-        // Extract elements by tag type
+        // Extract elements by tag type. A tag name must end at a delimiter so
+        // `<bpmn:taskSequence>` is not parsed as `<bpmn:task>`.
         let tag_types = [
             ("bpmn:task", BpmnElementType::Task),
             ("bpmn:exclusiveGateway", BpmnElementType::ExclusiveGateway),
@@ -165,10 +160,9 @@ impl BpmnModel {
         ];
 
         for (tag, etype) in &tag_types {
-            let mut search_pos = 0;
             let prefix = format!("<{}", tag);
-            while let Some(pos) = xml[search_pos..].find(&prefix) {
-                let abs_pos = search_pos + pos;
+            let mut search_pos = 0;
+            while let Some(abs_pos) = find_tag(xml, &prefix, search_pos) {
                 // Extract id
                 let id = extract_attr(xml, abs_pos, "id");
                 let name = extract_attr(xml, abs_pos, "name").unwrap_or_default();
@@ -187,8 +181,7 @@ impl BpmnModel {
         // Extract sequence flows
         let flow_prefix = "<bpmn:sequenceFlow";
         let mut search_pos = 0;
-        while let Some(pos) = xml[search_pos..].find(flow_prefix) {
-            let abs_pos = search_pos + pos;
+        while let Some(abs_pos) = find_tag(xml, flow_prefix, search_pos) {
             let id = extract_attr(xml, abs_pos, "id").unwrap_or_default();
             let source = extract_attr(xml, abs_pos, "sourceRef").unwrap_or_default();
             let target = extract_attr(xml, abs_pos, "targetRef").unwrap_or_default();
@@ -207,13 +200,63 @@ impl BpmnModel {
     }
 }
 
-fn extract_attr(xml: &str, pos: usize, attr: &str) -> Option<String> {
-    let search = format!("{}=\"", attr);
-    if let Some(attr_pos) = xml[pos..].find(&search) {
-        let val_start = pos + attr_pos + search.len();
-        if let Some(val_end) = xml[val_start..].find('"') {
-            return Some(xml[val_start..val_start + val_end].to_string());
+/// Find the next `<prefix` whose tag name ends at a real delimiter.
+fn find_tag(xml: &str, prefix: &str, from: usize) -> Option<usize> {
+    let mut search_pos = from;
+    while let Some(offset) = xml[search_pos..].find(prefix) {
+        let abs_pos = search_pos + offset;
+        if tag_name_ends_at(xml, abs_pos + prefix.len()) {
+            return Some(abs_pos);
         }
+        search_pos = abs_pos + prefix.len();
+    }
+    None
+}
+
+fn tag_name_ends_at(xml: &str, end: usize) -> bool {
+    match xml[end..].chars().next() {
+        Some(character) => character == '>' || character == '/' || character.is_ascii_whitespace(),
+        None => false,
+    }
+}
+
+/// Return the byte offset of the `>` that closes the tag starting at `pos`,
+/// ignoring `>` characters inside quoted attribute values.
+fn tag_end(xml: &str, pos: usize) -> Option<usize> {
+    let mut quote: Option<char> = None;
+    for (offset, character) in xml[pos..].char_indices() {
+        match (quote, character) {
+            (Some(open), current) if current == open => quote = None,
+            (None, '"') | (None, '\'') => quote = Some(character),
+            (None, '>') => return Some(pos + offset),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Read an attribute from the single start tag beginning at `pos`. Searching
+/// stops at the tag end and requires a name delimiter, so a missing attribute
+/// cannot borrow a later tag's value or match a longer attribute name.
+fn extract_attr(xml: &str, pos: usize, attr: &str) -> Option<String> {
+    let end = tag_end(xml, pos)?;
+    let tag = &xml[pos..end];
+    let search = format!("{}=\"", attr);
+    let mut search_pos = 0;
+    while let Some(offset) = tag[search_pos..].find(&search) {
+        let abs_pos = search_pos + offset;
+        let delimited = abs_pos == 0
+            || tag[..abs_pos]
+                .chars()
+                .next_back()
+                .map(|character| character.is_ascii_whitespace())
+                .unwrap_or(false);
+        if delimited {
+            let val_start = abs_pos + search.len();
+            let val_end = tag[val_start..].find('"')?;
+            return Some(tag[val_start..val_start + val_end].to_string());
+        }
+        search_pos = abs_pos + search.len();
     }
     None
 }
@@ -228,6 +271,62 @@ mod tests {
         // while advancing the scan position.
         let _ = BpmnModel::parse("<bpmn:task中");
         let _ = BpmnModel::parse("<bpmn:sequenceFlow中");
+    }
+
+    #[test]
+    fn attributes_do_not_leak_from_a_later_tag() {
+        let xml = r#"<bpmn:process id="P-005" name="Attribute isolation">
+            <bpmn:task name="An unidentified task"/>
+            <bpmn:task id="task2" name="Second"/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(
+            model.tasks().len(),
+            1,
+            "a tag without an id must not borrow the next tag's id"
+        );
+        assert_eq!(model.tasks()[0].id, "task2");
+    }
+
+    #[test]
+    fn tag_prefix_requires_a_delimiter() {
+        let xml = r#"<bpmn:process id="P-006" name="Prefix boundary">
+            <bpmn:taskSequence id="not-a-task"/>
+            <bpmn:task id="real-task"/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(
+            model.tasks().len(),
+            1,
+            "a longer tag name must not be parsed as bpmn:task"
+        );
+        assert_eq!(model.tasks()[0].id, "real-task");
+    }
+
+    #[test]
+    fn process_metadata_does_not_leak_from_a_later_tag() {
+        let xml = r#"<bpmn:process name="No process id">
+            <bpmn:task id="task-id" name="Task"/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(
+            model.id, "",
+            "a missing process id must not be filled from a child tag"
+        );
+    }
+
+    #[test]
+    fn attribute_names_require_a_delimiter() {
+        let xml = r#"<bpmn:process id="P-007" name="Attribute boundary">
+            <bpmn:task data-id="decoy" id="real-id"/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.tasks().len(), 1);
+        assert_eq!(
+            model.tasks()[0].id,
+            "real-id",
+            "a longer attribute name must not be parsed as id"
+        );
     }
 
     #[test]

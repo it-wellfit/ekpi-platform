@@ -208,22 +208,23 @@ async fn request_context_with(
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {
+    // Duplicate Cookie header lines are ambiguous: a proxy or client may have
+    // appended a second line, and selecting a session from either one would
+    // hide the ambiguity. Refuse the whole request instead.
+    let mut header_values = headers.get_all(header::COOKIE).iter();
+    let header = header_values.next()?;
+    if header_values.next().is_some() {
+        return None;
+    }
+    let cookie = header.to_str().ok()?;
     let mut token: Option<String> = None;
-    for header in headers.get_all(header::COOKIE) {
-        let cookie = match header.to_str() {
-            Ok(c) => c,
-            // A header that is not valid visible ASCII cannot be interpreted;
-            // fail closed rather than ignoring it and accepting a second one.
-            Err(_) => return None,
-        };
-        for part in cookie.split(';') {
-            let part = part.trim();
-            if let Some(value) = part.strip_prefix("ekpi_session=") {
-                if value.is_empty() || token.is_some() {
-                    return None;
-                }
-                token = Some(value.to_string());
+    for part in cookie.split(';') {
+        let part = part.trim();
+        if let Some(value) = part.strip_prefix("ekpi_session=") {
+            if value.is_empty() || token.is_some() {
+                return None;
             }
+            token = Some(value.to_string());
         }
     }
     token
