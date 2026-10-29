@@ -33,3 +33,8 @@ test = false
 [dev-dependencies]
 http-body-util = "0.1.3"
 tower = { version = "0.5.3", features = ["util"] }
+
+# Keep this crate independent even if an unrelated Cargo manifest exists in a
+# parent directory. Without this, Cargo would search upwards and treat this
+# crate as part of that workspace.
+[workspace]

@@ -2,7 +2,7 @@
 
 - **Status:** Active; local prototype
 - **Owner:** Engineering
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-29
 - **Contract ID:** `CTR-WEB-001`
 - **Source:** `platform/src/governance_web.rs`
 - **Verification:** `platform/tests/governance_web.rs`, `platform/tests/web_health.rs`
@@ -14,9 +14,9 @@
 - Ledger path: `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl`, or `EKP_GOVERNANCE_DATA` if set.
 - Rendering: server-side Maud HTML, CSS only, zero JavaScript.
 - Authentication: **local session only**. A single process-memory account is created at startup from `EKPI_LOCAL_AUTH_USER` and `EKPI_LOCAL_AUTH_PASSWORD`; `EKPI_LOCAL_AUTH_ROLE` selects `viewer`, `editor`, `approver` or `admin` (default `editor`). There is no default account, IdP, SSO, MFA, account recovery, persistent identity store or access review. Sessions expire after 3,600 seconds and are lost on process restart. Do not describe this as enterprise authentication and do not expose the server beyond the local machine.
-- Passwords: PBKDF2-HMAC-SHA256 with a random 16-byte salt and 600,000 iterations. Session tokens are 32 random bytes from the OS CSPRNG. Failed logins are locked for 300 seconds after 5 failures. The password is never printed, logged or written to the ledger.
+- Passwords: PBKDF2-HMAC-SHA256 with a random 16-byte salt and 600,000 iterations. Session tokens are 32 random bytes from the OS CSPRNG. Every login failure returns the same `invalid username or password` response; the lockout (5 failures in 300 seconds) is checked after password-hash work and is not disclosed. Usernames containing whitespace or control characters are rejected. The password is never printed, logged or written to the ledger.
 - Cookie: `ekpi_session`, `HttpOnly`, `SameSite=Strict`, `Path=/`, `Max-Age` bounded by the session expiry. `Secure` is added only when `EKPI_COOKIE_SECURE=1`; the current listener is plain HTTP on loopback, so a browser will not send a `Secure` cookie from `http://127.0.0.1` unless it is configured to trust that origin.
-- Request middleware: session guard on every route except the public paths below; same-origin guard on non-GET/HEAD requests; per-request `x-request-id` validation/echo/generation; 15-second request timeout; at most 64 concurrent requests (excess requests receive `429` with `Retry-After`); one JSON access-log line per request on stdout (request id, method, path, status, duration; no actor, body data or cookie value).
+- Request middleware: session guard on every route except the public paths below; same-origin guard on non-GET/HEAD requests; per-request `x-request-id` validation/echo/generation; 15-second request timeout; at most 64 concurrent requests (excess requests receive `429` with `Retry-After`); one JSON access-log line per request on stdout (request id, method, path, status, duration; no actor, body data or cookie value). A `Host` header, when present, must be a single loopback authority (`localhost`, `127.0.0.0/8` or `[::1]`, optional numeric port); duplicate, blank, non-UTF-8 or non-loopback Host values receive `403`. A session request with duplicate, empty or non-UTF-8 `Cookie` headers is treated as unauthenticated.
 - Form bodies are read with a 64 KiB limit; an oversized or malformed body returns `400` and appends no event.
 - Security headers on every response: CSP, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Cache-Control: no-store`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy`.
 - Request body format: `application/x-www-form-urlencoded` for POST routes.
@@ -87,9 +87,10 @@ The field list is the current HTML form contract. Server-side validation is auth
 
 - A successful mutation appends exactly one ledger event and then responds with a redirect or a refreshed page.
 - A rejected mutation must not append an event. Route tests assert this for foreign-origin requests and for missing/insufficient sessions.
-- A mutating request with a foreign `Origin` returns `403` with a plain-text Chinese message and appends no event. When `Origin` is absent, the guard accepts only `Sec-Fetch-Site: same-origin` or `Sec-Fetch-Site: none`; other or missing fetch metadata is refused. This is CSRF hardening for a loopback tool, not a user identity check.
+- A mutating request with a foreign `Origin` returns `403` with a plain-text Chinese message and appends no event. The `Host` header must be a single loopback authority; duplicate, blank or non-loopback hosts are refused. When `Origin` is absent, the guard accepts only `Sec-Fetch-Site: same-origin` or `Sec-Fetch-Site: none`; other or missing fetch metadata is refused. This is CSRF hardening for a loopback tool, not a user identity check.
 - Unauthenticated data-page requests return `401` and render the login form. Authenticated requests with an insufficient role return `403`. Neither response exposes ledger content.
-- The login form accepts at most 64 KiB. Oversized or malformed login bodies return `400` without setting a cookie. Failed credentials return `401`; there is no response difference that confirms whether a username exists.
+- The login form accepts at most 64 KiB. Oversized or malformed login bodies return `400` without setting a cookie. Failed credentials return `401` with the same `invalid username or password` message whether the username is unknown, the password is wrong, or the account is temporarily locked; there is no response difference that confirms account existence or lockout state.
+- Duplicate session-cookie headers, empty tokens or cookies that are not valid visible ASCII are treated as unauthenticated; the server never chooses one of several tokens.
 - Ledger read/validation errors render an error page; they do not expose secrets or stack traces.
 - There is no JSON response mode for domain data, pagination, filtering API, ETag or versioned public API. `/healthz` is a liveness JSON document; `/metrics` is aggregate Prometheus text. Neither exposes ledger content or identity.
 - The concurrency bound is a local overload guard, not an identity-aware rate limit.
@@ -116,7 +117,7 @@ cd platform
 cargo test --locked --test governance_web --test web_health
 ```
 
-The route tests cover authenticated reads, unauthenticated `401`, viewer/editor/approver authorization, login/logout, oversized login bodies, mutation flows, audit chain, same-origin rejection and presentation constraints. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics. Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
+The route tests cover authenticated reads, unauthenticated `401`, viewer/editor/approver authorization, login/logout, oversized login bodies, mutation flows, audit chain, same-origin rejection, foreign/duplicate/non-loopback Host rejection, duplicate session cookies and presentation constraints. Unit tests additionally cover the loopback Host parser and malformed-cookie fail-closed behavior. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics. Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
 
 ## Update triggers
 

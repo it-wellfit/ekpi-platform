@@ -190,23 +190,59 @@ fn validate_args(args: &[String]) -> Result<(), String> {
             }
         }
     }
+    if has_flag(args, "--health") {
+        // Health is a local diagnostic mode with no data loading beyond the
+        // existence checks below. Reject every other flag instead of silently
+        // ignoring it, so `--health --selftest` cannot look like a health pass.
+        let mut index = 0;
+        while index < args.len() {
+            match args[index].as_str() {
+                "--health" => index += 1,
+                "--data" => index += 2,
+                other => {
+                    return Err(format!("`{other}` cannot be combined with `--health`"));
+                }
+            }
+        }
+    }
     Ok(())
+}
+
+fn health_report(data_dir: &Path) -> bool {
+    // Liveness only: the three core seed files must be present and readable as
+    // files. This deliberately does not parse them, open a database or call a
+    // dependency; a deeper readiness probe belongs to the web `/healthz` route.
+    let required = ["rules.json", "docs.json", "processes.json"];
+    let missing: Vec<&str> = required
+        .iter()
+        .copied()
+        .filter(|name| !data_dir.join(name).is_file())
+        .collect();
+    if missing.is_empty() {
+        println!("health: OK");
+        true
+    } else {
+        println!("health: DEGRADED (missing: {})", missing.join(", "));
+        false
+    }
 }
 
 fn run(args: &[String]) -> i32 {
     if has_flag(args, "--health") {
+        // Validate before doing any work. Unlike `--selftest`, health has no
+        // value as a diagnostic if a typo in another flag is silently ignored.
+        if let Err(message) = validate_args(args) {
+            eprintln!("FAIL: {message}");
+            eprintln!("{USAGE}");
+            return 2;
+        }
         let data_dir = flag_value(args, "--data")
             .map(PathBuf::from)
             .unwrap_or_else(default_data_dir);
-        let status = if data_dir.exists() {
-            "OK"
-        } else {
-            "DEGRADED (data dir missing)"
-        };
-        println!("health: {}", status);
+        let healthy = health_report(&data_dir);
         println!("version: 0.1.0");
         println!("data_dir: {}", data_dir.display());
-        return if status == "OK" { 0 } else { 1 };
+        return if healthy { 0 } else { 1 };
     }
 
     if has_flag(args, "--selftest") {

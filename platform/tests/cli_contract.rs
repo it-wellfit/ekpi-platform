@@ -23,12 +23,7 @@ fn temp_dir() -> PathBuf {
 }
 
 fn platform_bin() -> PathBuf {
-    // Application Control on some managed hosts blocks execution from the
-    // Cargo target directory. The override lets the same test binary run
-    // against a copied, executable-equivalent build.
-    std::env::var_os("EKP_PLATFORM_BIN")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_ekp_platform")))
+    PathBuf::from(env!("CARGO_BIN_EXE_ekp_platform"))
 }
 
 fn run_in(dir: &Path, args: &[&str]) -> Output {
@@ -62,6 +57,71 @@ fn unknown_flag_is_a_usage_error() {
     assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
     assert!(
         stderr(&output).contains("unknown flag `--bogus`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn health_reports_ok_for_the_default_data_directory() {
+    let dir = temp_dir();
+    let output = run_in(&dir, &["--health"]);
+    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
+    let out = stdout(&output);
+    assert!(out.contains("health: OK"), "stdout: {out}");
+    assert!(out.contains("version: 0.1.0"), "stdout: {out}");
+    cleanup(&dir);
+}
+
+#[test]
+fn health_reports_degraded_when_core_files_are_missing() {
+    let dir = temp_dir();
+    let data = dir.join("data");
+    std::fs::create_dir_all(&data).expect("create empty data dir");
+    let output = run_in(
+        &dir,
+        &[
+            "--health",
+            "--data",
+            data.to_str().expect("utf-8 temp path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
+    assert!(
+        stdout(&output)
+            .contains("health: DEGRADED (missing: rules.json, docs.json, processes.json)"),
+        "stdout: {}",
+        stdout(&output)
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn health_does_not_ignore_an_unknown_flag() {
+    let dir = temp_dir();
+    let output = run_in(&dir, &["--health", "--bogus"]);
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("unknown flag `--bogus`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        !stdout(&output).contains("health:"),
+        "a malformed health request must not report a status: stdout: {}",
+        stdout(&output)
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn health_cannot_be_combined_with_a_mode_flag() {
+    let dir = temp_dir();
+    let output = run_in(&dir, &["--health", "--selftest"]);
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("`--selftest` cannot be combined with `--health`"),
         "stderr: {}",
         stderr(&output)
     );

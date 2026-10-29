@@ -2,7 +2,7 @@
 
 - **Status:** Active; describes the current local prototype
 - **Owner:** Backend/Engineering
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-10-29
 - **Domain source of truth:** [governance/06 data and state model](../governance/06-data-and-state-model-v1.md)
 - **Contracts:** [CLI](../contracts/cli.md), [web routes](../contracts/web-routes.md), [data formats](../contracts/data-formats.md)
 
@@ -30,10 +30,10 @@ The authoritative entities, states and invariants are in [governance/06](../gove
 | Knowledge search CLI | `main` (`--search`, `--eval`), `eval` | Ranks document sections, prints verified verbatim citations, and gates a fixed regression set | `platform/tests/search_eval.rs`, CLI run |
 | Decision snapshot | `snapshot` | Records inputs and output for deterministic replay | Self-test, integration tests |
 | Report/export | `export`, `coverage_report` | LegalRuleML, coverage, Markdown/HTML reports | Smoke gate and exporter tests |
-| Governance ledger | `governance` | Append-only JSONL events for projects, evidence, workflows, quality cases, inspections and gate decisions | `governance_web` tests |
+| Governance ledger | `governance` | Append-only JSONL events for projects, evidence, workflows, quality cases, inspections and gate decisions; replay validates references and state transitions | `governance` and `governance_web` tests |
 | Governance web | `governance_web`, `local_auth` | Server-rendered forms and read views; local session login, role checks, same-origin guard and security headers | Route/integration tests |
 
-The following modules are compiled and unit-tested but not wired into any served request path: `api`, `tenant`, `audit`, `worm`, `agents`, `benchmark`, `formal_verification`, `runtime_verification`, `multimodal`, `ocr`, `pm4py_sidecar`, `reranker`, `retrieval_v2`, `vector_search`, `xes_import`, `bpmn`, `fulltext`, `knowledge_graph`. `evidence` is not referenced outside its own module. `causal` is different: `engine.rs` calls `CausalAnalyzer::analyze` and stores `EngineOutcome.causal_results`, but no CLI, report or snapshot consumer reads that field, so it is not a user-visible capability. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs`; no served path constructs a `TenantContext`. See the [architecture module table](../architecture/README.md#module-boundaries). Do not describe these as delivered capabilities.
+The following modules are compiled and unit-tested but not wired into any served HTTP request path: `api`, `tenant`, `audit`, `worm`, `agents`, `benchmark`, `formal_verification`, `runtime_verification`, `multimodal`, `ocr`, `pm4py_sidecar`, `reranker`, `retrieval_v2`, `vector_search`, `xes_import`, `bpmn`, `fulltext`, `knowledge_graph`. `audit` is used only by the CLI `--audit-log` path; it is not an HTTP audit service. `evidence` is not referenced outside its own module. `causal` is different: `engine.rs` calls `CausalAnalyzer::analyze` and stores `EngineOutcome.causal_results`, but no CLI, report or snapshot consumer reads that field, so it is not a user-visible capability. `tenant` is reached only by the `PermissionContext::from(&TenantContext)` conversion in `retrieval.rs`; no served path constructs a `TenantContext`. See the [architecture module table](../architecture/README.md#module-boundaries). Do not describe these as delivered capabilities.
 
 ## Persistence and data stores
 
@@ -44,22 +44,22 @@ The following modules are compiled and unit-tested but not wired into any served
 | Seed processes | JSON | `platform/data/processes.json` | Read-only fixture |
 | Engine parameters | JSON | `platform/config/engine-params.json` | Fail-closed validation; CLI override for threshold only |
 | Search evaluation set | JSON | `platform/data/eval/search_eval.json` | Versioned fixed set with its own operating threshold; loaded and validated per run |
-| Governance ledger | JSONL, one event per line | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | Append + `sync_data` per event; SHA-256 chain |
+| Governance ledger | JSONL, one event per line | `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA` | Append + `sync_all` per event; SHA-256 chain; single-writer OS advisory lock held for the `Ledger` lifetime |
 | Reports and exports | JSON/Markdown/HTML/XML | Operator-selected output directory | Regenerated; not transactional |
 
-There is no relational database, ORM, migration engine or multi-process lock. Two processes writing the same ledger path at the same time are not coordinated. Use a unique ledger path for smoke tests, as the release procedure requires.
+There is no relational database, ORM or migration engine. The ledger serialises writers with an OS advisory lock on a sibling `<PATH>.lock` file and holds that lock for the lifetime of the `Ledger`; a second process cannot open the same ledger path concurrently. The kernel releases the lock when the process exits, so a leftover lock file does not indicate a live writer. The lock is local to one host; it is not distributed coordination. Use a unique ledger path for smoke tests, as the release procedure requires.
 
 ## Transactions, idempotency and retry
 
 - **CLI:** a run either produces a complete artifact set or exits non-zero. It does not partially commit a database transaction. Output files can be partially written if the process is killed; the next run overwrites the selected output directory.
-- **Ledger:** each POST appends one event. A duplicate form submission creates a second event; there is no request idempotency key. Callers must avoid double submission.
+- **Ledger:** each POST appends one event. The `Ledger` holds a single-writer OS advisory lock while open, reads and verifies the existing hash chain, and appends one complete line with `sync_all`; a truncated final line, blank line, duplicate ID, dangling reference or invalid workflow/CAPA/gate transition fails closed without appending. A duplicate form submission still creates a second event; there is no request idempotency key. Callers must avoid double submission.
 - **Engine:** duplicate evidence references and duplicate rule references are deduplicated by deterministic checks; see the duplicate-related cases in the corpus.
 - **Retry:** no automatic retry, backoff, circuit breaker or queue exists. A failed CLI command is an operator-visible failure, not a retryable job.
-- **Concurrency:** the web server wraps the ledger in `Arc<Mutex<...>>` for in-process serialization; this is not a cross-process lock.
+- **Concurrency:** the web server wraps the ledger in `Arc<Mutex<...>>` for in-process serialization, and `Ledger::open` holds an OS advisory lock for cross-process exclusion on the same host. This is not multi-host coordination or a transactional multi-event commit.
 
 ## Authentication and authorization boundary
 
-The served web app has a **local-only session login**. At startup it can register one account from `EKPI_LOCAL_AUTH_USER`/`EKPI_LOCAL_AUTH_PASSWORD` with role `EKPI_LOCAL_AUTH_ROLE` (default `editor`). Passwords use PBKDF2-HMAC-SHA256 with 600,000 iterations and a random salt; session tokens come from the OS CSPRNG; sessions live in process memory for 3,600 seconds. Every ledger-backed page requires a `viewer` session, ordinary creation requires `editor`, and review/publication/quality-status/lifecycle actions require `approver`. `/healthz`, `/metrics`, `/login` and the stylesheet are public. The cookie is `HttpOnly` and `SameSite=Strict`; `EKPI_COOKIE_SECURE=1` adds `Secure`.
+The served web app has a **local-only session login**. At startup it can register one account from `EKPI_LOCAL_AUTH_USER`/`EKPI_LOCAL_AUTH_PASSWORD` with role `EKPI_LOCAL_AUTH_ROLE` (default `editor`). Passwords use PBKDF2-HMAC-SHA256 with 600,000 iterations and a random salt; session tokens come from the OS CSPRNG; sessions live in process memory for 3,600 seconds. Usernames with whitespace or control characters are rejected. Every authentication failure returns the same `invalid username or password` message; the lockout (5 failures in 300 seconds) is checked after the password-hash work and is not disclosed, and unknown usernames still pay a dummy hash cost. Every ledger-backed page requires a `viewer` session, ordinary creation requires `editor`, and review/publication/quality-status/lifecycle actions require `approver`. `/healthz`, `/metrics`, `/login` and the stylesheet are public. The cookie is `HttpOnly` and `SameSite=Strict`; `EKPI_COOKIE_SECURE=1` adds `Secure`. Duplicate or malformed session-cookie headers and duplicate or non-loopback `Host` headers are rejected.
 
 This is **not** enterprise authentication or authorization. There is no IdP, SSO, MFA, account recovery, persistent user database, access review or joiner/mover/leaver process. The ledger records the validated local session username as the mutation actor, but that session is process-memory only and is not an enterprise-verified identity. `tenant` contains an in-memory tenant store, but it is not wired. The target identity, role, MFA and tenant requirements are in [governance/07](../governance/07-security-integration-spec-v1.md) and decisions `DEC-02`, `DEC-12` and `DEC-17`.
 
@@ -103,7 +103,7 @@ Phase B requires SLI/SLO definitions, alerting and an incident path on top of th
 | BE-GAP-01 | `api.rs` is a false `comply` placeholder | Cannot be exposed; would be a safety defect if wired | [Improvement register](../reviews/README.md) |
 | BE-GAP-02 | Local session login only; no enterprise identity or access review | Role checks are in-process and restart-scoped; no IdP/MFA/recovery/joiner-mover-leaver | Phase B, `DEC-12` |
 | BE-GAP-03 | No tenant isolation | Cannot serve multiple organizations | Phase B, `DEC-12` |
-| BE-GAP-04 | No cross-process lock or transactional store | Concurrent writers can corrupt or interleave ledger events | Phase B |
+| BE-GAP-04 | Ledger has a single-host OS advisory lock, but no transactional multi-event commit, idempotency key or multi-host coordination | A crash between events can leave partial workflow state; duplicate POSTs still create duplicate events | Phase B |
 | BE-GAP-05 | Local logs/metrics only; no traces, SLO or alerting | No operational detection, budget or readiness evidence | Phase B, `DEC-16` |
 | BE-GAP-06 | Library-only modules appear capable but are unwired | Misleading capability claims; maintenance cost | Wire with spec/tests or remove |
 | BE-GAP-07 | No idempotency key for form posts | Double submission creates duplicate events | Phase B |

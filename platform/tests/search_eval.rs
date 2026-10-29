@@ -15,12 +15,7 @@ fn manifest_dir() -> PathBuf {
 }
 
 fn platform_bin() -> PathBuf {
-    // Application Control on some managed hosts blocks execution from the
-    // Cargo target directory. The override lets the same test binary run
-    // against a copied, executable-equivalent build.
-    std::env::var_os("EKP_PLATFORM_BIN")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_ekp_platform")))
+    PathBuf::from(env!("CARGO_BIN_EXE_ekp_platform"))
 }
 
 #[test]

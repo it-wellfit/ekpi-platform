@@ -22,12 +22,12 @@ If the denial occurs:
 
 1. Confirm the error is `os error 4551`, not a Rust compile error.
 2. Remove the stale `target` directory and retry the canonical command so Cargo rebuilds with the committed profile. If the denial persists, record the check as `Blocked`; do not lower the gate.
-3. If only a diagnostic harness is blocked, copy it out of `target` and run the copy. For CLI contract tests, `EKP_PLATFORM_BIN` can point at an executable build (for example the release binary). It changes only which binary the tests launch; it does not make a blocked canonical run a PASS, and a blocked `cargo run -- --selftest` is still blocked.
-4. If a harness still cannot run, change only that crate's test profile to produce a different binary and retry. Do not change product behavior to make a harness pass.
+3. Do not copy a blocked test binary out of `target`, rename it, point tests at another build, or relocate the build directory to evade the policy. The test harness uses only the Cargo-provided binary path (`CARGO_BIN_EXE_ekp_platform`); the earlier `EKP_PLATFORM_BIN` diagnostic override was removed on 2026-10-29 so it cannot be used as a workaround.
+4. If a harness still cannot run, record the exact path, policy ID and result as `Blocked`. Ask the endpoint-security owner for a scoped exception or use an approved CI/clean runner; do not change product behavior or test identity to make a harness pass.
 
 Rules:
 
-- Never disable or bypass the host security policy, and never copy a blocked dependency over a permitted one to disguise its identity.
+- Never disable or bypass the host security policy, and never copy a blocked dependency or test binary over a permitted one, rename it, or move the build output to disguise its identity or evade the policy.
 - The committed profile is part of the build, not a private workaround. A check is `PASS` only when the exact canonical command exits 0 on the named revision. If the host blocks it even after a clean rebuild, record `Blocked`, not `PASS`.
 - Prefer CI for release evidence when a remote exists. See the [quality status](../quality/README.md) and [backup log](../operations/backup-log.md) for the current local evidence.
 
