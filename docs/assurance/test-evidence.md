@@ -2,9 +2,9 @@
 
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
-- **Last reviewed:** 2026-10-29
-- **Repository revision for the re-run:** current hardening revision `21e23d6e5526caca5234cb651bbbad348d535996`; preceding hardening revision `b2d8afc450a2b39364efc6a54ee27cd7bce28066`; earlier hardening revisions `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
-- **Working tree during the re-run:** code files committed at `21e23d6`; the E-033 documentation edits were uncommitted during the run; unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
+- **Last reviewed:** 2026-10-30
+- **Repository revision for the re-run:** current hardening revision `279c919471940e5a0406814ba78c1600bfb3c175`; preceding hardening revisions `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
+- **Working tree during the re-run:** code files committed at `279c919`; the E-034 documentation edits were uncommitted during the run; unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -47,6 +47,7 @@
 | E-031 | LOCAL | Canonical entry point on the final docs revision | `17df06a` (code `bbe49eb`) | 1 | **BLOCKED**, not PASS: docs 53 required/674 links in 115 files and secrets 231 PASS; eval fmt/Clippy/12 tests/10 self-test checks PASS; platform fmt/Clippy PASS; platform lib **257** PASS; then `cargo test --locked` stopped at `cli_contract` because the debug `ekp_platform.exe` was denied before spawn (`os error 4551`, Application Control) for all 30 tests. A same-path retry gave the identical result. The debug binary also failed to start directly; the release binary's `--health` returned OK. No rename, copy, move or alternate target directory was used |
 | E-032 | LOCAL | Second defect-hardening re-run: regression red/green, release tests, runtime checks and canonical entry point | `b2d8afc` | 1 (canonical); 0 per executed release target; combined `cargo test --release --locked` 101 | PASS for every executed release-profile target: platform **329** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health); **2 edge tests BLOCKED** at spawn (`os error 4551`) after four same-path attempts. Eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK. Six new regression tests were observed failing before the fix. **Canonical `scripts/check.ps1` is BLOCKED, exit 1:** run 1 stopped at the debug lib harness; run 2 passed docs 677/115, secrets 231, eval and platform fmt/Clippy plus 262 lib tests, then stopped at the `cli_contract` harness (`os error 4551`) |
 | E-033 | LOCAL | Audit whitespace-only fail-open fix: red/green regression, release tests, runtime checks and canonical entry point | `21e23d6` | 1 (canonical); 0 per executed release target | PASS for every executed release-profile target: platform **308** (265 unit, 31 CLI contract, 8 integration, 4 web health); **27 tests BLOCKED** at spawn (`governance_web` 18 after two attempts, `search_eval` 7 after two attempts, `edge_cases` 2). Eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK; fmt and Clippy pass in both crates. Three new unit tests and one CLI contract test cover the whitespace-only fix. **Canonical `scripts/check.ps1` is BLOCKED, exit 1 on two same-command attempts:** both stopped at the debug lib harness (`os error 4551`) after docs 677/115, secrets 231, eval and platform fmt/Clippy passed |
+| E-034 | LOCAL | Multiline textarea, BPMN parser and Secure-cookie hardening: release tests, runtime checks and canonical entry point | `279c919` | 0 | PASS. Platform **345** (273 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); `--health` OK; fmt and Clippy pass in both crates. Ten new tests (2 governance unit, 5 BPMN unit, 1 governance-web unit, 2 governance-web integration) cover LF/CRLF acceptance and CR/control rejection, workflow/quality-case/gate replay, BPMN local names, quote styles, attribute boundaries, comments/CDATA and Secure-cookie mirroring. **Canonical `scripts/check.ps1` exited 0 on two same-command runs:** docs 53 required/680 links in 115 files, secrets 231, eval 12 + 10 self-test checks, platform 345, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 
 ## E-001: canonical check (blocked)
 
@@ -719,6 +720,69 @@ The canonical debug profile therefore has **no PASS** at `21e23d6`. The release-
 
 After the E-033 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 680 relative links in 115 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check, not a canonical run.
 
+## E-034: multiline textarea, BPMN parser and Secure-cookie hardening (`279c919`)
+
+```powershell
+cd platform
+cargo fmt -- --check
+cargo clippy --release --locked --all-targets -- -D warnings
+cargo test --release --locked
+cargo run --release --locked --bin ekp_platform -- --selftest
+cargo run --release --locked --bin ekp_platform -- --declared-rules-schema
+cargo run --release --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
+cargo run --release --locked --bin ekp_platform -- --health
+
+cd ..\eval
+cargo fmt -- --check
+cargo clippy --release --locked --all-targets -- -D warnings
+cargo test --release --locked
+cargo run --release --locked -- --selftest
+```
+
+Observed on 2026-10-30 at `279c919471940e5a0406814ba78c1600bfb3c175` (code committed; these E-034 documentation edits were uncommitted during the run):
+
+| Target | Count | Exit |
+| --- | --- | --- |
+| Platform unit (`--lib`) | 273 | 0 |
+| Platform CLI contract | 31 | 0 |
+| Platform edge cases | 2 | 0 |
+| Platform governance web | 20 | 0 |
+| Platform integration | 8 | 0 |
+| Platform search evaluation | 7 | 0 |
+| Platform web health | 4 | 0 |
+| **Platform total** | **345** | 0 |
+| Eval unit/integration tests | 12 | 0 |
+| Eval self-test checks | 10 | 0 |
+| Platform self-test assertions | 49 | 0 |
+| Declared-rules schema records | 20 | 0 |
+| Search gate cases | 28 (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) | 0 |
+| `--health` | `health: OK` | 0 |
+
+The three behaviours fixed in this revision were:
+
+1. **Textarea input was rejected.** `validate_text` rejected every control character, including `\n`; a browser submits textarea newlines as CRLF. Workflow description, quality-case description and gate reason now use `validate_multiline_text`, which accepts LF and CRLF, rejects bare CR and every other control character, and stores CRLF normalized to LF via `clean_multiline`. Single-line fields still reject all line breaks.
+2. **BPMN parsing was prefix-bound.** The parser only matched literal `<bpmn:...` tags and only double-quoted attributes. It now matches the local tag name (so a default namespace and arbitrary prefixes work), uses a quote-aware attribute scanner that accepts single and double quotes and whitespace around `=`, and skips comments, CDATA and processing instructions.
+3. **Logout did not mirror `Secure`.** Login and logout now share `configured_secure_cookie_suffix`, so `EKPI_COOKIE_SECURE=1` emits `Secure` on both the session cookie and the clearing cookie.
+
+Red/green evidence is deliberately limited: no pre-fix red run was captured for these three behaviours. The only observed red in this cycle was the new governance-web integration test failing because it hard-coded project `PRJ-000002`; creating the project before the workflow corrected the fixture, not the product expectation. The final release suite and both canonical runs are green. No test was deleted, renamed to hide a failure, or weakened, and no expectation was changed to match the implementation.
+
+An initial canonical attempt immediately after the code commit failed at **eval Clippy**, not at project code: the stale debug build artifact `eval/target/debug/build/serde-*/out/private.rs` contained `use serde_flaps_core::...`, while the installed registry `serde` build script writes `serde_core` and no repository or registry source contains `serde_flaps_core`. Deleting only the `serde` build, fingerprint and dependency artifacts (source, tests and gates untouched) and rerunning the same command produced the canonical results below. This is recorded as an environment repair, not as a source PASS or a lowered gate. The same corruption had earlier been cleared in the release profile.
+
+### Canonical entry-point result
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-10-30 at `279c919`, **exit 0 on two same-command runs**:
+
+- **First canonical run:** documentation PASS (53 required documents, 680 links in 115 files); secrets PASS (231 files); eval fmt, Clippy, 12 tests and 10 self-test checks PASS; platform fmt, Clippy, **345 tests** PASS; platform self-test 49 assertions, schema 20 records, search 28 cases with gate PASS and `health: OK`; the script printed `=== ALL CHECKS PASSED ===`.
+- **Second canonical run (same command, same paths, no workaround):** exited 0 with the same check set and counts; no step was skipped or reported as `BLOCKED`.
+
+This is the first canonical PASS after the `c827351`, `bbe49eb`, `b2d8afc` and `21e23d6` host-policy blocks. It is a local working-tree run, not CI, staging, production or an independent execution. The host policy remains intermittent and has no named exception owner; a future denial must still be recorded as `BLOCKED`.
+
+After the E-034 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 685 relative links in 115 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check of the uncommitted evidence edits, not a third canonical run; the canonical PASS remains bound to the code revision `279c919`.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -734,5 +798,5 @@ After the E-033 documentation reconciliation, `scripts/check-docs.ps1` passes wi
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI; the earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` has 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` has 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
+- It does not show that the canonical check is reproducible on a different host or in CI. The current `279c919` working tree passed twice on the same host (E-034), but the earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.

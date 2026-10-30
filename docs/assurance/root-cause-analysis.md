@@ -2,8 +2,8 @@
 
 - **Status:** Active; root causes recorded, several remain externally blocked
 - **Owner:** Engineering + QA; host/security and business owners `UNASSIGNED`
-- **Last reviewed:** 2026-10-27
-- **Evidence baseline:** `6ae6134`; release-profile checks re-run 2026-10-27
+- **Last reviewed:** 2026-10-30
+- **Evidence baseline:** `6ae6134`; current hardening revision `279c919` (canonical PASS, E-034); release-profile checks re-run 2026-10-30
 - **Matrix:** [phase-a-b-matrix.md](phase-a-b-matrix.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
 
@@ -13,7 +13,7 @@ This analysis separates a code defect from a test-environment block, a missing c
 
 | ID | Symptom | Root cause | Class | Fix / verification | Remaining risk |
 | --- | --- | --- | --- | --- | --- |
-| RC-01 | Canonical `scripts/check.ps1` exits 1 in the working tree at the platform test | Windows Application Control blocks the existing unsigned debug `ekp_platform.exe` (`os error 4551`); 22 CLI contract tests cannot spawn it | Environment / host policy | Release-profile suite runs the same 22 tests (270 total, exit 0); at `41beaea` a fresh clone ran the canonical check to exit 0; the working-tree run remains `BLOCKED` | Working-tree reproducibility requires an exception or CI runner |
+| RC-01 | Canonical `scripts/check.ps1` exited 1 in the working tree at the platform test on earlier revisions | Windows Application Control blocks the existing unsigned debug `ekp_platform.exe` (`os error 4551`); the CLI contract tests cannot spawn it | Environment / host policy | Release-profile suite runs the same tests; fresh clones at `41beaea`/`6ed236d` and working trees at `4697aa1`/`718db57`/`32f2b36`/`604a2a5` passed the canonical check. The current `279c919` canonical check exited 0 twice after only stale `serde` build artifacts were cleared (E-034); historical `c827351`/`bbe49eb`/`b2d8afc`/`21e23d6` blocks are retained | Policy remains unowned and intermittent; cross-host/CI reproducibility requires an exception or runner |
 | RC-02 | The `28b68cc` restore failed in a fresh clone | Application Control blocked fresh-clone build scripts (`proc-macro2`, `serde_core`, `serde`, `quote`, `zmij`) at `eval` Clippy | Environment / host policy | `28b68cc` stays `BLOCKED`; the `41beaea` final bundle verifies, clones and passes the automatic restore drill with canonical check exit 0 | Earlier revision remains unverified; off-host/RPO/RTO absent |
 | RC-03 | CLI flags were silently ignored or combined | Permissive argument parsing treated missing values and unrelated flags as defaults or no-ops | Code defect | `23b8996` hardened the contract; 22 CLI contract tests pass in release profile and in the `41beaea` clean-clone canonical run | Working-tree canonical execution blocked by RC-01 |
 | RC-04 | `--llm` could imply a model capability that did not exist | No provider adapter; a mock was the only implementation, and the output needed explicit labeling | Code/contract and scope | `--llm` accepts only `mock`, requires `--search`, labels output `mock-answer`, requires `[doc_id@version]`; other providers exit 2 before data/audit | No AI quality claim; no real provider |
@@ -53,9 +53,11 @@ PLATFORM_EXIT=0
 
 At `41beaea` and `6ed236d`, the automatic restore drill built a fresh debug binary in a clean clone and the canonical `scripts/check.ps1` exited 0 (at `6ed236d`: docs 652/105, secrets 229, platform 270, eval 12, self-test 49, schema 20, search 28). The working tree at those two revisions still exited 1 at the 22 CLI contract tests because its existing `platform\target\debug\ekp_platform.exe` was denied. Later working-tree runs at `4697aa1` and `718db57` passed the full canonical check; those are recorded separately in E-024/E-025, so the earlier clean-clone pass was local and revision-bound, not CI.
 
+At `279c919`, the working-tree canonical check exited 0 on two same-command runs (docs 53/680/115, secrets 231, eval 12 + 10 self-test checks, platform 345, self-test 49, schema 20, search 28; E-034). The first attempt failed at eval Clippy because stale debug `serde` build output referenced `serde_flaps_core`; deleting only the `serde` build/fingerprint/dependency artifacts and rerunning the same command removed the failure. No gate was lowered and no binary was renamed or relocated. The earlier `c827351`, `bbe49eb`, `b2d8afc` and `21e23d6` blocks remain recorded and are not retroactively upgraded.
+
 ### Root cause
 
-The host's Application Control policy can deny a newly created or existing unsigned debug executable at process creation (`ERROR_VIRUS_INFECTED` / code 4551 is used here as the host's denial code). The denial is path/artifact-specific: the working-tree binary was denied while a freshly built clone binary was allowed. The failure occurs before the test body runs, so it is not an assertion failure or a product regression. The release binary and the clone build were executable, which is why the same tests pass there.
+The host's Application Control policy can deny a newly created or existing unsigned debug executable at process creation (`ERROR_VIRUS_INFECTED` / code 4551 is used here as the host's denial code). The denial is path/artifact-specific: a working-tree binary may be denied while a freshly built clone binary is allowed, and the same paths may pass on a later attempt. The failure occurs before the test body runs, so it is not an assertion failure or a product regression. The release binary and the clone build were executable, which is why the same tests pass there. The `279c919` run shows the denial is not deterministic; a stale `serde` build artifact was a separate, non-policy failure that was repaired by deleting only generated artifacts.
 
 ### Why this was not "fixed" by changing the gate
 

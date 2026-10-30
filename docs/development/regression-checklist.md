@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **277 tests** in the canonical debug profile at the historical `718db57` revision: 221 unit, 24 CLI contract, 2 edge-case, 11 governance web, 8 engine integration, 7 search evaluation, 4 web health. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile has **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§9.
+- `platform` has **345 tests** in the release profile at the current `279c919` revision: 273 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; both canonical runs also execute all 345 in the debug profile. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile had **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the preceding `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§10.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -241,3 +241,28 @@ This section records the regression baseline added by `fix: reject whitespace-on
 | Canonical `scripts/check.ps1` at `21e23d6` | **BLOCKED** on two same-command attempts, both at the debug lib harness (`os error 4551`); recorded from the observed runs in E-033, not inferred from the release profile |
 
 Evidence: [E-033](../assurance/test-evidence.md#e-033-audit-whitespace-only-fail-open-fix-21e23d6) and [phase gates](../quality/phase-gates.md). The four new regression tests are three unit tests (whitespace-only file, zero-byte file, append refusal without modification) and one CLI-contract test (whitespace-only file refused without modification). `read_jsonl_refuses_a_whitespace_only_file` was observed failing with `AuditLog { events: [] }` before the fix; after restoring the fix, the full lib target passed 265/265 and the CLI contract passed 31/31. The 27 host-blocked tests and the blocked canonical entry point are not a PASS.
+
+## 10. Revision record: `279c919` multiline, BPMN and cookie hardening (2026-10-30)
+
+This section records the regression baseline added by `fix: accept multiline textarea input and harden BPMN parsing`. It supplements, and does not replace, the area checklists and §9.
+
+### New behavior to preserve
+
+- Textarea-backed fields (`workflow description`, `quality-case description`, `gate reason`) accept LF and CRLF. CRLF is stored as LF. A bare CR, tab, NUL or any other control character is still refused. Single-line fields still refuse every line break.
+- Multiline values survive ledger replay and are rendered with `white-space: pre-wrap`; the page must not collapse newlines into spaces.
+- BPMN matching uses the local tag name, so `<process>` in a default namespace and `<bpmn2:process>` are both accepted. Longer names such as `taskSequence` are not parsed as `task`.
+- BPMN attributes may use single or double quotes and whitespace around `=`; the scanner does not read attribute-like text inside another attribute value and does not borrow values from a later tag.
+- BPMN comments, CDATA sections and processing instructions do not create elements or flows.
+- Logout emits `Secure` when `EKPI_COOKIE_SECURE=1`, matching login; the clearing cookie has `Max-Age=0`.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt -- --check` / `cargo clippy --release --locked --all-targets -- -D warnings` (both crates) | Exit 0 |
+| `eval` `cargo test --release --locked` / `--selftest` | 12 passed / 10 checks |
+| `platform` unit / CLI contract / edge / governance web / integration / search evaluation / web health | 273 / 31 / 2 / 20 / 8 / 7 / 4 passed (**345**) |
+| `--selftest` / `--declared-rules-schema` / search gate / `--health` | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) / `health: OK` |
+| Canonical `scripts/check.ps1` at `279c919` | **PASS**, exit 0 on two same-command runs; docs 53/680/115, secrets 231, eval 12 + 10 checks, platform 345, self-test 49, schema 20, search 28 |
+
+Evidence: [E-034](../assurance/test-evidence.md#e-034-multiline-textarea-bpmn-parser-and-secure-cookie-hardening-279c919) and [phase gates](../quality/phase-gates.md). The ten new regression tests are two governance unit tests (LF/CRLF acceptance and replay for workflow, quality case and gate), five BPMN unit tests (single quotes, mixed quotes and whitespace, attribute-value boundaries, default namespace/arbitrary prefixes, comments/CDATA), one governance-web unit test (Secure-cookie suffix) and two governance-web integration tests (multiline form round-trip, logout Secure mirroring). No pre-fix red run was captured for these three behaviours; the only observed red was a hard-coded project-ID mistake in the new integration test, corrected before the final runs. No test was deleted, renamed to hide a failure, or weakened.
