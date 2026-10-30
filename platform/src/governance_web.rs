@@ -314,6 +314,18 @@ async fn login_page() -> Response {
     Html(html.into_string()).into_response()
 }
 
+fn secure_cookie_suffix(value: Option<&str>) -> &'static str {
+    if value == Some("1") {
+        "; Secure"
+    } else {
+        ""
+    }
+}
+
+fn configured_secure_cookie_suffix() -> &'static str {
+    secure_cookie_suffix(std::env::var("EKPI_COOKIE_SECURE").ok().as_deref())
+}
+
 async fn login_post(
     State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
@@ -352,11 +364,7 @@ async fn login_post(
                 .map(|duration| duration.as_secs())
                 .unwrap_or(0);
             let max_age = session.expires_at.saturating_sub(now).max(1);
-            let secure = if std::env::var("EKPI_COOKIE_SECURE").ok().as_deref() == Some("1") {
-                "; Secure"
-            } else {
-                ""
-            };
+            let secure = configured_secure_cookie_suffix();
             let cookie = format!(
                 "ekpi_session={}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={max_age}",
                 session.token
@@ -385,10 +393,13 @@ async fn logout_post(
         }
     }
 
+    let secure = configured_secure_cookie_suffix();
+    let cookie = format!("ekpi_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0");
     let mut response = Redirect::to("/login").into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
-        HeaderValue::from_static("ekpi_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"),
+        HeaderValue::from_str(&cookie)
+            .unwrap_or_else(|_| HeaderValue::from_static("ekpi_session=; Path=/; Max-Age=0")),
     );
     response
 }
@@ -1316,7 +1327,7 @@ fn workflow_list(data: &GovernanceSnapshot) -> Markup {
                     article class="workflow-card" {
                         div class="workflow-title-row" { div { p class="row-id" { (workflow.id) " · v" (workflow.version) } h3 { (workflow.title) } } (workflow_badge(&workflow.status)) }
                         p class="muted" { (workflow.department) " · 負責人 " (workflow.owner) }
-                        p { (workflow.description) }
+                        p class="multiline" { (workflow.description) }
                         ol class="stage-chips" { @for stage in &workflow.stages { li { (stage) } } }
                         @if workflow.status == "draft" {
                             form class="publish-form" method="post" action=(format!("/workflows/{}/{}/publish", workflow.id, workflow.version)) {
@@ -1460,7 +1471,7 @@ fn quality_case_list(data: &GovernanceSnapshot) -> Markup {
                 @for case in data.cases.iter().rev() {
                     article class="case-card" {
                         div class="workflow-title-row" { div { p class="row-id" { (case.id) " · " (kind_label(&case.kind)) " · " (case.project_id) } h3 { (case.title) } } (case_status_badge(&case.status)) }
-                        p { (case.description) }
+                        p class="multiline" { (case.description) }
                         p class="muted" { "負責人 " (case.owner) " · 到期 " (case.due_date) }
                         @if case.status != "closed" {
                             form class="publish-form" method="post" action=(format!("/controls/{}/status", case.id)) {
@@ -1549,7 +1560,7 @@ fn gate_decision_list(data: &GovernanceSnapshot) -> Markup {
                     th scope="row" { (decision.project_id) " · " (decision.gate_id) }
                     td { (gate_badge(&decision.decision)) }
                     td { (decision.actor) }
-                    td { (decision.reason) @if decision.decision == "exception" { small class="row-id" { "風險接受者：" (decision.risk_acceptor) "；期限：" (decision.remediation_due) } } }
+                    td class="multiline" { (decision.reason) @if decision.decision == "exception" { small class="row-id" { "風險接受者：" (decision.risk_acceptor) "；期限：" (decision.remediation_due) } } }
                     td { (format_timestamp(decision.created_at)) }
                 } } }
             } }
@@ -1827,6 +1838,14 @@ struct GateDecisionForm {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn secure_cookie_suffix_only_enables_for_value_one() {
+        assert_eq!(secure_cookie_suffix(Some("1")), "; Secure");
+        assert_eq!(secure_cookie_suffix(Some("0")), "");
+        assert_eq!(secure_cookie_suffix(Some("true")), "");
+        assert_eq!(secure_cookie_suffix(None), "");
+    }
 
     #[test]
     fn date_formatter_is_utc_and_stable() {

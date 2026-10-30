@@ -133,8 +133,10 @@ impl BpmnModel {
     /// Parse BPMN XML (simplified: extracts id, name, type from tags).
     pub fn parse(xml: &str) -> Result<Self, String> {
         let mut model = BpmnModel::default();
-        // Extract process id and name from the process start tag only.
-        if let Some(process_pos) = find_tag(xml, "<bpmn:process", 0) {
+        // Extract process id and name from the process start tag only. The
+        // local name is matched so both `bpmn:process` and a default-namespace
+        // `<process>` are accepted.
+        if let Some(process_pos) = find_tag(xml, "process", 0) {
             if let Some(id) = extract_attr(xml, process_pos, "id") {
                 model.id = id;
             }
@@ -143,26 +145,23 @@ impl BpmnModel {
             }
         }
 
-        // Extract elements by tag type. A tag name must end at a delimiter so
-        // `<bpmn:taskSequence>` is not parsed as `<bpmn:task>`.
+        // Extract elements by local tag name. A longer local name such as
+        // `taskSequence` must not be parsed as `task`, and an arbitrary
+        // namespace prefix is accepted.
         let tag_types = [
-            ("bpmn:task", BpmnElementType::Task),
-            ("bpmn:exclusiveGateway", BpmnElementType::ExclusiveGateway),
-            ("bpmn:parallelGateway", BpmnElementType::ParallelGateway),
-            ("bpmn:inclusiveGateway", BpmnElementType::InclusiveGateway),
-            ("bpmn:startEvent", BpmnElementType::StartEvent),
-            ("bpmn:endEvent", BpmnElementType::EndEvent),
-            (
-                "bpmn:intermediateThrowEvent",
-                BpmnElementType::IntermediateEvent,
-            ),
-            ("bpmn:subProcess", BpmnElementType::SubProcess),
+            ("task", BpmnElementType::Task),
+            ("exclusiveGateway", BpmnElementType::ExclusiveGateway),
+            ("parallelGateway", BpmnElementType::ParallelGateway),
+            ("inclusiveGateway", BpmnElementType::InclusiveGateway),
+            ("startEvent", BpmnElementType::StartEvent),
+            ("endEvent", BpmnElementType::EndEvent),
+            ("intermediateThrowEvent", BpmnElementType::IntermediateEvent),
+            ("subProcess", BpmnElementType::SubProcess),
         ];
 
         for (tag, etype) in &tag_types {
-            let prefix = format!("<{}", tag);
             let mut search_pos = 0;
-            while let Some(abs_pos) = find_tag(xml, &prefix, search_pos) {
+            while let Some(abs_pos) = find_tag(xml, tag, search_pos) {
                 // Extract id
                 let id = extract_attr(xml, abs_pos, "id");
                 let name = extract_attr(xml, abs_pos, "name").unwrap_or_default();
@@ -174,14 +173,13 @@ impl BpmnModel {
                         attributes: std::collections::BTreeMap::new(),
                     });
                 }
-                search_pos = abs_pos + prefix.len();
+                search_pos = skip_tag(xml, abs_pos);
             }
         }
 
         // Extract sequence flows
-        let flow_prefix = "<bpmn:sequenceFlow";
         let mut search_pos = 0;
-        while let Some(abs_pos) = find_tag(xml, flow_prefix, search_pos) {
+        while let Some(abs_pos) = find_tag(xml, "sequenceFlow", search_pos) {
             let id = extract_attr(xml, abs_pos, "id").unwrap_or_default();
             let source = extract_attr(xml, abs_pos, "sourceRef").unwrap_or_default();
             let target = extract_attr(xml, abs_pos, "targetRef").unwrap_or_default();
@@ -193,31 +191,67 @@ impl BpmnModel {
                     condition: None,
                 });
             }
-            search_pos = abs_pos + flow_prefix.len();
+            search_pos = skip_tag(xml, abs_pos);
         }
 
         Ok(model)
     }
 }
 
-/// Find the next `<prefix` whose tag name ends at a real delimiter.
-fn find_tag(xml: &str, prefix: &str, from: usize) -> Option<usize> {
+/// Find the next start tag whose local name equals `local_name`.
+///
+/// The namespace prefix is intentionally ignored: both `<bpmn:process>` and a
+/// default-namespace `<process>` are valid BPMN. Comments, CDATA sections and
+/// processing instructions are skipped rather than scanned for element names.
+fn find_tag(xml: &str, local_name: &str, from: usize) -> Option<usize> {
     let mut search_pos = from;
-    while let Some(offset) = xml[search_pos..].find(prefix) {
-        let abs_pos = search_pos + offset;
-        if tag_name_ends_at(xml, abs_pos + prefix.len()) {
-            return Some(abs_pos);
+    while let Some(offset) = xml[search_pos..].find('<') {
+        let start = search_pos + offset;
+        let rest = &xml[start..];
+        if rest.starts_with("<!--") {
+            search_pos = start + rest.find("-->")? + 3;
+            continue;
         }
-        search_pos = abs_pos + prefix.len();
+        if rest.starts_with("<![CDATA[") {
+            search_pos = start + rest.find("]]>")? + 3;
+            continue;
+        }
+        if rest.starts_with("<?") {
+            search_pos = start + rest.find("?>")? + 2;
+            continue;
+        }
+        let next = xml.as_bytes().get(start + 1).copied();
+        if matches!(next, Some(b'/') | Some(b'!') | Some(b'?')) {
+            search_pos = skip_tag(xml, start);
+            continue;
+        }
+
+        let name_start = start + 1;
+        let bytes = xml.as_bytes();
+        let mut name_end = name_start;
+        while name_end < bytes.len() {
+            let byte = bytes[name_end];
+            if byte.is_ascii_whitespace() || byte == b'/' || byte == b'>' {
+                break;
+            }
+            name_end += 1;
+        }
+        if name_end == name_start {
+            search_pos = skip_tag(xml, start);
+            continue;
+        }
+        let qualified_name = &xml[name_start..name_end];
+        let local = qualified_name.rsplit(':').next().unwrap_or(qualified_name);
+        if local == local_name {
+            return Some(start);
+        }
+        search_pos = skip_tag(xml, start);
     }
     None
 }
 
-fn tag_name_ends_at(xml: &str, end: usize) -> bool {
-    match xml[end..].chars().next() {
-        Some(character) => character == '>' || character == '/' || character.is_ascii_whitespace(),
-        None => false,
-    }
+fn skip_tag(xml: &str, start: usize) -> usize {
+    tag_end(xml, start).map(|end| end + 1).unwrap_or(start + 1)
 }
 
 /// Return the byte offset of the `>` that closes the tag starting at `pos`,
@@ -235,28 +269,73 @@ fn tag_end(xml: &str, pos: usize) -> Option<usize> {
     None
 }
 
-/// Read an attribute from the single start tag beginning at `pos`. Searching
-/// stops at the tag end and requires a name delimiter, so a missing attribute
-/// cannot borrow a later tag's value or match a longer attribute name.
+/// Read an attribute from the single start tag beginning at `pos`.
+///
+/// The scanner walks attribute names and respects both XML quote styles, so
+/// `id="x"`, `id='x'`, and whitespace around `=` are accepted. It never
+/// searches inside another attribute value, so text such as `name="id='fake'"`
+/// cannot spoof a missing attribute.
 fn extract_attr(xml: &str, pos: usize, attr: &str) -> Option<String> {
     let end = tag_end(xml, pos)?;
     let tag = &xml[pos..end];
-    let search = format!("{}=\"", attr);
-    let mut search_pos = 0;
-    while let Some(offset) = tag[search_pos..].find(&search) {
-        let abs_pos = search_pos + offset;
-        let delimited = abs_pos == 0
-            || tag[..abs_pos]
-                .chars()
-                .next_back()
-                .map(|character| character.is_ascii_whitespace())
-                .unwrap_or(false);
-        if delimited {
-            let val_start = abs_pos + search.len();
-            let val_end = tag[val_start..].find('"')?;
-            return Some(tag[val_start..val_start + val_end].to_string());
+    let bytes = tag.as_bytes();
+    let mut index = 1;
+    while index < bytes.len()
+        && !bytes[index].is_ascii_whitespace()
+        && bytes[index] != b'/'
+        && bytes[index] != b'>'
+    {
+        index += 1;
+    }
+
+    while index < bytes.len() {
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
         }
-        search_pos = abs_pos + search.len();
+        if index >= bytes.len() || bytes[index] == b'/' || bytes[index] == b'>' {
+            break;
+        }
+
+        let name_start = index;
+        while index < bytes.len()
+            && !bytes[index].is_ascii_whitespace()
+            && bytes[index] != b'='
+            && bytes[index] != b'/'
+            && bytes[index] != b'>'
+        {
+            index += 1;
+        }
+        let name = &tag[name_start..index];
+
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= bytes.len() || bytes[index] != b'=' {
+            continue;
+        }
+        index += 1;
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= bytes.len() {
+            break;
+        }
+        let quote = bytes[index];
+        if quote != b'"' && quote != b'\'' {
+            break;
+        }
+        index += 1;
+        let value_start = index;
+        while index < bytes.len() && bytes[index] != quote {
+            index += 1;
+        }
+        if index >= bytes.len() {
+            return None;
+        }
+        if name == attr {
+            return Some(tag[value_start..index].to_string());
+        }
+        index += 1;
     }
     None
 }
@@ -347,6 +426,87 @@ mod tests {
         assert_eq!(model.start_events().len(), 1);
         assert_eq!(model.end_events().len(), 1);
         assert_eq!(model.flows.len(), 2);
+    }
+
+    #[test]
+    fn parses_single_quoted_attributes() {
+        let xml = r#"<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+            <bpmn:process id='P-008' name='Single quote process'>
+                <bpmn:task id='t1' name='Do it'/>
+                <bpmn:sequenceFlow id='f1' sourceRef='t1' targetRef='t2'/>
+            </bpmn:process>
+        </bpmn:definitions>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.id, "P-008");
+        assert_eq!(model.name, "Single quote process");
+        assert_eq!(model.tasks().len(), 1);
+        assert_eq!(model.tasks()[0].id, "t1");
+        assert_eq!(model.flows.len(), 1);
+        assert_eq!(model.flows[0].source_ref, "t1");
+        assert_eq!(model.flows[0].target_ref, "t2");
+    }
+
+    #[test]
+    fn parses_mixed_quotes_and_whitespace_around_equals() {
+        let xml = r#"<bpmn:process id = 'P-009' name="Mixed 'quotes'">
+            <bpmn:task id= 't1' name = "Task with 'single' text"/>
+            <bpmn:task id="t2" name='Task with "double" text'/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.id, "P-009");
+        assert_eq!(model.name, "Mixed 'quotes'");
+        assert_eq!(model.tasks().len(), 2);
+        assert_eq!(model.tasks()[0].id, "t1");
+        assert_eq!(model.tasks()[0].name, "Task with 'single' text");
+        assert_eq!(model.tasks()[1].id, "t2");
+        assert_eq!(model.tasks()[1].name, "Task with \"double\" text");
+    }
+
+    #[test]
+    fn attribute_scanner_does_not_match_text_inside_another_value() {
+        let xml = r#"<bpmn:process id="P-010" name="id='fake'">
+            <bpmn:task name="id='decoy'" id='real'/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.id, "P-010");
+        assert_eq!(model.tasks().len(), 1);
+        assert_eq!(model.tasks()[0].id, "real");
+        assert_eq!(model.tasks()[0].name, "id='decoy'");
+    }
+
+    #[test]
+    fn parses_default_namespace_and_arbitrary_prefixes() {
+        let default_namespace = r#"<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL">
+            <process id="P-011" name="Default namespace">
+                <task id="t1" name="Task"/>
+                <sequenceFlow id="f1" sourceRef="t1" targetRef="t1"/>
+            </process>
+        </definitions>"#;
+        let model = BpmnModel::parse(default_namespace).unwrap();
+        assert_eq!(model.id, "P-011");
+        assert_eq!(model.tasks().len(), 1);
+        assert_eq!(model.tasks()[0].id, "t1");
+        assert_eq!(model.flows.len(), 1);
+
+        let custom_prefix = r#"<bpmn2:process id='P-012' name='Custom prefix'>
+            <bpmn2:startEvent id='s1'/>
+        </bpmn2:process>"#;
+        let model = BpmnModel::parse(custom_prefix).unwrap();
+        assert_eq!(model.id, "P-012");
+        assert_eq!(model.start_events().len(), 1);
+        assert_eq!(model.start_events()[0].id, "s1");
+    }
+
+    #[test]
+    fn comments_and_cdata_do_not_create_elements() {
+        let xml = r#"<bpmn:process id="P-013" name="Comment safe">
+            <!-- <bpmn:task id="comment-decoy"/> -->
+            <![CDATA[<bpmn:task id="cdata-decoy"/>]]>
+            <bpmn:task id="real"/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.tasks().len(), 1);
+        assert_eq!(model.tasks()[0].id, "real");
     }
 
     #[test]

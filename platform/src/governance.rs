@@ -521,7 +521,7 @@ impl Ledger {
         validate_text("流程名稱", &draft.title, 120)?;
         validate_text("部門", &draft.department, 80)?;
         validate_text("流程負責人", &draft.owner, 80)?;
-        validate_text("流程目的", &draft.description, 1500)?;
+        validate_multiline_text("流程目的", &draft.description, 1500)?;
         validate_actor(&draft.actor)?;
         if draft.stages.is_empty() || draft.stages.len() > 30 {
             return Err("流程需有 1 至 30 個階段".to_string());
@@ -552,7 +552,7 @@ impl Ledger {
             title: clean(&draft.title),
             department: clean(&draft.department),
             owner: clean(&draft.owner),
-            description: clean(&draft.description),
+            description: clean_multiline(&draft.description),
             stages: draft.stages.into_iter().map(|s| clean(&s)).collect(),
             status: "draft".to_string(),
             created_at: now_unix()?,
@@ -608,7 +608,7 @@ impl Ledger {
             return Err("請選擇有效的品質事件類型".to_string());
         }
         validate_text("事件標題", title, 160)?;
-        validate_text("事件內容", description, 2000)?;
+        validate_multiline_text("事件內容", description, 2000)?;
         validate_text("負責人", owner, 80)?;
         validate_date("到期日", due_date)?;
         validate_actor(actor)?;
@@ -621,7 +621,7 @@ impl Ledger {
                 project_id: project_id.to_string(),
                 kind: kind.to_string(),
                 title: clean(title),
-                description: clean(description),
+                description: clean_multiline(description),
                 owner: clean(owner),
                 due_date: due_date.to_string(),
                 status: "open".to_string(),
@@ -738,7 +738,7 @@ impl Ledger {
         }
         validate_actor(actor)?;
         if decision != "go" {
-            validate_text("決議原因", reason, 1200)?;
+            validate_multiline_text("決議原因", reason, 1200)?;
         }
         if decision == "exception" {
             validate_text("風險接受者", risk_acceptor, 80)?;
@@ -756,7 +756,7 @@ impl Ledger {
                 gate_id: gate_id.to_string(),
                 decision: decision.to_string(),
                 actor: clean(actor),
-                reason: clean(reason),
+                reason: clean_multiline(reason),
                 evidence_reference: clean(evidence_reference),
                 risk_acceptor: clean(risk_acceptor),
                 remediation_due: clean(remediation_due),
@@ -940,7 +940,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             validate_text("流程名稱", &workflow.title, 120)?;
             validate_text("部門", &workflow.department, 80)?;
             validate_text("流程負責人", &workflow.owner, 80)?;
-            validate_text("流程目的", &workflow.description, 1500)?;
+            validate_multiline_text("流程目的", &workflow.description, 1500)?;
             if workflow.stages.is_empty() || workflow.stages.len() > 30 {
                 return Err(format!(
                     "workflow {}@{} must have 1 to 30 stages",
@@ -1015,7 +1015,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
                 ));
             }
             validate_text("案件標題", &case.title, 160)?;
-            validate_text("案件內容", &case.description, 2000)?;
+            validate_multiline_text("案件內容", &case.description, 2000)?;
             validate_text("負責人", &case.owner, 80)?;
             validate_date("期限", &case.due_date)?;
             if !snapshot
@@ -1101,7 +1101,7 @@ fn apply_event(snapshot: &mut GovernanceSnapshot, event: &LedgerEvent) -> Result
             validate_actor(&decision.actor)?;
             require_payload_actor(&event.actor, &decision.actor, "gate decision")?;
             if decision.decision != "go" {
-                validate_text("決議原因", &decision.reason, 1200)?;
+                validate_multiline_text("決議原因", &decision.reason, 1200)?;
             }
             if decision.decision == "exception" {
                 validate_text("風險接受者", &decision.risk_acceptor, 80)?;
@@ -1296,6 +1296,31 @@ fn validate_text(label: &str, value: &str, max_chars: usize) -> Result<(), Strin
     Ok(())
 }
 
+/// Validate a field that is rendered as a textarea. LF and CRLF are accepted;
+/// bare CR and every other control character remain rejected.
+fn validate_multiline_text(label: &str, value: &str, max_chars: usize) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label}不可空白"));
+    }
+    if trimmed.chars().count() > max_chars {
+        return Err(format!("{label}超過 {max_chars} 字限制"));
+    }
+    let mut characters = trimmed.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\n' {
+            continue;
+        }
+        if character == '\r' && characters.peek() == Some(&'\n') {
+            continue;
+        }
+        if character.is_control() {
+            return Err(format!("{label}含有不可接受的控制字元"));
+        }
+    }
+    Ok(())
+}
+
 fn validate_source_url(value: &str) -> Result<(), String> {
     validate_text("來源連結", value, 2048)?;
     let trimmed = value.trim();
@@ -1345,6 +1370,10 @@ fn validate_date(label: &str, value: &str) -> Result<(), String> {
 
 fn clean(value: &str) -> String {
     value.trim().to_string()
+}
+
+fn clean_multiline(value: &str) -> String {
+    value.trim().replace("\r\n", "\n")
 }
 
 #[cfg(test)]
@@ -1443,6 +1472,109 @@ mod tests {
         assert!(validate_date("期限", "2026-02-29").is_err());
         assert!(validate_date("期限", "2024-02-29").is_ok());
         assert!(validate_date("期限", "2026-13-01").is_err());
+    }
+
+    #[test]
+    fn multiline_text_accepts_lf_and_crlf_but_rejects_bare_cr_and_other_controls() {
+        assert!(validate_multiline_text("內容", "第一行\n第二行", 100).is_ok());
+        assert!(validate_multiline_text("內容", "第一行\r\n第二行", 100).is_ok());
+        assert!(validate_multiline_text("內容", "第一行\r第二行", 100).is_err());
+        assert!(validate_multiline_text("內容", "第一行\t第二行", 100).is_err());
+        assert!(
+            validate_text("名稱", "第一行\n第二行", 100).is_err(),
+            "single-line fields must still reject line breaks"
+        );
+    }
+
+    #[test]
+    fn multiline_fields_persist_and_replay_for_workflow_quality_case_and_gate() {
+        let path = test_path();
+        let mut ledger = Ledger::open(&path).expect("new ledger opens");
+        let project_id = ledger
+            .record_project("多行內容", "QA", "Alex", "medium", "Jordan")
+            .expect("project records");
+        let (workflow_id, _version) = ledger
+            .save_workflow(WorkflowDraftInput {
+                base_id: None,
+                title: "多行流程".to_string(),
+                department: "QA".to_string(),
+                owner: "Alex".to_string(),
+                description: "第一行\r\n第二行".to_string(),
+                stages: vec!["提出".to_string(), "審查".to_string()],
+                actor: "Jordan".to_string(),
+            })
+            .expect("multiline workflow records");
+        let workflow = ledger
+            .snapshot()
+            .workflows
+            .into_iter()
+            .find(|workflow| workflow.id == workflow_id)
+            .expect("workflow exists");
+        assert_eq!(workflow.description, "第一行\n第二行");
+
+        let case_id = ledger
+            .create_quality_case(
+                &project_id,
+                "risk",
+                "多行品質事件",
+                "根因\r\n影響",
+                "Alex",
+                "2026-12-31",
+                "Jordan",
+            )
+            .expect("multiline quality case records");
+        let quality_case = ledger
+            .snapshot()
+            .cases
+            .into_iter()
+            .find(|case| case.id == case_id)
+            .expect("quality case exists");
+        assert_eq!(quality_case.description, "根因\n影響");
+
+        ledger
+            .record_gate_decision(
+                &project_id,
+                "G2",
+                "hold",
+                "Reviewer",
+                "等待\r\n複核",
+                "",
+                "",
+                "",
+                false,
+            )
+            .expect("multiline gate reason records");
+        assert_eq!(ledger.snapshot().gate_decisions[0].reason, "等待\n複核");
+
+        ledger.verify().expect("multiline chain verifies");
+        drop(ledger);
+        let reloaded = Ledger::open(&path).expect("multiline ledger reloads");
+        assert_eq!(
+            reloaded
+                .snapshot()
+                .workflows
+                .into_iter()
+                .find(|workflow| workflow.id == workflow_id)
+                .expect("workflow survives replay")
+                .description,
+            "第一行\n第二行"
+        );
+        assert_eq!(
+            reloaded
+                .snapshot()
+                .cases
+                .into_iter()
+                .find(|case| case.id == case_id)
+                .expect("quality case survives replay")
+                .description,
+            "根因\n影響"
+        );
+        assert_eq!(reloaded.snapshot().gate_decisions[0].reason, "等待\n複核");
+        reloaded
+            .verify()
+            .expect("reloaded multiline chain verifies");
+        drop(reloaded);
+        fs::remove_file(path).expect("test ledger removed");
     }
 
     #[test]

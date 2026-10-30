@@ -13,9 +13,34 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
+// The guard must stay alive across awaits so the environment variable is
+// visible to the handler, so this lock is async-aware rather than std.
+static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 const ADMIN_PASSWORD: &str = "correct-horse-battery-staple";
 const VIEWER_PASSWORD: &str = "viewer-password";
+
+struct EnvGuard {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var_os(key);
+        std::env::set_var(key, value);
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var(self.key, value),
+            None => std::env::remove_var(self.key),
+        }
+    }
+}
 
 fn test_path() -> PathBuf {
     std::env::temp_dir().join(format!(
@@ -664,6 +689,116 @@ async fn duplicate_cookie_header_lines_are_rejected_even_when_only_one_has_a_ses
         StatusCode::UNAUTHORIZED,
         "duplicate Cookie header lines must not be resolved to one session"
     );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn multiline_textarea_content_is_accepted_and_rendered_with_preserved_breaks() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Multiline+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/workflows",
+        "base_id=&title=Multiline+workflow&department=QA&owner=Alex&description=First+line%0D%0ASecond+line&stages=Intake%0D%0AReview&actor=Jordan",
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "a browser-style CRLF textarea value must be accepted"
+    );
+    let response = get_with_cookie(&app, "/workflows", Some(&cookie)).await;
+    let html = response_text(response).await;
+    assert!(html.contains("First line\nSecond line"));
+    assert!(html.contains("class=\"multiline\""));
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/controls",
+        "project_id=PRJ-000001&kind=risk&title=Multiline+case&description=Root+cause%0D%0AEffect&owner=Alex&due_date=2026-12-31&actor=Jordan",
+    )
+    .await;
+    let status = response.status();
+    let body = response_text(response).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "response body: {body}");
+    let response = get_with_cookie(&app, "/controls", Some(&cookie)).await;
+    let html = response_text(response).await;
+    assert!(html.contains("Root cause\nEffect"));
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/lifecycle",
+        "project_id=PRJ-000001&gate_id=G2&decision=hold&non_waivable=no&reason=Waiting%0D%0Afor+review&evidence_reference=&risk_acceptor=&remediation_due=&actor=Reviewer",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let response = get_with_cookie(&app, "/lifecycle", Some(&cookie)).await;
+    let html = response_text(response).await;
+    assert!(html.contains("Waiting\nfor review"));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn logout_mirrors_the_secure_cookie_attribute() {
+    let _env_lock = ENV_LOCK.lock().await;
+    let _secure = EnvGuard::set("EKPI_COOKIE_SECURE", "1");
+    let path = test_path();
+    let app = test_app(&path);
+
+    let body = format!("username=tester&password={ADMIN_PASSWORD}");
+    let response = post_form(&app, "/login", &body).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let login_cookie = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .expect("login sets a cookie")
+        .to_str()
+        .expect("cookie is ASCII")
+        .to_string();
+    assert!(
+        login_cookie.contains("; Secure"),
+        "login must honor EKPI_COOKIE_SECURE"
+    );
+    let session = login_cookie
+        .split(';')
+        .next()
+        .expect("cookie pair")
+        .to_string();
+
+    let response = post_authed(&app, &session, "/logout", "").await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let cleared = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .expect("logout clears the cookie")
+        .to_str()
+        .expect("cookie is ASCII");
+    assert!(
+        cleared.contains("; Secure"),
+        "logout must mirror the login cookie's Secure attribute"
+    );
+
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");

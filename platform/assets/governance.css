@@ -30,6 +30,7 @@ a:hover { color: #17478f; text-decoration: underline; }
 button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid #55a9fa; outline-offset: 3px; }
+.multiline { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .skip-link { position: fixed; top: 8px; left: 8px; z-index: 10; padding: 10px 14px; transform: translateY(-160%); border-radius: 8px; background: #fff; box-shadow: var(--shadow); }
 .skip-link:focus { transform: translateY(0); }

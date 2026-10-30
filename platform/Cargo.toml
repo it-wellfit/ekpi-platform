@@ -17,7 +17,7 @@ hmac = "0.12"
 getrandom = "0.2"
 subtle = "2"
 ekp_eval = { path = "../eval", version = "0.1.0" }
-tokio = { version = "1.52", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { version = "1.52", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
 
 # 本 crate 的測試全數位於 library 與 `tests/`：binary 不再攜帶測試目標
 # （R3；coverage/markdown 渲染核心已移入 coverage_report 模組）。
