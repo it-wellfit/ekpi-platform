@@ -288,21 +288,47 @@ fn curie_segment(value: &str) -> String {
     iri_segment(value)
 }
 
-/// 生效日期 → xs:dateTime（形狀不符一律 Err，不做寬鬆解析）。
+/// 生效日期 → xs:dateTime（形狀或曆法不符一律 Err，不做寬鬆解析）。
 fn date_in_force_time(date: &str) -> Result<String, String> {
     let b = date.as_bytes();
-    let ok = b.len() == 10
+    let shape_ok = b.len() == 10
         && b[..4].iter().all(u8::is_ascii_digit)
         && b[4] == b'-'
         && b[5..7].iter().all(u8::is_ascii_digit)
         && b[7] == b'-'
         && b[8..10].iter().all(u8::is_ascii_digit);
-    if !ok {
+    if !shape_ok {
         return Err(format!(
             "temporal effective date `{date}` is not YYYY-MM-DD — refuse to export (fail-closed)"
         ));
     }
+    let year = date[0..4].parse::<u32>().map_err(|_| {
+        format!("temporal effective date `{date}` has an invalid year — refuse to export")
+    })?;
+    let month = date[5..7].parse::<u32>().map_err(|_| {
+        format!("temporal effective date `{date}` has an invalid month — refuse to export")
+    })?;
+    let day = date[8..10].parse::<u32>().map_err(|_| {
+        format!("temporal effective date `{date}` has an invalid day — refuse to export")
+    })?;
+    if !(1..=12).contains(&month) || day == 0 || day > days_in_month(year, month) {
+        return Err(format!(
+            "temporal effective date `{date}` is not a real calendar day — refuse to export (fail-closed)"
+        ));
+    }
     Ok(format!("{date}T00:00:00"))
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        2 => 28,
+        _ => 0,
+    }
 }
 
 /// 優先序：`overrides` → 本規則高；`overridden_by` → 對方高。
@@ -751,17 +777,44 @@ fn esc_attr(text: &str) -> String {
 }
 
 fn esc_comment(text: &str) -> String {
-    text.replace("--", "- -")
+    // A single pass is not enough: replacing `--` with `- -` in a run of
+    // three or more hyphens can leave a new `--` at the replacement boundary
+    // (`a---b` -> `a- --b`). Repeat until the comment body is stable.
+    let mut escaped = text.to_string();
+    while escaped.contains("--") {
+        escaped = escaped.replace("--", "- -");
+    }
+    escaped
 }
 
 // ─── 匯出的自助驗證器（筆記 §四注意事項 6 的 schema-外子集）────────────
 
-/// compact 匯出的全域檢查：良構、禁用名、鍵唯一/引用可解析、頂層順序。
+/// compact 匯出的全域檢查：字元集、良構、禁用名、鍵唯一/引用可解析、頂層順序。
 pub fn validate_compact_export(xml: &str) -> Result<(), String> {
+    check_xml_chars(xml)?;
     check_well_formed(xml)?;
     check_names(xml)?;
     check_ids_and_refs(xml)?;
     check_top_level_order(xml)?;
+    Ok(())
+}
+
+/// XML 1.0 `Char` production. Rust strings cannot contain surrogates, so only
+/// the control-character and noncharacter boundaries need explicit checks.
+fn is_xml_char(character: char) -> bool {
+    matches!(character, '\u{9}' | '\u{a}' | '\u{d}')
+        || ('\u{20}'..='\u{d7ff}').contains(&character)
+        || ('\u{e000}'..='\u{fffd}').contains(&character)
+        || ('\u{10000}'..='\u{10ffff}').contains(&character)
+}
+
+fn check_xml_chars(xml: &str) -> Result<(), String> {
+    if let Some(character) = xml.chars().find(|character| !is_xml_char(*character)) {
+        return Err(format!(
+            "export contains XML 1.0-invalid character U+{:04X}",
+            character as u32
+        ));
+    }
     Ok(())
 }
 
@@ -804,8 +857,14 @@ fn check_well_formed(xml: &str) -> Result<(), String> {
         }
         match chars.get(i + 1) {
             Some('!') => {
-                // 註解（以 "-->" 終止；形狀缺失一律 Err）。
-                let mut j = i + 4;
+                // 只接受註解。XML 1.0 不允許註解本文含 `--` 或以 `-` 結尾。
+                if chars.get(i + 2) != Some(&'-') || chars.get(i + 3) != Some(&'-') {
+                    return Err(
+                        "unsupported markup declaration (only comments are accepted)".into(),
+                    );
+                }
+                let content_start = i + 4;
+                let mut j = content_start;
                 let mut closed = false;
                 while j + 2 < chars.len() {
                     if chars[j] == '-' && chars[j + 1] == '-' && chars[j + 2] == '>' {
@@ -816,6 +875,10 @@ fn check_well_formed(xml: &str) -> Result<(), String> {
                 }
                 if !closed {
                     return Err("unterminated comment".to_string());
+                }
+                let content: String = chars[content_start..j].iter().collect();
+                if content.contains("--") || content.ends_with('-') {
+                    return Err("XML comments must not contain `--` or end with `-`".to_string());
                 }
                 i = j + 3;
             }
@@ -870,66 +933,72 @@ fn check_well_formed(xml: &str) -> Result<(), String> {
 
 fn check_names(xml: &str) -> Result<(), String> {
     let body = strip_comments(xml);
-    for name in FORBIDDEN_NAMES {
-        if body.contains(name) {
-            return Err(format!(
-                "export contains `{name}` — construct does not exist in LegalRuleML 1.0 (research note §2.11)"
-            ));
+    let bytes = body.as_bytes();
+    let mut cursor = 0usize;
+    while let Some(offset) = body[cursor..].find('<') {
+        let start = cursor + offset;
+        let rest = &body[start..];
+        if rest.starts_with("<!") || rest.starts_with("<?") {
+            cursor = start + 2;
+            continue;
         }
+        let name_start = if rest.starts_with("</") {
+            start + 2
+        } else {
+            start + 1
+        };
+        let mut name_end = name_start;
+        while name_end < bytes.len() {
+            let byte = bytes[name_end];
+            if byte.is_ascii_whitespace() || byte == b'/' || byte == b'>' {
+                break;
+            }
+            name_end += 1;
+        }
+        if name_end == name_start {
+            cursor = start + 1;
+            continue;
+        }
+        let qualified = &body[name_start..name_end];
+        let local = qualified.rsplit(':').next().unwrap_or(qualified);
+        for name in FORBIDDEN_NAMES {
+            // The exact construct name is forbidden. A longer local name that
+            // starts with it (for example `NormativeSources`) is also refused:
+            // the validator must not accept a renamed lookalike.
+            if local == name || local.starts_with(name) {
+                return Err(format!(
+                    "export contains `{name}` — construct does not exist in LegalRuleML 1.0 (research note §2.11)"
+                ));
+            }
+        }
+        cursor = name_end;
     }
     Ok(())
 }
 
 /// @key 唯一性與 @keyref / @over / @under 引用可解析性。
-/// 以字節層掃描（並先剝註解），避免多字節字元破壞字節索引。
+/// 只掃描元素標籤內的屬性；文字節點即使含有 `key="..."` 也不得偽造 ID。
 fn check_ids_and_refs(xml: &str) -> Result<(), String> {
     let body = strip_comments(xml);
-    let bytes = body.as_bytes();
-    let patterns: [(&[u8], bool); 4] = [
-        (b"key=\"", true),
-        (b"keyref=\"#", false),
-        (b"over=\"#", false),
-        (b"under=\"#", false),
-    ];
-    let mut marks: Vec<(usize, usize, bool)> = Vec::new();
-    for (needle, is_key) in patterns {
-        let mut cursor = 0usize;
-        while cursor + needle.len() <= bytes.len() {
-            if bytes[cursor..cursor + needle.len()] == *needle {
-                marks.push((cursor, needle.len(), is_key));
-                cursor += needle.len();
-            } else {
-                cursor += 1;
-            }
-        }
-    }
-    marks.sort_unstable();
     let mut keys: BTreeSet<String> = BTreeSet::new();
     let mut refs: Vec<String> = Vec::new();
-    for (pos, needle_len, is_key) in marks {
-        let start = pos + needle_len;
-        let Some(rel_end) = body[start..].find('"') else {
-            return Err("unterminated ID attribute".to_string());
+    let mut cursor = 0usize;
+    while let Some(offset) = body[cursor..].find('<') {
+        let start = cursor + offset;
+        let rest = &body[start..];
+        if rest.starts_with("<!") || rest.starts_with("<?") {
+            cursor = start + 2;
+            continue;
+        }
+        let Some(end) = tag_close(&body, start) else {
+            return Err("unterminated tag while scanning ID attributes".to_string());
         };
-        let value = body[start..start + rel_end].to_string();
-        if value.is_empty() {
-            return Err("empty ID attribute".to_string());
+        if rest.starts_with("</") {
+            cursor = end + 1;
+            continue;
         }
-        if is_key {
-            // xsd:ID 保守白名單（NCName 子集；首字元非數字/連字符）。
-            let ok_chars = value
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
-            let ok_start = value.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
-            if !ok_chars || !ok_start {
-                return Err(format!("key `{value}` is not a valid xsd:ID"));
-            }
-            if !keys.insert(value.clone()) {
-                return Err(format!("duplicate key `{value}` (xsd:ID violation)"));
-            }
-        } else {
-            refs.push(value);
-        }
+        scan_tag_attributes(&body[start..=end], &mut keys, &mut refs)?;
+        cursor = end + 1;
     }
     for reference in refs {
         if !keys.contains(&reference) {
@@ -937,6 +1006,114 @@ fn check_ids_and_refs(xml: &str) -> Result<(), String> {
                 "reference `#{reference}` does not resolve to any key"
             ));
         }
+    }
+    Ok(())
+}
+
+/// Return the byte offset of the `>` that closes the tag starting at `start`,
+/// ignoring `>` characters inside quoted attribute values.
+fn tag_close(xml: &str, start: usize) -> Option<usize> {
+    let mut quote: Option<char> = None;
+    for (offset, character) in xml[start..].char_indices() {
+        match (quote, character) {
+            (Some(open), current) if current == open => quote = None,
+            (None, '"') | (None, '\'') => quote = Some(character),
+            (None, '>') => return Some(start + offset),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn scan_tag_attributes(
+    tag: &str,
+    keys: &mut BTreeSet<String>,
+    refs: &mut Vec<String>,
+) -> Result<(), String> {
+    let bytes = tag.as_bytes();
+    let mut index = 1usize;
+    while index < bytes.len()
+        && !bytes[index].is_ascii_whitespace()
+        && bytes[index] != b'/'
+        && bytes[index] != b'>'
+    {
+        index += 1;
+    }
+    while index < bytes.len() {
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= bytes.len() || bytes[index] == b'/' || bytes[index] == b'>' {
+            break;
+        }
+        let name_start = index;
+        while index < bytes.len()
+            && !bytes[index].is_ascii_whitespace()
+            && bytes[index] != b'='
+            && bytes[index] != b'/'
+            && bytes[index] != b'>'
+        {
+            index += 1;
+        }
+        let name = &tag[name_start..index];
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= bytes.len() || bytes[index] != b'=' {
+            return Err(format!("attribute `{name}` has no value"));
+        }
+        index += 1;
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if index >= bytes.len() {
+            return Err(format!("attribute `{name}` has no value"));
+        }
+        let quote = bytes[index];
+        if quote != b'"' && quote != b'\'' {
+            return Err(format!("attribute `{name}` is not quoted"));
+        }
+        index += 1;
+        let value_start = index;
+        while index < bytes.len() && bytes[index] != quote {
+            index += 1;
+        }
+        if index >= bytes.len() {
+            return Err(format!("unterminated value for attribute `{name}`"));
+        }
+        let value = &tag[value_start..index];
+        index += 1;
+        match name {
+            "key" => validate_key(value, keys)?,
+            "keyref" | "over" | "under" => {
+                let Some(reference) = value.strip_prefix('#') else {
+                    return Err(format!("reference `{value}` must start with `#`"));
+                };
+                if reference.is_empty() {
+                    return Err(format!("reference `{value}` is empty"));
+                }
+                refs.push(reference.to_string());
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_key(value: &str, keys: &mut BTreeSet<String>) -> Result<(), String> {
+    if value.is_empty() {
+        return Err("empty ID attribute".to_string());
+    }
+    // xsd:ID 保守白名單（NCName 子集；首字元非數字/連字符）。
+    let ok_chars = value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+    let ok_start = value.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
+    if !ok_chars || !ok_start {
+        return Err(format!("key `{value}` is not a valid xsd:ID"));
+    }
+    if !keys.insert(value.to_string()) {
+        return Err(format!("duplicate key `{value}` (xsd:ID violation)"));
     }
     Ok(())
 }
@@ -1155,5 +1332,109 @@ mod tests {
         );
         assert!(date_in_force_time("2026/03/01").is_err());
         assert!(date_in_force_time("2026-3-1").is_err());
+    }
+
+    #[test]
+    fn comment_escaping_never_leaves_a_double_hyphen() {
+        for input in ["a--b", "a---b", "a----b", "-----", "x-\u{2014}-y"] {
+            let escaped = esc_comment(input);
+            assert!(
+                !escaped.contains("--"),
+                "escaped comment {escaped:?} still contains `--`"
+            );
+            let xml = format!("<root><!-- {escaped} --></root>");
+            check_well_formed(&xml).expect("escaped comment must be well formed");
+        }
+    }
+
+    #[test]
+    fn xml_10_invalid_characters_are_rejected() {
+        for invalid in [
+            '\u{0}', '\u{1}', '\u{8}', '\u{b}', '\u{c}', '\u{1f}', '\u{fffe}',
+        ] {
+            let xml = format!("<lrml:LegalRuleML>{invalid}</lrml:LegalRuleML>");
+            let error = validate_compact_export(&xml).expect_err("invalid XML 1.0 character");
+            assert!(
+                error.contains("XML 1.0"),
+                "expected XML character error, got {error}"
+            );
+        }
+        let valid = "<lrml:LegalRuleML>\t\n\r</lrml:LegalRuleML>";
+        validate_compact_export(valid).expect("tab, LF and CR are valid XML characters");
+    }
+
+    #[test]
+    fn validator_rejects_double_hyphen_inside_comments() {
+        let xml = "<root><!-- a--b --></root>";
+        let error = check_well_formed(xml).expect_err("XML comments must not contain `--`");
+        assert!(
+            error.contains("comment"),
+            "comment error expected, got {error}"
+        );
+    }
+
+    #[test]
+    fn dates_must_be_real_calendar_days() {
+        for invalid in [
+            "2026-00-10",
+            "2026-13-01",
+            "2026-01-00",
+            "2026-01-32",
+            "2026-02-30",
+            "2023-02-29",
+            "2026-04-31",
+        ] {
+            assert!(
+                date_in_force_time(invalid).is_err(),
+                "{invalid} must be rejected as an invalid xs:dateTime"
+            );
+        }
+        assert_eq!(
+            date_in_force_time("2024-02-29").expect("leap day"),
+            "2024-02-29T00:00:00"
+        );
+        assert_eq!(
+            date_in_force_time("2000-02-29").expect("400-year leap day"),
+            "2000-02-29T00:00:00"
+        );
+    }
+
+    #[test]
+    fn forbidden_name_check_targets_elements_not_text() {
+        let text_only =
+            "<lrml:Statements key=\"stmt\"><ruleml:Ind>IsActive and LegalSchema</ruleml:Ind></lrml:Statements>";
+        check_names(text_only).expect("text content is not a construct name");
+
+        for poisoned in [
+            "<x:IsActive/>",
+            "<lrml:NormativeSource/>",
+            "<prefix:applyModality></prefix:applyModality>",
+        ] {
+            let error = check_names(poisoned).expect_err("forbidden element must fail");
+            assert!(
+                FORBIDDEN_NAMES.iter().any(|name| error.contains(name)),
+                "forbidden construct expected in {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn id_scanning_ignores_attribute_like_text() {
+        let xml = concat!(
+            "<lrml:Statements key=\"stmt\">",
+            "<ruleml:Ind>key=\"ls1\"</ruleml:Ind>",
+            "<lrml:LegalSource key=\"ls1\"/>",
+            "</lrml:Statements>"
+        );
+        check_ids_and_refs(xml).expect("text nodes are not attributes");
+
+        let spoofed = concat!(
+            "<lrml:Statements key=\"stmt\">",
+            "<ruleml:Ind>key=\"ghost\"</ruleml:Ind>",
+            "<lrml:appliesSource keyref=\"#ghost\"/>",
+            "</lrml:Statements>"
+        );
+        let error = check_ids_and_refs(spoofed).expect_err("text must not satisfy a reference");
+        assert!(error.contains("does not resolve"), "{error}");
     }
 }

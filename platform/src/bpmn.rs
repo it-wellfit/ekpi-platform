@@ -333,11 +333,79 @@ fn extract_attr(xml: &str, pos: usize, attr: &str) -> Option<String> {
             return None;
         }
         if name == attr {
-            return Some(tag[value_start..index].to_string());
+            return Some(decode_xml_entities(&tag[value_start..index]));
         }
         index += 1;
     }
     None
+}
+
+/// Decode the five XML predefined entities and numeric character references.
+/// Unknown or malformed references are left verbatim: this parser is lenient
+/// about invalid XML, but it must not lose the original text silently.
+fn decode_xml_entities(value: &str) -> String {
+    let mut decoded = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(ampersand) = rest.find('&') {
+        decoded.push_str(&rest[..ampersand]);
+        let after = &rest[ampersand + 1..];
+        let Some(semicolon) = after.find(';') else {
+            decoded.push_str(&rest[ampersand..]);
+            return decoded;
+        };
+        let entity = &after[..semicolon];
+        let replacement = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            _ if entity.starts_with("#x") || entity.starts_with("#X") => {
+                let hex = &entity[2..];
+                if hex.is_empty() {
+                    None
+                } else {
+                    u32::from_str_radix(hex, 16)
+                        .ok()
+                        .and_then(char::from_u32)
+                        .filter(|character| is_xml_char(*character))
+                }
+            }
+            _ if entity.starts_with('#') => {
+                let decimal = &entity[1..];
+                if decimal.is_empty() {
+                    None
+                } else {
+                    decimal
+                        .parse::<u32>()
+                        .ok()
+                        .and_then(char::from_u32)
+                        .filter(|character| is_xml_char(*character))
+                }
+            }
+            _ => None,
+        };
+        match replacement {
+            Some(character) => decoded.push(character),
+            None => {
+                decoded.push('&');
+                decoded.push_str(entity);
+                decoded.push(';');
+            }
+        }
+        rest = &after[semicolon + 1..];
+    }
+    decoded.push_str(rest);
+    decoded
+}
+
+/// XML 1.0 `Char` production for numeric character references. Rust strings
+/// cannot contain surrogates; control characters and noncharacters are rejected.
+fn is_xml_char(character: char) -> bool {
+    matches!(character, '\u{9}' | '\u{a}' | '\u{d}')
+        || ('\u{20}'..='\u{d7ff}').contains(&character)
+        || ('\u{e000}'..='\u{fffd}').contains(&character)
+        || ('\u{10000}'..='\u{10ffff}').contains(&character)
 }
 
 #[cfg(test)]
@@ -540,6 +608,35 @@ mod tests {
         let model = BpmnModel::parse(xml).unwrap();
         assert_eq!(model.id, "P-004");
         assert!(model.elements.is_empty());
+    }
+
+    #[test]
+    fn attributes_decode_xml_entities() {
+        let xml = r#"<bpmn:process id="P&amp;1" name="R&amp;D &quot;review&quot; &apos;A&apos; &#65;&#x42;">
+            <bpmn:task id="T&amp;1" name="A &lt; B &gt; C"/>
+            <bpmn:sequenceFlow id="f1" sourceRef="T&amp;1" targetRef="T2"/>
+        </bpmn:process>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.id, "P&1");
+        assert_eq!(model.name, "R&D \"review\" 'A' AB");
+        assert_eq!(model.tasks().len(), 1);
+        assert_eq!(model.tasks()[0].id, "T&1");
+        assert_eq!(model.tasks()[0].name, "A < B > C");
+        assert_eq!(model.flows[0].source_ref, "T&1");
+    }
+
+    #[test]
+    fn unknown_entities_are_left_visible() {
+        let xml = r#"<bpmn:process id="P-014" name="A &unknown; B"/>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.name, "A &unknown; B");
+    }
+
+    #[test]
+    fn numeric_references_to_invalid_xml_characters_are_left_visible() {
+        let xml = r#"<bpmn:process id="P-015" name="A &#0; B &#x1F; C"/>"#;
+        let model = BpmnModel::parse(xml).unwrap();
+        assert_eq!(model.name, "A &#0; B &#x1F; C");
     }
 
     #[test]
