@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-10-30
-- **Repository revision for the re-run:** current hardening revision `279c919471940e5a0406814ba78c1600bfb3c175`; preceding hardening revisions `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
-- **Working tree during the re-run:** code files committed at `279c919`; the E-034 documentation edits were uncommitted during the run; unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
+- **Repository revision for the re-run:** current hardening revision `eec11f2a9a02827e50317fbd0d146a3092f89ccf`; preceding hardening revision `279c919471940e5a0406814ba78c1600bfb3c175`; earlier hardening revisions `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
+- **Working tree during the re-run:** code files committed at `eec11f2` in an isolated git worktree on branch `audit/export-hardening` based on `c0c0e33`; the E-035 documentation edits were uncommitted during the run; the separate main worktree contains unrelated uncommitted 2026-10-30 changes and was not part of the revision. Unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -48,6 +48,7 @@
 | E-032 | LOCAL | Second defect-hardening re-run: regression red/green, release tests, runtime checks and canonical entry point | `b2d8afc` | 1 (canonical); 0 per executed release target; combined `cargo test --release --locked` 101 | PASS for every executed release-profile target: platform **329** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health); **2 edge tests BLOCKED** at spawn (`os error 4551`) after four same-path attempts. Eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK. Six new regression tests were observed failing before the fix. **Canonical `scripts/check.ps1` is BLOCKED, exit 1:** run 1 stopped at the debug lib harness; run 2 passed docs 677/115, secrets 231, eval and platform fmt/Clippy plus 262 lib tests, then stopped at the `cli_contract` harness (`os error 4551`) |
 | E-033 | LOCAL | Audit whitespace-only fail-open fix: red/green regression, release tests, runtime checks and canonical entry point | `21e23d6` | 1 (canonical); 0 per executed release target | PASS for every executed release-profile target: platform **308** (265 unit, 31 CLI contract, 8 integration, 4 web health); **27 tests BLOCKED** at spawn (`governance_web` 18 after two attempts, `search_eval` 7 after two attempts, `edge_cases` 2). Eval 12 + 10 self-test checks, platform self-test 49, schema 20, search 28 (20/20, 8/8, 4 role cases, 0 violations), `--health` OK; fmt and Clippy pass in both crates. Three new unit tests and one CLI contract test cover the whitespace-only fix. **Canonical `scripts/check.ps1` is BLOCKED, exit 1 on two same-command attempts:** both stopped at the debug lib harness (`os error 4551`) after docs 677/115, secrets 231, eval and platform fmt/Clippy passed |
 | E-034 | LOCAL | Multiline textarea, BPMN parser and Secure-cookie hardening: release tests, runtime checks and canonical entry point | `279c919` | 0 | PASS. Platform **345** (273 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); `--health` OK; fmt and Clippy pass in both crates. Ten new tests (2 governance unit, 5 BPMN unit, 1 governance-web unit, 2 governance-web integration) cover LF/CRLF acceptance and CR/control rejection, workflow/quality-case/gate replay, BPMN local names, quote styles, attribute boundaries, comments/CDATA and Secure-cookie mirroring. **Canonical `scripts/check.ps1` exited 0 on two same-command runs:** docs 53 required/680 links in 115 files, secrets 231, eval 12 + 10 self-test checks, platform 345, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
+| E-035 | LOCAL | LegalRuleML export and BPMN entity hardening: red/green regression, export smoke and canonical entry point | `eec11f2` | 0 | PASS. Platform **354** (282 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Nine new tests (6 export, 3 BPMN; one export test extended with a spoofed-reference negative case) cover comment escaping, XML 1.0 character validity, comment/declaration well-formedness, real calendar dates, element-only forbidden-name matching, tag-only ID/ref scanning, entity decoding and invalid numeric references. Seven of them were observed failing before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/682 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 354, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 
 ## E-001: canonical check (blocked)
 
@@ -783,6 +784,68 @@ This is the first canonical PASS after the `c827351`, `bbe49eb`, `b2d8afc` and `
 
 After the E-034 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 685 relative links in 115 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check of the uncommitted evidence edits, not a third canonical run; the canonical PASS remains bound to the code revision `279c919`.
 
+## E-035: LegalRuleML export and BPMN entity hardening (`eec11f2`)
+
+```powershell
+cd platform
+cargo fmt --all
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo run --locked --bin ekp_platform -- --export-legalruleml <temp-dir>
+```
+
+The hardening was developed in an isolated git worktree on branch `audit/export-hardening`, based on `c0c0e33`. Only `platform/src/export.rs` and `platform/src/bpmn.rs` are in the code commit. The separate main worktree contains unrelated uncommitted 2026-10-30 changes and was neither used nor modified.
+
+Observed on 2026-11-02 at `eec11f2a9a02827e50317fbd0d146a3092f89ccf` (code committed; these E-035 documentation edits were uncommitted during the canonical run):
+
+| Target | Count | Exit |
+| --- | --- | --- |
+| Platform unit (`--lib`) | 282 | 0 |
+| Platform CLI contract | 31 | 0 |
+| Platform edge cases | 2 | 0 |
+| Platform governance web | 20 | 0 |
+| Platform integration | 8 | 0 |
+| Platform search evaluation | 7 | 0 |
+| Platform web health | 4 | 0 |
+| **Platform total** | **354** | 0 |
+| Eval unit/integration tests | 12 | 0 |
+| Eval self-test checks | 10 | 0 |
+| Platform self-test assertions | 49 | 0 |
+| Declared-rules schema records | 20 | 0 |
+| Search gate cases | 28 (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) | 0 |
+
+The defects fixed in this revision were:
+
+1. **Comment escaping could still produce invalid XML.** `esc_comment` replaced `--` with `- -` in a single pass. A run of three hyphens (`a---b`) became `a- --b`, which still contains `--`. The function now repeats until the comment body is stable, and the validator rejects any comment body containing `--` or ending with `-`.
+2. **XML 1.0-invalid characters were accepted.** The validator did not check the XML `Char` production, so NUL, other C0 controls, `U+FFFE`/`U+FFFF` and similar code points could reach the export. `check_xml_chars` now rejects them before structural validation.
+3. **Non-comment markup declarations were accepted.** The lightweight well-formedness scanner treated any `<!...>` as a comment-shaped region. It now accepts only `<!-- ... -->`; DOCTYPE and other declarations are refused.
+4. **Impossible dates were accepted.** `date_in_force_time` checked only the `YYYY-MM-DD` shape, so `2026-02-30`, `2026-13-01` and non-leap `2023-02-29` passed. It now validates month and day, including the 4/100/400-year leap rule.
+5. **Forbidden constructs were matched in text and missed when renamed.** `check_names` searched the raw body, so ordinary text containing `LegalSchema` or `IsActive` failed, while an element named `NormativeSources` escaped the exact-substring check. It now extracts element local names only, is prefix-insensitive, and refuses both the exact forbidden name and a longer local name beginning with it.
+6. **IDs and references were scanned in text.** `check_ids_and_refs` searched byte patterns across the whole document, so text such as `key="ghost"` could register a key or satisfy a `keyref`. It now parses attributes only inside element tags, using quote-aware tag boundaries, and rejects malformed, unquoted, empty or non-`#` references.
+7. **BPMN attributes did not decode XML entities.** `extract_attr` returned raw source text, so `id="T&amp;1"` stayed `T&amp;1` and did not match `sourceRef="T&amp;1"`. The parser now decodes the five predefined entities and decimal/hex numeric references. Unknown or malformed references remain visible rather than being dropped, and numeric references to XML 1.0-invalid characters are left verbatim.
+
+Red/green evidence: seven new tests were observed failing before the fixes: `comment_escaping_never_leaves_a_double_hyphen`, `xml_10_invalid_characters_are_rejected`, `validator_rejects_double_hyphen_inside_comments`, `dates_must_be_real_calendar_days`, `forbidden_name_check_targets_elements_not_text`, `id_scanning_ignores_attribute_like_text` and `attributes_decode_xml_entities`. After the fixes, two further BPMN tests were added (`unknown_entities_are_left_visible`, `numeric_references_to_invalid_xml_characters_are_left_visible`) and the ID test was extended with a spoofed-reference negative case, for nine new test functions in total. No test was deleted, renamed to hide a failure, or weakened.
+
+Export smoke: `cargo run --locked --bin ekp_platform -- --export-legalruleml <temp-dir>` wrote a 51,026-byte `legalruleml_v1_compact.xml`. An independent .NET `System.Xml.XmlDocument.Load` parsed it with root `lrml:LegalRuleML` and 718 elements. This is a local parser smoke check, not an additional repository gate or a standards conformance claim.
+
+### Canonical entry-point result
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-11-02 at `eec11f2`, **exit 0**:
+
+- Documentation PASS: 53 required documents, 682 relative links in 105 files.
+- Secret patterns PASS: 231 files.
+- Eval fmt, Clippy, 12 tests and 10 self-test checks PASS.
+- Platform fmt, Clippy and **354 tests** PASS.
+- Platform self-test 49 assertions, schema 20 records, search 28 cases with gate PASS, `=== ALL CHECKS PASSED ===`.
+
+This is a local run in an isolated git worktree on the same managed host, not CI, staging, production, a clean clone or an independent execution. The branch has no remote and no pull request. A future denial must still be recorded as `BLOCKED`.
+
+After the E-035 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 687 relative links in 105 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check of the uncommitted evidence edits, not an additional canonical run; the canonical PASS remains bound to the code revision `eec11f2`.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -798,5 +861,6 @@ After the E-034 documentation reconciliation, `scripts/check-docs.ps1` passes wi
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI. The current `279c919` working tree passed twice on the same host (E-034), but the earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
+- It does not show that the canonical check is reproducible on a different host or in CI. The current `eec11f2` worktree passed once on the same host (E-035); the preceding `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
+- It does not show LegalRuleML 1.0 conformance beyond the repository validator and one local .NET parser smoke check; no external schema validator, conformance suite or independent review was run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.
