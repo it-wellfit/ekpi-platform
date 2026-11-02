@@ -1348,6 +1348,11 @@ fn validate_date(label: &str, value: &str) -> Result<(), String> {
     let year = value[0..4]
         .parse::<u32>()
         .map_err(|_| format!("{label}請使用有效日期"))?;
+    // xs:dateTime 1.0 starts at year 0001; year 0000 is not a valid calendar
+    // year and must not become a deadline that predates every rule.
+    if year == 0 {
+        return Err(format!("{label}請使用有效日期（年份不可為 0000）"));
+    }
     let month = value[5..7]
         .parse::<u32>()
         .map_err(|_| format!("{label}請使用有效日期"))?;
@@ -1472,6 +1477,11 @@ mod tests {
         assert!(validate_date("期限", "2026-02-29").is_err());
         assert!(validate_date("期限", "2024-02-29").is_ok());
         assert!(validate_date("期限", "2026-13-01").is_err());
+        // xs:dateTime 1.0 has no year 0000; accepting it would let a governance
+        // deadline claim to predate every effective rule.
+        assert!(validate_date("期限", "0000-01-01").is_err());
+        assert!(validate_date("期限", "0000-02-29").is_err());
+        assert!(validate_date("期限", "0001-01-01").is_ok());
     }
 
     #[test]

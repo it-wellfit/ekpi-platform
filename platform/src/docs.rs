@@ -131,14 +131,23 @@ impl DocDatabase {
             .collect()
     }
 
-    /// Case-time validity (ISO date strings compare lexicographically; the
-    /// data layer guarantees the YYYY-MM-DD shape).
+    /// Case-time validity. `effective_to` is inclusive through the end of that
+    /// calendar day, so an event timestamp on the closing date (for example
+    /// `2026-02-28T23:59:59`) is still in force. Comparing raw timestamps
+    /// lexicographically would incorrectly place that event after
+    /// `2026-02-28` and abstain on a valid case.
     pub fn in_force(&self, doc_id: &str, version: &str, ts: &str) -> Result<bool, String> {
         let ver = self.binding(doc_id, version).ok_or_else(|| {
             format!("unknown binding {doc_id}@{version} (not present in docs.json)")
         })?;
-        let in_force = ver.effective_from.as_str() <= ts
-            && ver.effective_to.as_deref().is_none_or(|to| ts <= to);
+        let ts_date = iso_date_prefix(ts).ok_or_else(|| {
+            format!(
+                "case time `{ts}` is not YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS[Z] \
+                 (refuse to compare an unvalidated timestamp)"
+            )
+        })?;
+        let in_force = ver.effective_from.as_str() <= ts_date
+            && ver.effective_to.as_deref().is_none_or(|to| ts_date <= to);
         Ok(in_force)
     }
 
@@ -160,6 +169,42 @@ impl DocDatabase {
             .map_err(|e| format!("canonicalize {doc_id}@{version}: {e}"))?;
         Ok(sha256_hex(canonical.as_bytes()))
     }
+}
+
+/// Validate a canonical date or `YYYY-MM-DDTHH:MM:SS[Z]` timestamp and return
+/// its calendar-date prefix. Calendar ranges are validated by the engine's
+/// stricter timestamp parser; this helper only guards the shape needed to
+/// compare an event with a date-only effective window without slicing
+/// arbitrary UTF-8.
+pub(crate) fn iso_date_prefix(value: &str) -> Option<&str> {
+    if !value.is_ascii() {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    let shaped = matches!(bytes.len(), 10 | 19) || (bytes.len() == 20 && bytes[19] == b'Z');
+    if !shaped {
+        return None;
+    }
+    let date_ok = bytes[..4].iter().all(u8::is_ascii_digit)
+        && bytes[4] == b'-'
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[7] == b'-'
+        && bytes[8..10].iter().all(u8::is_ascii_digit);
+    if !date_ok {
+        return None;
+    }
+    if bytes.len() > 10 {
+        let time_ok = bytes[10] == b'T'
+            && bytes[11..13].iter().all(u8::is_ascii_digit)
+            && bytes[13] == b':'
+            && bytes[14..16].iter().all(u8::is_ascii_digit)
+            && bytes[16] == b':'
+            && bytes[17..19].iter().all(u8::is_ascii_digit);
+        if !time_ok {
+            return None;
+        }
+    }
+    Some(&value[..10])
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -193,6 +238,23 @@ mod tests {
         // SOP-CHANGE 2.1 was valid through 2026-02-28.
         assert_eq!(db.in_force("SOP-CHANGE", "2.1", "2026-02-01"), Ok(true));
         assert_eq!(db.in_force("SOP-CHANGE", "2.1", "2026-03-01"), Ok(false));
+        // The closing date is inclusive through the end of the day, even when
+        // the case timestamp carries a time component.
+        assert_eq!(
+            db.in_force("SOP-CHANGE", "2.1", "2026-02-28T23:59:59"),
+            Ok(true)
+        );
+        assert_eq!(
+            db.in_force("SOP-CHANGE", "2.1", "2026-03-01T00:00:00"),
+            Ok(false)
+        );
+        assert_eq!(
+            db.in_force("SOP-CHANGE", "3.2", "2026-03-01T00:00:00"),
+            Ok(true)
+        );
+        // An unvalidated timestamp must not be compared as a date prefix.
+        assert!(db.in_force("SOP-CHANGE", "2.1", "2026-02-2~").is_err());
+        assert!(db.in_force("SOP-CHANGE", "2.1", "2026-02-28junk").is_err());
         // ORD-001 declares QM-01@2.1 but its case time is 2026-03-01 → stale.
         assert_eq!(db.in_force("QM-01", "2.1", "2026-03-01"), Ok(false));
         assert!(db.in_force("NOPE", "1.0", "2026-01-01").is_err());
