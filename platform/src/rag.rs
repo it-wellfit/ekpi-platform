@@ -134,19 +134,23 @@ impl RagOrchestrator {
             }
         };
 
-        let has_citation = citations
+        let cited_confidence = citations
             .iter()
-            .any(|citation| has_citation_marker(&llm_response, citation));
-
-        let confidence = if has_citation {
-            citations.first().map(|c| c.score).unwrap_or(0.0)
-        } else {
-            0.0
-        };
-
-        if confidence < self.min_confidence && !has_citation {
+            .filter(|citation| has_citation_marker(&llm_response, citation))
+            .map(|citation| citation.score)
+            .reduce(f64::max);
+        let Some(confidence) = cited_confidence else {
             return RagResult::Refused {
                 reason: "LLM response lacks citation support".to_string(),
+            };
+        };
+
+        if confidence < self.min_confidence {
+            return RagResult::Refused {
+                reason: format!(
+                    "best cited evidence confidence {confidence:.2} is below the minimum {:.2}",
+                    self.min_confidence
+                ),
             };
         }
 
@@ -199,6 +203,42 @@ mod tests {
         let db: DocDatabase = serde_json::from_str(json).unwrap();
         let mut dv = std::collections::BTreeMap::new();
         dv.insert("SOP-CHANGE".to_string(), "3.2".to_string());
+        (db, dv)
+    }
+
+    fn make_two_doc_db() -> (DocDatabase, std::collections::BTreeMap<String, String>) {
+        let json = r#"{
+            "documents": [
+                {
+                    "doc_id": "DOC-A",
+                    "title": "High scoring document",
+                    "permissions": [],
+                    "versions": [{
+                        "version": "1.0",
+                        "effective_from": "2026-01-01",
+                        "sections": [
+                            {"section": "s1", "verbatim_text": "quality management system requires document control"}
+                        ]
+                    }]
+                },
+                {
+                    "doc_id": "DOC-B",
+                    "title": "Lower scoring document",
+                    "permissions": [],
+                    "versions": [{
+                        "version": "1.0",
+                        "effective_from": "2026-01-01",
+                        "sections": [
+                            {"section": "s1", "verbatim_text": "management of quality records"}
+                        ]
+                    }]
+                }
+            ]
+        }"#;
+        let db: DocDatabase = serde_json::from_str(json).unwrap();
+        let mut dv = std::collections::BTreeMap::new();
+        dv.insert("DOC-A".to_string(), "1.0".to_string());
+        dv.insert("DOC-B".to_string(), "1.0".to_string());
         (db, dv)
     }
 
@@ -272,6 +312,62 @@ mod tests {
         let rag = RagOrchestrator::new(0.1);
         let result = rag.answer("quality management", &retriever, &db, &llm);
         assert!(!result.has_answer());
+    }
+
+    #[test]
+    fn rag_refuses_cited_answer_below_min_confidence() {
+        let (db, dv) = make_db();
+        let retriever = Retriever::build(&db, &dv, 0.1);
+        let llm = MockLlmProvider {
+            response: "Based on [SOP-CHANGE@3.2], quality management requires document control."
+                .to_string(),
+        };
+        let rag = RagOrchestrator::new(0.1);
+        let result = rag.answer("quality", &retriever, &db, &llm);
+        match result {
+            RagResult::Refused { reason } => assert!(
+                reason.contains("confidence"),
+                "expected a confidence refusal, got {reason}"
+            ),
+            RagResult::Answer { confidence, .. } => {
+                panic!("a citation must not bypass min_confidence (accepted at {confidence:.3})")
+            }
+        }
+    }
+
+    #[test]
+    fn rag_confidence_uses_cited_evidence_not_the_top_hit() {
+        let (db, dv) = make_two_doc_db();
+        let retriever = Retriever::build(&db, &dv, 0.1);
+        let citations = match retriever.search_with_citations("quality management", 5, &db) {
+            SearchResult::Hits(citations) => citations,
+            other => panic!("expected two citations, got {other:?}"),
+        };
+        assert_eq!(citations.len(), 2, "fixture must produce two ranked hits");
+        let cited = &citations[1];
+        assert!(
+            cited.score < citations[0].score,
+            "the cited hit must not be the top-scoring hit"
+        );
+        let llm = MockLlmProvider {
+            response: format!(
+                "Only [{}@{}] supports this answer.",
+                cited.doc_id, cited.version
+            ),
+        };
+        let rag = RagOrchestrator::new(0.1);
+        let result = rag.answer("quality management", &retriever, &db, &llm);
+        match result {
+            RagResult::Answer { confidence, .. } => assert!(
+                (confidence - cited.score).abs() < 1e-9,
+                "confidence {confidence:.6} must come from the cited hit {:.6}, not the top hit {:.6}",
+                cited.score,
+                citations[0].score
+            ),
+            RagResult::Refused { reason } => {
+                panic!("both cited scores are above min_confidence: {reason}")
+            }
+        }
     }
 
     #[test]

@@ -305,6 +305,11 @@ fn date_in_force_time(date: &str) -> Result<String, String> {
     let year = date[0..4].parse::<u32>().map_err(|_| {
         format!("temporal effective date `{date}` has an invalid year — refuse to export")
     })?;
+    if year == 0 {
+        return Err(format!(
+            "temporal effective date `{date}` uses year 0000, which xs:dateTime 1.0 does not allow — refuse to export (fail-closed)"
+        ));
+    }
     let month = date[5..7].parse::<u32>().map_err(|_| {
         format!("temporal effective date `{date}` has an invalid month — refuse to export")
     })?;
@@ -1376,6 +1381,7 @@ mod tests {
     #[test]
     fn dates_must_be_real_calendar_days() {
         for invalid in [
+            "0000-01-01",
             "2026-00-10",
             "2026-13-01",
             "2026-01-00",
@@ -1389,6 +1395,10 @@ mod tests {
                 "{invalid} must be rejected as an invalid xs:dateTime"
             );
         }
+        assert_eq!(
+            date_in_force_time("0001-01-01").expect("minimum xs:dateTime year"),
+            "0001-01-01T00:00:00"
+        );
         assert_eq!(
             date_in_force_time("2024-02-29").expect("leap day"),
             "2024-02-29T00:00:00"
