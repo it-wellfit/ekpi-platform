@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **354 tests** at the current `eec11f2` revision: 282 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; the canonical run also executes all 354 in the debug profile. The preceding `279c919` revision has **345 tests** in the release profile: 273 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; both canonical runs also execute all 345 in the debug profile. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile had **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the earlier `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§10.
+- `platform` has **356 tests** at the current `d502147` revision: 284 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; the canonical runs also execute all 356 in the debug profile. The preceding `eec11f2` revision has **354 tests** (282 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health). The earlier `279c919` revision has **345 tests** in the release profile: 273 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; both canonical runs also execute all 345 in the debug profile. `eval` has 12 tests. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile had **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the earlier `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§10.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -294,3 +294,27 @@ This section records the regression baseline added by `fix: harden LegalRuleML e
 | Export smoke | 51,026-byte `legalruleml_v1_compact.xml`; .NET `XmlDocument.Load` parsed root `lrml:LegalRuleML` with 718 elements |
 
 Evidence: [E-035](../assurance/test-evidence.md#e-035-legalruleml-export-and-bpmn-entity-hardening-eec11f2) and [phase gates](../quality/phase-gates.md). Seven new tests were observed failing before the fixes: six export tests and one BPMN entity test. Two further BPMN tests were added after the fixes, and the ID test was extended with a spoofed-reference negative case, for nine regression tests in total. No test was deleted, renamed to hide a failure, or weakened.
+
+## 12. Revision record: `d502147` RAG citation confidence and date-year hardening (2026-11-02)
+
+This section records the regression baseline added by `fix: bind RAG confidence to cited evidence and reject year zero dates`. It supplements, and does not replace, the area checklists and §11.
+
+### New behavior to preserve
+
+- A model answer must not be accepted merely because it contains a citation when the best cited evidence is below `min_confidence`. The presence of a citation is not an exemption from the confidence gate.
+- `confidence` is the maximum score among the citations that actually appear in the response. An uncited top hit never supplies the reported value.
+- An answer with no matching `[doc_id@version]` marker is refused as lacking citation support.
+- `xs:dateTime` year `0000` is refused by the exporter; `0001-01-01` remains accepted as the minimum year.
+- The only RAG provider remains `MockLlmProvider`. These tests prove orchestration behavior, not model quality or a real LLM/Agent integration.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all` / `cargo clippy --locked --all-targets -- -D warnings` (platform) | Exit 0 |
+| `eval` `cargo test --locked` / `--selftest` (canonical) | 12 passed / 10 checks |
+| `platform` unit / CLI contract / edge / governance web / integration / search evaluation / web health (canonical debug) | 284 / 31 / 2 / 20 / 8 / 7 / 4 passed (**356**) |
+| `--selftest` / `--declared-rules-schema` / search gate | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) |
+| Canonical `scripts/check.ps1` at `d502147` | **PASS**, exit 0 on two same-command runs on the exact code commit; docs 53/687/105, secrets 231, eval 12 + 10 checks, platform 356, self-test 49, schema 20, search 28 |
+
+Evidence: [E-036](../assurance/test-evidence.md#e-036-rag-citation-confidence-and-date-year-hardening-d502147) and [phase gates](../quality/phase-gates.md). Three observations were red before the fixes: a cited answer was accepted at `0.347` despite `min_confidence = 0.5`; confidence was reported as `0.733359` from the top hit instead of `0.676471` from the cited hit; and `0000-01-01` was accepted by the date validator. Two new RAG tests and one extended date test cover the behavior. No test was deleted, renamed to hide a failure, or weakened.
