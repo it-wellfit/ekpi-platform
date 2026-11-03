@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -95,7 +96,10 @@ jobs:
 
 # Notes:
 # - The validate matrix calls the same fixed entry point contributors run locally;
-#   the commands are not duplicated in the workflow.
+#   the commands are not duplicated in the workflow. That entry point now includes
+#   the 67-case eval corpus selftest (`--corpus-selftest`).
+# - This workflow has never executed: the repository has no remote or runner.
+#   A workflow file is not CI evidence until a run ID exists.
 # - Smoke/report/export artifacts are part of gate.ps1 -IncludeSmoke and are required
 #   locally for changes that affect reports, exports, coverage, HTML or data. CI does
 #   not yet run a separate smoke job; do not claim CI proved those artifacts.

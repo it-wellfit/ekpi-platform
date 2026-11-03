@@ -2,11 +2,50 @@
 
 //! Inter-annotator agreement (Cohen's kappa) for eval ground truth.
 //!
-//! Provides Cohen's κ computation for two annotators' independent verdict labels
-//! on the same case set. Used to establish inter-annotator agreement before
-//! treating expected verdicts as ground truth in eval corpora.
+//! Provides Cohen's κ computation and a fail-closed study validator for two
+//! annotators' independent verdict labels on the same case set. The validator
+//! rejects duplicate ids, mixed annotator ids, mismatched case sets, unknown
+//! labels and studies below the minimum size. It never invents a κ value: an
+//! undefined or missing study is an error, not a pass.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+use crate::types::parse_verdict;
+
+/// Minimum number of jointly annotated cases for a study to be reportable.
+pub const MIN_ANNOTATED_CASES: usize = 50;
+
+/// Proposed acceptance threshold (M-11). Product-owner sign-off is still
+/// required before this becomes a release gate.
+pub const KAPPA_ACCEPTANCE: f64 = 0.80;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Annotation {
+    pub case_id: String,
+    pub verdict: String,
+    pub annotator: String,
+    #[serde(default)]
+    pub notes: String,
+}
+
+#[derive(Debug)]
+pub struct Study {
+    pub annotator_a: String,
+    pub annotator_b: String,
+    pub n: usize,
+    pub observed_agreement: f64,
+    pub expected_agreement: f64,
+    pub kappa: f64,
+    pub interpretation: &'static str,
+    pub acceptance_threshold: f64,
+    pub passed: bool,
+    /// A caution flag for review, not a failure: two independently produced
+    /// files can legitimately agree on every label.
+    pub identical_label_vectors: bool,
+}
 
 /// Compute Cohen's kappa for two raters' labels.
 ///
@@ -15,6 +54,11 @@ use std::collections::BTreeMap;
 /// Values range from -1.0 (perfect disagreement) to 1.0 (perfect agreement),
 /// with 0.0 indicating agreement at chance level.
 pub fn cohens_kappa(rater1: &[&str], rater2: &[&str]) -> Option<f64> {
+    agreement_stats(rater1, rater2).map(|(_, _, kappa)| kappa)
+}
+
+/// Returns (observed agreement, expected chance agreement, kappa).
+fn agreement_stats(rater1: &[&str], rater2: &[&str]) -> Option<(f64, f64, f64)> {
     if rater1.len() != rater2.len() || rater1.is_empty() {
         return None;
     }
@@ -47,7 +91,7 @@ pub fn cohens_kappa(rater1: &[&str], rater2: &[&str]) -> Option<f64> {
     if denominator.abs() < f64::EPSILON {
         return None;
     }
-    Some((p_o - p_e) / denominator)
+    Some((p_o, p_e, (p_o - p_e) / denominator))
 }
 
 /// Cohen's κ qualitative interpretation bands (Landis & Koch, 1977).
@@ -62,9 +106,142 @@ pub fn kappa_interpretation(kappa: f64) -> &'static str {
     }
 }
 
+/// Read one annotator's JSONL file. Blank lines and `#` comments are ignored.
+pub fn load_annotations(path: &Path) -> Result<Vec<Annotation>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut records = Vec::new();
+    for (lineno, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let record: Annotation = serde_json::from_str(line)
+            .map_err(|e| format!("{}:{}: {e}", path.display(), lineno + 1))?;
+        records.push(record);
+    }
+    validate_records(&records, "annotation file")?;
+    Ok(records)
+}
+
+fn validate_records(records: &[Annotation], role: &str) -> Result<(), String> {
+    if records.is_empty() {
+        return Err(format!("{role}: no annotation records"));
+    }
+    let mut seen = BTreeSet::new();
+    for record in records {
+        if record.case_id.trim().is_empty() {
+            return Err(format!("{role}: empty case_id"));
+        }
+        if record.annotator.trim().is_empty() {
+            return Err(format!("{role}: {} has an empty annotator", record.case_id));
+        }
+        if parse_verdict(&record.verdict).is_none() {
+            return Err(format!(
+                "{role}: {} has unknown verdict {:?}",
+                record.case_id, record.verdict
+            ));
+        }
+        if !seen.insert(record.case_id.as_str()) {
+            return Err(format!("{role}: duplicate case_id {:?}", record.case_id));
+        }
+    }
+    Ok(())
+}
+
+/// Validate two independent annotation files and compute the study statistics.
+///
+/// This fails closed: fewer than [`MIN_ANNOTATED_CASES`] cases, the same
+/// annotator id on both files, a case present on only one side, a duplicate id,
+/// an unknown verdict, or an undefined κ all return an error instead of a
+/// report. The caller must record the error as `NOT MEASURED`, not as a pass.
+pub fn evaluate_study(a: &[Annotation], b: &[Annotation]) -> Result<Study, String> {
+    validate_records(a, "annotator A")?;
+    validate_records(b, "annotator B")?;
+
+    let annotator_a = a[0].annotator.clone();
+    let annotator_b = b[0].annotator.clone();
+    if a.iter().any(|record| record.annotator != annotator_a) {
+        return Err("annotator A file mixes multiple annotator ids".to_string());
+    }
+    if b.iter().any(|record| record.annotator != annotator_b) {
+        return Err("annotator B file mixes multiple annotator ids".to_string());
+    }
+    if annotator_a == annotator_b {
+        return Err("the two files must come from different annotator ids".to_string());
+    }
+    if a.len() < MIN_ANNOTATED_CASES {
+        return Err(format!(
+            "study has {} cases; at least {MIN_ANNOTATED_CASES} are required",
+            a.len()
+        ));
+    }
+    if a.len() != b.len() {
+        return Err(format!("case counts differ: {} vs {}", a.len(), b.len()));
+    }
+
+    let mut by_id: BTreeMap<&str, &Annotation> = BTreeMap::new();
+    for record in b {
+        by_id.insert(record.case_id.as_str(), record);
+    }
+    let mut pairs: Vec<(&str, &str)> = Vec::with_capacity(a.len());
+    for record in a {
+        let Some(other) = by_id.get(record.case_id.as_str()) else {
+            return Err(format!(
+                "case {:?} is missing from annotator B",
+                record.case_id
+            ));
+        };
+        pairs.push((record.verdict.as_str(), other.verdict.as_str()));
+    }
+
+    // Equal lengths plus every A id found in B means the case sets match:
+    // duplicate ids were already rejected on both sides.
+    let labels_a: Vec<&str> = pairs.iter().map(|(a, _)| *a).collect();
+    let labels_b: Vec<&str> = pairs.iter().map(|(_, b)| *b).collect();
+    let (observed_agreement, expected_agreement, kappa) = agreement_stats(&labels_a, &labels_b)
+        .ok_or_else(|| "kappa is undefined (empty input or zero chance denominator)".to_string())?;
+    let passed = kappa >= KAPPA_ACCEPTANCE;
+    let identical_label_vectors = labels_a == labels_b;
+
+    Ok(Study {
+        annotator_a,
+        annotator_b,
+        n: labels_a.len(),
+        observed_agreement,
+        expected_agreement,
+        kappa,
+        interpretation: kappa_interpretation(kappa),
+        acceptance_threshold: KAPPA_ACCEPTANCE,
+        passed,
+        identical_label_vectors,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn annotation(case_id: &str, verdict: &str, annotator: &str) -> Annotation {
+        Annotation {
+            case_id: case_id.to_string(),
+            verdict: verdict.to_string(),
+            annotator: annotator.to_string(),
+            notes: String::new(),
+        }
+    }
+
+    fn records(count: usize, annotator: &str) -> Vec<Annotation> {
+        let verdicts = ["comply", "violate", "insufficient_evidence", "escalate"];
+        (0..count)
+            .map(|i| {
+                annotation(
+                    &format!("C-{i:03}"),
+                    verdicts[i % verdicts.len()],
+                    annotator,
+                )
+            })
+            .collect()
+    }
 
     #[test]
     fn perfect_agreement_is_one() {
@@ -128,5 +305,69 @@ mod tests {
         let k = cohens_kappa(&r1, &r2).unwrap();
         assert!((k - 0.5).abs() < 1e-9);
         assert_eq!(kappa_interpretation(k), "Moderate");
+    }
+
+    #[test]
+    fn study_accepts_fifty_or_more_cases() {
+        let study = evaluate_study(&records(60, "annotator-a"), &records(60, "annotator-b"))
+            .expect("60-case study must be valid");
+        assert_eq!(study.n, 60);
+        assert!((study.kappa - 1.0).abs() < 1e-9);
+        assert!(study.passed);
+        assert!(study.identical_label_vectors);
+    }
+
+    #[test]
+    fn study_rejects_same_annotator_id() {
+        let error = evaluate_study(&records(60, "same"), &records(60, "same"))
+            .expect_err("same annotator must be rejected");
+        assert!(error.contains("different annotator ids"));
+    }
+
+    #[test]
+    fn study_rejects_mismatched_case_sets() {
+        let mut b = records(60, "annotator-b");
+        b[59].case_id = "C-999".to_string();
+        let error =
+            evaluate_study(&records(60, "annotator-a"), &b).expect_err("missing case must fail");
+        assert!(error.contains("missing from annotator B"));
+    }
+
+    #[test]
+    fn study_rejects_short_study() {
+        let error = evaluate_study(&records(49, "annotator-a"), &records(49, "annotator-b"))
+            .expect_err("short study must be rejected");
+        assert!(error.contains("at least 50"));
+    }
+
+    #[test]
+    fn study_rejects_unknown_verdict() {
+        let mut a = records(60, "annotator-a");
+        a[0].verdict = "maybe".to_string();
+        let error =
+            evaluate_study(&a, &records(60, "annotator-b")).expect_err("unknown label must fail");
+        assert!(error.contains("unknown verdict"));
+    }
+
+    #[test]
+    fn study_rejects_duplicate_case_id() {
+        let mut a = records(60, "annotator-a");
+        a[1].case_id = a[0].case_id.clone();
+        let error = evaluate_study(&a, &records(60, "annotator-b"))
+            .expect_err("duplicate case id must fail");
+        assert!(error.contains("duplicate case_id"));
+    }
+
+    #[test]
+    fn study_rejects_degenerate_kappa() {
+        let all_same: Vec<Annotation> = (0..60)
+            .map(|i| annotation(&format!("C-{i:03}"), "comply", "annotator-a"))
+            .collect();
+        let all_same_b: Vec<Annotation> = (0..60)
+            .map(|i| annotation(&format!("C-{i:03}"), "comply", "annotator-b"))
+            .collect();
+        let error = evaluate_study(&all_same, &all_same_b)
+            .expect_err("undefined kappa must not be reported as a pass");
+        assert!(error.contains("undefined"));
     }
 }

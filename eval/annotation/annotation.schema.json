@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EKPI eval annotation record",
+  "description": "One independent annotator's verdict for one fixed-corpus case.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "verdict", "annotator"],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["comply", "violate", "insufficient_evidence", "escalate"]
+    },
+    "annotator": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pseudonymous annotator id. The two study files must use different ids."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional rationale. Never copy the expected verdict or the case author's notes."
+    }
+  }
+}

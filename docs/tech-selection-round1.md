@@ -119,7 +119,9 @@ Round 2 結束前與業務方共同設定初值並登錄版本。
 | R2-4 檢索 | ✅ MVP 完成 | `src/retrieval.rs`：字符 bigram cosine + 閾值參數（`--threshold`，預設 0.70）；命中必須達閾值。**未做**：向量/混合檢索（R3） |
 | R2-5 拒答 | ✅ MVP 完成 | 引擎 abstain 語義（insufficient 引用清空）、誤拒即計量（refuse_all stub 證明）；risk–coverage 曲線在 `ekp_eval::metrics` 已出。**未做**：校準閾值參數檔（R3 與業務方設定） |
 | R2-6 snapshot | ✅ 完成 | `src/snapshot.rs`：manifest SHA-256（doc 綁定雜湊 + 規則雜湊 + 事件序列雜湊）、重放一致性；selftest H-6 每案兩次重放 |
-| R2-7 eval 擴充 | ❌ 未做 | 50+ 案例、雙人標註 κ、CI 接入列 R3 |
+| R2-7 eval 擴充 | 🟡 部分完成（2026-11-03） | 67 案固定 corpus 已可一次載入、去重並由 `--corpus-selftest` 全量執行，且納入 canonical gate；雙人標註 κ 的工具、67 列盲化表、schema 與協定已就緒，但 0/2 標註者、**未測量**；CI workflow 已接線至含 corpus selftest 的固定入口，但無 remote/runner、**未執行**。不得標記為全部完成。 |
+
+**R2-7 補完盤點（2026-11-03）**：50+ 案例已達 67，並由 `--corpus-selftest` 全量執行、納入 canonical gate；κ 與 CI 仍受外部條件阻擋。`eval/annotation/README.md` 定義雙人盲標協定，`--kappa` 對少於 50 案、同一標註者、case 集合不一致、重複 id、未知 verdict 與 undefined κ 全部 fail closed。現況 0/2 標註者、κ 無數值；workflow 從未執行。R2-7 因此維持「部分完成」，不得寫成完成或據此宣稱 A7 已完成。
 
 **真機驗證彙總（2026-10-25, rustc 1.99.1, Windows）**：
 

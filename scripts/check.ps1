@@ -43,6 +43,10 @@ Write-Host "cargo run --locked -- --selftest" -ForegroundColor Yellow
 cargo run --locked -- --selftest
 Check-Result "eval selftest"
 
+Write-Host "cargo run --locked -- --corpus-selftest" -ForegroundColor Yellow
+cargo run --locked -- --corpus-selftest
+Check-Result "eval corpus selftest"
+
 Write-Host "=== Platform Crate ===" -ForegroundColor Cyan
 Set-Location "$root\platform"
 

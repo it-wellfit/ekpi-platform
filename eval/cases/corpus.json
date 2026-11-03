@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "ekpi-fixed-verdict-corpus-v3",
+  "minimum_cases": 50,
+  "files": [
+    "seed_cases.jsonl",
+    "casebook_v3.jsonl",
+    "edge_cases.jsonl"
+  ]
+}

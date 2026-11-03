@@ -39,6 +39,10 @@ echo "cargo run --locked -- --selftest"
 cargo run --locked -- --selftest
 check "eval selftest"
 
+echo "cargo run --locked -- --corpus-selftest"
+cargo run --locked -- --corpus-selftest
+check "eval corpus selftest"
+
 echo "=== Platform Crate ==="
 cd "$root/platform"
 
