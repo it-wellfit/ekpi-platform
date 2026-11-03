@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-11-02
-- **Repository revision for the re-run:** current hardening revision `d502147d3db70aefb108f2245c8e3232871225fe`; preceding hardening revision `eec11f2a9a02827e50317fbd0d146a3092f89ccf`; earlier hardening revisions `279c919471940e5a0406814ba78c1600bfb3c175`, `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
-- **Working tree during the re-run:** code files committed at `d502147` in an isolated git worktree on branch `audit/export-hardening` based on `c0c0e33`; the E-036 documentation edits were uncommitted during the run; the separate main worktree contains unrelated uncommitted 2026-10-30 changes and was not part of the revision. Unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
+- **Repository revision for the re-run:** current hardening revision `6ae475d8cb07fdce8f5fb864df6930767c81b852`; preceding hardening revision `d502147d3db70aefb108f2245c8e3232871225fe`; earlier hardening revisions `eec11f2a9a02827e50317fbd0d146a3092f89ccf`, `279c919471940e5a0406814ba78c1600bfb3c175`, `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
+- **Working tree during the re-run:** code files committed at `6ae475d` in an isolated git worktree on branch `audit/export-hardening` based on `c0c0e33`; the E-037 documentation edits were uncommitted during the run; the separate main worktree contains unrelated uncommitted 2026-10-30 changes and was not part of the revision. Unrelated `.opencode` skill files were not part of the revision; `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -50,6 +50,7 @@
 | E-034 | LOCAL | Multiline textarea, BPMN parser and Secure-cookie hardening: release tests, runtime checks and canonical entry point | `279c919` | 0 | PASS. Platform **345** (273 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); `--health` OK; fmt and Clippy pass in both crates. Ten new tests (2 governance unit, 5 BPMN unit, 1 governance-web unit, 2 governance-web integration) cover LF/CRLF acceptance and CR/control rejection, workflow/quality-case/gate replay, BPMN local names, quote styles, attribute boundaries, comments/CDATA and Secure-cookie mirroring. **Canonical `scripts/check.ps1` exited 0 on two same-command runs:** docs 53 required/680 links in 115 files, secrets 231, eval 12 + 10 self-test checks, platform 345, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 | E-035 | LOCAL | LegalRuleML export and BPMN entity hardening: red/green regression, export smoke and canonical entry point | `eec11f2` | 0 | PASS. Platform **354** (282 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Nine new tests (6 export, 3 BPMN; one export test extended with a spoofed-reference negative case) cover comment escaping, XML 1.0 character validity, comment/declaration well-formedness, real calendar dates, element-only forbidden-name matching, tag-only ID/ref scanning, entity decoding and invalid numeric references. Seven of them were observed failing before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/682 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 354, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 | E-036 | LOCAL | RAG citation confidence and xs:dateTime year-zero hardening: red/green regression and canonical entry point | `d502147` | 0 | PASS. Platform **356** (284 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Two new RAG tests and one extended date test cover cited-confidence threshold enforcement, cite-aware confidence, rejection of xs:dateTime year `0000` and acceptance of `0001`. All three observations were red before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit (two same-command runs; the second captured `EXITCODE=0`):** docs 53 required/687 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 356, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
+| E-037 | LOCAL | Second-precision deadlines, strict event timestamps and inclusive effective windows: red/green regression and canonical entry point | `6ae475d` | 0 | PASS. Platform **366** (294 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Ten new unit tests and four extended tests cover sub-day `PT12H` enforcement, zero-length immediate deadlines, invalid/missing/unsupported durations, empty anchor refs, strict date/datetime parsing (including multibyte and impossible dates), second-level diffs, the inclusive `effective_to` boundary and governance year `0000` (net +10 tests, 356 to 366). Five observations were red before the fixes; the invalid/unsupported/zero duration and empty anchor refs are additional fail-closed guards covered by new tests. **Canonical `scripts/check.ps1` exited 0 on the exact code commit (one same-command run):** docs 53 required/691 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 366, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 
 ## E-001: canonical check (blocked)
 
@@ -904,6 +905,64 @@ This is a local run in an isolated git worktree on the same managed host, not CI
 
 After the E-036 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 691 relative links in 105 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check of the uncommitted evidence edits, not an additional canonical run; the canonical PASS remains bound to the code revision `d502147`.
 
+## E-037: second-precision deadlines and inclusive effective windows (`6ae475d`)
+
+```powershell
+cd platform
+cargo fmt --all
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+The fixes were developed in the same isolated git worktree on branch `audit/export-hardening`, based on `c0c0e33`. Only `platform/src/engine.rs`, `platform/src/docs.rs` and `platform/src/governance.rs` are in the code commit. The separate main worktree contains unrelated uncommitted 2026-10-30 changes and was neither used nor modified.
+
+Observed on 2026-11-02 at `6ae475d8cb07fdce8f5fb864df6930767c81b852` (code committed; these E-037 documentation edits were uncommitted during the canonical run):
+
+| Target | Count | Exit |
+| --- | --- | --- |
+| Platform unit (`--lib`) | 294 | 0 |
+| Platform CLI contract | 31 | 0 |
+| Platform edge cases | 2 | 0 |
+| Platform governance web | 20 | 0 |
+| Platform integration | 8 | 0 |
+| Platform search evaluation | 7 | 0 |
+| Platform web health | 4 | 0 |
+| **Platform total** | **366** | 0 |
+| Eval unit/integration tests | 12 | 0 |
+| Eval self-test checks | 10 | 0 |
+| Platform self-test assertions | 49 | 0 |
+| Declared-rules schema records | 20 | 0 |
+| Search gate cases | 28 (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) | 0 |
+
+The defects fixed in this revision were:
+
+1. **Sub-day deadlines were silently skipped.** `parse_iso_duration_days("PT12H")` returned `Some(0)`, and the engine filtered `days > 0`, so a 12-hour deadline was never evaluated and a one-second breach returned `Comply`. Durations are now parsed and compared in seconds; `PT12H` plus one second returns `Violate`, while an exact 12-hour timestamp remains `Comply` because the comparison is strict `>`.
+2. **Malformed event timestamps were coerced to day zero.** `date_diff_days` split date strings, used `unwrap_or(0)` for every component and sliced raw bytes. A malformed value such as `2026-03-0~` therefore compared as a valid date and could produce `Comply` with no note. The engine now validates every event timestamp with `parse_utc_timestamp_seconds`; any unparseable value sets `invalid_event_timestamp`, skips process replay and yields `InsufficientEvidence`.
+3. **The old date helper could panic on a multibyte boundary.** `&a[..a.len().min(10)]` can split a UTF-8 character. The strict parser rejects non-ASCII input before any byte slice, and `timestamp_parser_rejects_impossible_or_multibyte_values` covers `2026-03-0２`.
+4. **Unsupported, missing or zero-length deadlines were fail-open.** `P1M`, `P1Y`, an empty string and `not-a-duration` previously produced only a note and could end in `Comply`; `P0D` was filtered out entirely. An unsupported or missing duration now makes the verdict `InsufficientEvidence`, while `P0D` is an immediate deadline: one second late violates, an identical timestamp complies. Empty anchor `ref` values are also rejected as `deadline_anchor_invalid` instead of being skipped.
+5. **The `effective_to` boundary was wrong for timestamps with a time.** `"2026-02-28T23:59:59" <= "2026-02-28"` is false in string order, so an event on the closing day was treated as expired. Both `DocDatabase::in_force` and the engine's rule-temporal comparison now compare the validated calendar-date prefix, making `effective_to` inclusive through the end of that day while leaving the following day expired.
+6. **Governance dates accepted year `0000`.** `validate_date` checked month/day ranges but not the year. XML Schema 1.0 has no year `0000`; `0000-01-01` is now rejected and `0001-01-01` remains accepted as the minimum.
+
+Red/green evidence: five observations were red before the fixes. `deadline_subday_duration_is_enforced` observed `Comply` with notes `[]` for `PT12H` exceeded by one second; `malformed_event_timestamp_is_insufficient_evidence` observed `Comply` with notes `[]` for `2026-03-0~`; `date_validation_rejects_impossible_dates_and_accepts_leap_day` failed on `0000-01-01`; `effective_window_checks` observed `Ok(false)` for `2026-02-28T23:59:59`; and `rule_effective_to_is_inclusive_through_the_closing_day` observed `InsufficientEvidence` with `rule_expired_or_not_yet_effective`. All pass afterwards. Ten new unit tests and four extended tests cover the behavior, including the fail-closed duration/anchor guards that were added with the fix; no test was deleted, renamed to hide a failure, or weakened.
+
+### Canonical entry-point result
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-11-02 at `6ae475d`, **exit 0** on one same-command run:
+
+- Documentation PASS: 53 required documents, 691 relative links in 105 files.
+- Secret patterns PASS: 231 files.
+- Eval fmt, Clippy, 12 tests and 10 self-test checks PASS.
+- Platform fmt, Clippy and **366 tests** PASS.
+- Platform self-test 49 assertions, schema 20 records, search 28 cases with gate PASS, `=== ALL CHECKS PASSED ===`.
+
+This is a local run in an isolated git worktree on the same managed host, not CI, staging, production, a clean clone or an independent execution. The branch has no remote and no pull request. A future denial must still be recorded as `BLOCKED`.
+
+After the E-037 documentation reconciliation, `scripts/check-docs.ps1` passes with 53 required documents and 695 relative links in 105 files, and `scripts/check-secrets.ps1` passes with 231 files. That is a documentation-only check of the uncommitted evidence edits, not an additional canonical run; the canonical PASS remains bound to the code revision `6ae475d`.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -919,6 +978,6 @@ After the E-036 documentation reconciliation, `scripts/check-docs.ps1` passes wi
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI. The current `d502147` worktree passed twice on the same host (E-036); the preceding `eec11f2` worktree passed once (E-035); the earlier `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
+- It does not show that the canonical check is reproducible on a different host or in CI. The current `6ae475d` worktree passed once on the same host (E-037); the preceding `d502147` worktree passed twice (E-036); the earlier `eec11f2` worktree passed once (E-035); the earlier `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run.
 - It does not show LegalRuleML 1.0 conformance beyond the repository validator and one local .NET parser smoke check; no external schema validator, conformance suite or independent review was run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.
