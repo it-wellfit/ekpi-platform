@@ -99,7 +99,7 @@ These ratings are meaningful only for the local, synthetic-data, single-user pro
 | Risk | Likelihood | Impact | Rating | Basis |
 | --- | --- | --- | --- | --- |
 | Local admin tampering with ledger/backup | Medium | High | **High** | No WORM, no external anchor, local disk |
-| Final backup unrecoverable | Medium | High | **High** | `41beaea` and `6ed236d` restore locally; the earlier `28b68cc` restore is `BLOCKED`; `c827351`, `bbe49eb`, `b2d8afc`, `21e23d6`, `279c919`, `eec11f2`, `d502147` and `6ae475d` are not bundled; no off-host copy |
+| Final backup unrecoverable | Medium | High | **High** | `41beaea` and `6ed236d` restore locally; the earlier `28b68cc` restore is `BLOCKED`; `c827351`, `bbe49eb`, `b2d8afc`, `21e23d6`, `279c919`, `eec11f2`, `d502147`, `6ae475d` and `028037a` are not bundled; no off-host copy |
 | Secret/sensitive text in ledger or report | Medium | Medium | **Medium** | Operator-entered content; no DLP |
 | Password guessing on local login | Low | Medium | **Medium** | 600k PBKDF2 + lockout; no MFA |
 | Supply-chain compromise | Low | High | **Medium** | Lockfiles/audit/SBOM, but CI/SHA pinning absent |

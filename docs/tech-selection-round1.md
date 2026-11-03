@@ -198,3 +198,4 @@ CLI 行為不變。
 | 1.0 | 2026-10-25 | 初版 |
 | 1.1 | 2026-10-25 | Round 2 實施狀態登記（R2-1..R2-6 真機落地、R2-7 列 R3；硬門檻 H-1..H-6 引擎側全部 ok）；§0 已修正重排序與流程層行 |
 | 1.2 | 2026-10-25 | Round 3 實施狀態登記：CLI 五旗標（schema 校驗 20 records clean、參數治理檔 fail-closed、LegalRuleML 1.0 compact 匯出、覆蓋率報告 55 案＝18 active id 全覆蓋＋2 非 active、HTML）；casebook 實測 46 題實況修正；cargo test 71 PASS、selftest 49 assertions |
+| 1.3 | 2026-11-03 | R2-7 盤點：67 案固定 corpus 已由 `--corpus-selftest` 全量執行並納入 canonical gate；雙人標註 κ 工具、67 列盲化表、schema 與協定就緒，但 0/2 標註者、κ 未測量；CI workflow 已接線但無 remote/runner、從未執行。R2-7 維持部分完成。 |
