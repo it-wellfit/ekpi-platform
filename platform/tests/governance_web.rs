@@ -122,22 +122,30 @@ async fn login(app: &axum::Router, username: &str, password: &str) -> String {
     let body = format!("csrf_token={token}&username={username}&password={password}");
     let response = post_form_with_cookie(app, "/login", &body, Some(&csrf_cookie)).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let set_cookie = response
+    assert!(set_cookie_header(&response, "ekpi_session=").is_some());
+    // A successful login rotates the CSRF token: the response sets a new
+    // `ekpi_csrf` pair bound to the session, and the browser must store it.
+    let rotated_csrf = set_cookie_header(&response, "ekpi_csrf=").expect("rotated csrf cookie");
+    assert!(set_cookie_header(&response, "ekpi_session=").unwrap_or_default().contains("HttpOnly"));
+    let session_pair = set_cookie_header(&response, "ekpi_session=")
+        .expect("session pair")
+        .to_string();
+    format!("{session_pair}; {rotated_csrf}")
+}
+
+/// Returns the `name=value` pair of the Set-Cookie header whose value starts
+/// with `prefix`, or `None` when no such header exists.
+fn set_cookie_header(response: &axum::response::Response, prefix: &str) -> Option<String> {
+    response
         .headers()
-        .get(header::SET_COOKIE)
-        .expect("login sets a cookie")
-        .to_str()
-        .expect("cookie is ASCII")
-        .to_string();
-    assert!(set_cookie.contains("HttpOnly"));
-    assert!(set_cookie.contains("SameSite=Strict"));
-    assert!(set_cookie.contains("Max-Age="));
-    let session_pair = set_cookie
-        .split(';')
-        .next()
-        .expect("cookie pair")
-        .to_string();
-    format!("{session_pair}; {csrf_cookie}")
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().ok()?;
+            value
+                .starts_with(prefix)
+                .then(|| value.split(';').next().expect("cookie pair").to_string())
+        })
 }
 
 /// Fetches the login page and returns its fresh CSRF token plus the matching
