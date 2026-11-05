@@ -1,11 +1,96 @@
 // Property-based tests using proptest
 // Tests boundary cases and invariants for engine.decide(), snapshot replay, and ledger hash chain
 
+use ekp_eval::types::{Case, EventRaw, Ver};
+use ekp_platform::engine::Platform;
 use ekp_platform::governance::Ledger;
 use ekp_platform::local_auth::AuthStore;
 use ekp_platform::retrieval::PermissionContext;
 use proptest::prelude::*;
 use std::env::temp_dir;
+use std::sync::LazyLock;
+
+/// Shared platform instance for engine properties: loading parses three small
+/// JSON files, so one instance per process keeps the generated-case loops fast.
+static ENGINE_PLATFORM: LazyLock<Platform> = LazyLock::new(|| {
+    Platform::load(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data"))
+        .expect("platform data loads for property tests")
+});
+
+/// Builds a generated case that exercises the engine with an optional event
+/// and an optional document binding, both derived from arbitrary strings.
+fn generated_case(case_id: &str, activity: Option<String>, doc_id: Option<String>) -> Case {
+    Case {
+        case_id: case_id.to_string(),
+        category: "general".to_string(),
+        task: String::new(),
+        doc_versions: doc_id
+            .map(|id| (format!("DOC-{id}"), "1.0".to_string()))
+            .into_iter()
+            .collect(),
+        events: activity
+            .map(|name| EventRaw {
+                activity: name,
+                actor: "tester".to_string(),
+                ts: "2026-01-01T00:00:00Z".to_string(),
+            })
+            .into_iter()
+            .collect(),
+        rules: Vec::new(),
+        citations: Vec::new(),
+        loop_cfg: None,
+        expected_verdict: "comply".to_string(),
+        abstain_required: false,
+        notes: String::new(),
+    }
+}
+
+proptest! {
+    #[test]
+    fn engine_decision_is_deterministic(
+        seed in "[a-zA-Z0-9]{1,12}",
+        with_activity in proptest::bool::ANY,
+        with_doc in proptest::bool::ANY,
+    ) {
+        let platform = &*ENGINE_PLATFORM;
+        let case = generated_case(
+            &format!("PROP-{seed}"),
+            with_activity.then(|| "execute_change".to_string()),
+            with_doc.then(|| seed.clone()),
+        );
+        let first = platform.decide(&case);
+        let second = platform.decide(&case);
+        prop_assert_eq!(first.verdict.as_str(), second.verdict.as_str());
+        prop_assert_eq!(first.citations, second.citations);
+        prop_assert_eq!(first.rule_ids_used, second.rule_ids_used);
+    }
+
+    #[test]
+    fn engine_abstention_implies_no_citations(
+        seed in "[a-zA-Z0-9]{1,12}",
+        with_activity in proptest::bool::ANY,
+        with_doc in proptest::bool::ANY,
+    ) {
+        let platform = &*ENGINE_PLATFORM;
+        let case = generated_case(
+            &format!("PROP-{seed}"),
+            with_activity.then(|| "unknown_activity".to_string()),
+            with_doc.then(|| seed.clone()),
+        );
+        let outcome = platform.decide(&case);
+        // H-3: an insufficient-evidence verdict must never carry citations,
+        // and any definitive verdict must cite at least one anchor.
+        if outcome.verdict == Ver::InsufficientEvidence {
+            prop_assert!(outcome.citations.is_empty(), "abstention carried citations: {:?}", outcome.citations);
+        } else {
+            prop_assert!(
+                !outcome.citations.is_empty(),
+                "definitive verdict {} without citations",
+                outcome.verdict.as_str()
+            );
+        }
+    }
+}
 
 proptest! {
     #[test]

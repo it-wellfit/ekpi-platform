@@ -491,8 +491,7 @@ cargo clippy --workspace --all-targets -- -D warnings 2>&1 | head -50
 # 3. 測試失敗
 cargo test --workspace 2>&1 | grep "FAILED\|error:"
 
-# 4. SQLx 錯誤
-export DATABASE_URL="postgres://ekpi:ekpi@localhost/ekpi_platform"
+# 4. SQLx 錯誤（DATABASE_URL 必須由環境變數提供，範本見 .env.example；連線字串不寫入版控）
 cargo sqlx prepare --workspace
 
 # 5. 格式問題

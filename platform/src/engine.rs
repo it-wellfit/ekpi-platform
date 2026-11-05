@@ -352,6 +352,14 @@ impl Platform {
         } else if expired_or_future {
             notes.push("rule_expired_or_not_yet_effective".to_string());
             ekp_eval::types::Ver::InsufficientEvidence
+        } else if resolved.is_empty() {
+            // Fail-closed: a comply verdict is only honest when at least one
+            // declared rule was actually evaluated. With no evaluated rule and
+            // no process verdict, there is no basis for any definitive
+            // conclusion (H-4: a definitive verdict must carry an anchor, and
+            // an empty resolution produces none).
+            notes.push("no_rule_evaluated".to_string());
+            ekp_eval::types::Ver::InsufficientEvidence
         } else {
             ekp_eval::types::Ver::Comply
         };
