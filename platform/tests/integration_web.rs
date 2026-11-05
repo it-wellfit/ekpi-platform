@@ -7,16 +7,129 @@ use ekp_platform::governance::Ledger;
 use ekp_platform::governance_web;
 use ekp_platform::local_auth::AuthStore;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tower::ServiceExt;
+
+/// Unique per-run ledger path: a shared fixed name would collide across
+/// parallel test runs and could pick up events from a previous run.
+fn test_ledger_path(label: &str) -> std::path::PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "ekpi-integration-web-{}-{}-{label}.jsonl",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed),
+    ))
+}
+
+fn app_with_user(
+    username: &str,
+    password: &str,
+    label: &str,
+) -> (axum::Router, std::path::PathBuf) {
+    let path = test_ledger_path(label);
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
+    let mut store = AuthStore::default();
+    store
+        .register(username, password, ekp_platform::local_auth::Role::Editor)
+        .unwrap();
+    let auth = Arc::new(std::sync::Mutex::new(store));
+    (governance_web::router(ledger, auth), path)
+}
+
+/// Fetches the login page and returns its fresh CSRF token plus the matching
+/// `ekpi_csrf` cookie pair; asserts the hidden field equals the cookie value.
+async fn login_page_csrf(app: &axum::Router) -> (String, String) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get("/login")
+                .header("host", "127.0.0.1:8080")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let set_cookie = response
+        .headers()
+        .get("set-cookie")
+        .expect("login page sets the csrf cookie")
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(set_cookie.starts_with("ekpi_csrf="));
+    let token = set_cookie
+        .split(';')
+        .next()
+        .expect("cookie pair")
+        .strip_prefix("ekpi_csrf=")
+        .expect("csrf prefix")
+        .to_string();
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    let marker = "name=\"csrf_token\" value=\"";
+    let start = html.find(marker).expect("hidden csrf field") + marker.len();
+    let rest = &html[start..];
+    let end = rest.find('"').expect("closing quote");
+    let field_token = rest[..end].to_string();
+    assert_eq!(
+        field_token, token,
+        "double-submit token must match the cookie"
+    );
+    (token.clone(), format!("ekpi_csrf={token}"))
+}
+
+/// Browser-equivalent login: page token + page cookie in, rotated session and
+/// csrf cookie pairs out, joined into a single Cookie header value.
+async fn login(app: &axum::Router, username: &str, password: &str) -> String {
+    let (token, csrf_cookie) = login_page_csrf(app).await;
+    let body = format!("csrf_token={token}&username={username}&password={password}");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post("/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("host", "127.0.0.1:8080")
+                .header("origin", "http://127.0.0.1:8080")
+                .header("cookie", &csrf_cookie)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let session = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .find_map(|v| {
+            let v = v.to_str().ok()?;
+            v.starts_with("ekpi_session=")
+                .then(|| v.split(';').next().unwrap().to_string())
+        })
+        .expect("session cookie");
+    let rotated = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .find_map(|v| {
+            let v = v.to_str().ok()?;
+            v.starts_with("ekpi_csrf=")
+                .then(|| v.split(';').next().unwrap().to_string())
+        })
+        .expect("rotated csrf cookie");
+    format!("{session}; {rotated}")
+}
 
 #[tokio::test]
 async fn health_endpoint_returns_200() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_ledger.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("health");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -33,9 +146,8 @@ async fn metrics_endpoint_returns_prometheus_format() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_ledger2.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("metrics");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -54,9 +166,8 @@ async fn unauthenticated_request_to_data_page_returns_401() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_ledger3.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("unauth");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -73,40 +184,28 @@ async fn login_with_valid_credentials_sets_session_cookie() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_ledger4.jsonl")).unwrap(),
-    ));
-    let mut auth_store = AuthStore::default();
-    auth_store
-        .register(
-            "testuser",
-            "password123",
-            ekp_platform::local_auth::Role::Editor,
-        )
-        .unwrap();
-    let auth = Arc::new(std::sync::Mutex::new(auth_store));
-    let app = governance_web::router(ledger, auth);
+    let (app, _path) = app_with_user("testuser", "password123", "login-cookie");
 
     let response = app
+        .clone()
         .oneshot(
             Request::post("/login")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("host", "127.0.0.1:8080")
                 .header("origin", "http://127.0.0.1:8080")
-                .body(Body::from("username=testuser&password=password123"))
+                .body(Body::from(
+                    "csrf_token=missing&username=testuser&password=password123",
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
+    // The double-submit check runs before credential verification.
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
-    assert!(
-        response.status() == StatusCode::FOUND
-            || response.status() == StatusCode::OK
-            || response.status() == StatusCode::SEE_OTHER
-    );
-    // Check for Set-Cookie header
-    let set_cookie = response.headers().get("set-cookie");
-    assert!(set_cookie.is_some());
+    let cookies = login(&app, "testuser", "password123").await;
+    assert!(cookies.starts_with("ekpi_session="));
+    assert!(cookies.contains("ekpi_csrf="));
 }
 
 #[tokio::test]
@@ -114,9 +213,8 @@ async fn oversized_form_body_is_rejected() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_ledger5.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("oversized");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -144,9 +242,8 @@ async fn security_headers_are_present() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_ledger6.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("sec-headers-1");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -167,9 +264,8 @@ async fn security_headers_validation() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_sec_headers.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("sec-headers-2");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -193,9 +289,8 @@ async fn error_response_structure_validation() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_err_struct.jsonl")).unwrap(),
-    ));
+    let path = test_ledger_path("err-struct");
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
@@ -213,19 +308,7 @@ async fn input_validation_edge_cases() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_input_val.jsonl")).unwrap(),
-    ));
-    let mut auth_store = AuthStore::default();
-    auth_store
-        .register(
-            "testuser",
-            "password123",
-            ekp_platform::local_auth::Role::Editor,
-        )
-        .unwrap();
-    let auth = Arc::new(std::sync::Mutex::new(auth_store));
-    let app = governance_web::router(ledger, auth);
+    let (app, _path) = app_with_user("testuser", "password123", "input-val");
 
     // Test with empty body
     let response = app
@@ -249,23 +332,26 @@ async fn csrf_rejects_missing_token() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_csrf_missing.jsonl")).unwrap(),
-    ));
-    let mut auth_store = AuthStore::default();
-    auth_store
-        .register("testuser", "password123", ekp_platform::local_auth::Role::Editor)
-        .unwrap();
-    let auth = Arc::new(std::sync::Mutex::new(auth_store));
-    let app = governance_web::router(ledger, auth);
+    let (app, _path) = app_with_user("testuser", "password123", "csrf-missing");
 
-    // POST to /evidence without CSRF token should be rejected
+    let session_only = {
+        let cookies = login(&app, "testuser", "password123").await;
+        cookies
+            .split("; ")
+            .find(|pair| pair.starts_with("ekpi_session="))
+            .expect("session pair")
+            .to_string()
+    };
+
+    // POST to /evidence with a valid session but no CSRF token must be
+    // rejected by the CSRF layer, not the authentication layer.
     let response = app
         .oneshot(
             Request::post("/evidence")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("host", "127.0.0.1:8080")
                 .header("origin", "http://127.0.0.1:8080")
+                .header("cookie", &session_only)
                 .body(Body::from("title=test&source_system=test&source_url=http://example.com&source_version=1&evidence_type=test&owner=test"))
                 .unwrap(),
         )
@@ -280,55 +366,26 @@ async fn csrf_accepts_valid_token() {
     unsafe {
         std::env::set_var("EKPI_TEST_MODE", "1");
     }
-    let ledger = Arc::new(std::sync::Mutex::new(
-        Ledger::open(std::env::temp_dir().join("test_csrf_valid.jsonl")).unwrap(),
-    ));
-    let mut auth_store = AuthStore::default();
-    auth_store
-        .register("testuser", "password123", ekp_platform::local_auth::Role::Editor)
-        .unwrap();
-    let auth = Arc::new(std::sync::Mutex::new(auth_store));
-    let app = governance_web::router(ledger, auth);
+    let (app, _path) = app_with_user("testuser", "password123", "csrf-valid");
 
-    // First create a session to get CSRF token
-    let login_response = app
-        .oneshot(
-            Request::post("/login")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .header("host", "127.0.0.1:8080")
-                .header("origin", "http://127.0.0.1:8080")
-                .body(Body::from("username=testuser&password=password123"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let cookies = login(&app, "testuser", "password123").await;
 
-    // Extract CSRF token from session cookie
-    let csrf_token = login_response
-        .headers()
-        .get("set-cookie")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|v| {
-            v.split(';')
-                .find(|p| p.trim_start().starts_with("ekpi_csrf="))
-                .map(|p| p.trim_start().strip_prefix("ekpi_csrf=").unwrap().to_string())
-        })
-        .unwrap_or_else(|| "".to_string());
-
-    // POST with CSRF token should pass CSRF check (may fail for other reasons)
+    // Zero-JS browser shape: the CSRF token arrives via the rotated
+    // `ekpi_csrf` cookie; no custom header is set.
     let response = app
         .oneshot(
             Request::post("/evidence")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("host", "127.0.0.1:8080")
                 .header("origin", "http://127.0.0.1:8080")
-                .header("X-CSRF-Token", &csrf_token)
+                .header("cookie", &cookies)
                 .body(Body::from("title=test&source_system=test&source_url=http://example.com&source_version=1&evidence_type=test&owner=test"))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    // Should not be 403 (CSRF check passed)
+    // Neither the CSRF layer (403) nor the session layer (401) may reject.
     assert_ne!(response.status(), StatusCode::FORBIDDEN);
+    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
 }

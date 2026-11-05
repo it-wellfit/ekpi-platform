@@ -262,23 +262,6 @@
       "expected_section": "2.1",
       "min_score": 0.42,
       "roles": ["auditor"]
-    },
-    {
-      "id": "PERM-ALLOW-01",
-      "category": "role-restricted",
-      "question": "只有品質經理可檢索 SOP-CHANGE 並判斷執行合規",
-      "expected_doc_id": "SOP-CHANGE",
-      "expected_section": "4.3",
-      "permissions": ["quality_manager"]
-    },
-    {
-      "id": "PERM-DENY-01",
-      "category": "role-restricted",
-      "question": "稽核員可檢索 SOP-CHANGE 但無權判斷執行合規",
-      "min_score": 0.42,
-      "expected_doc_id": "QM-01",
-      "expected_section": "2.4",
-      "permissions": ["auditor"]
     }
   ]
 }

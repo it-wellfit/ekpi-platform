@@ -122,14 +122,14 @@ async fn login(app: &axum::Router, username: &str, password: &str) -> String {
     let body = format!("csrf_token={token}&username={username}&password={password}");
     let response = post_form_with_cookie(app, "/login", &body, Some(&csrf_cookie)).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    assert!(set_cookie_header(&response, "ekpi_session=").is_some());
     // A successful login rotates the CSRF token: the response sets a new
     // `ekpi_csrf` pair bound to the session, and the browser must store it.
+    let session_pair = set_cookie_header(&response, "ekpi_session=").expect("session cookie");
     let rotated_csrf = set_cookie_header(&response, "ekpi_csrf=").expect("rotated csrf cookie");
-    assert!(set_cookie_header(&response, "ekpi_session=").unwrap_or_default().contains("HttpOnly"));
-    let session_pair = set_cookie_header(&response, "ekpi_session=")
-        .expect("session pair")
-        .to_string();
+    assert!(session_pair.starts_with("ekpi_session="));
+    assert!(set_cookie_header_full(&response, "ekpi_session=").contains("HttpOnly"));
+    assert!(set_cookie_header_full(&response, "ekpi_session=").contains("SameSite=Strict"));
+    assert!(set_cookie_header_full(&response, "ekpi_session=").contains("Max-Age="));
     format!("{session_pair}; {rotated_csrf}")
 }
 
@@ -146,6 +146,20 @@ fn set_cookie_header(response: &axum::response::Response, prefix: &str) -> Optio
                 .starts_with(prefix)
                 .then(|| value.split(';').next().expect("cookie pair").to_string())
         })
+}
+
+/// Returns the full Set-Cookie header value (attributes included) whose value
+/// starts with `prefix`, or an empty string when no such header exists.
+fn set_cookie_header_full(response: &axum::response::Response, prefix: &str) -> String {
+    response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().ok()?;
+            value.starts_with(prefix).then(|| value.to_string())
+        })
+        .unwrap_or_default()
 }
 
 /// Fetches the login page and returns its fresh CSRF token plus the matching
@@ -938,24 +952,20 @@ async fn logout_mirrors_the_secure_cookie_attribute() {
     let body = format!("csrf_token={token}&username=tester&password={ADMIN_PASSWORD}");
     let response = post_form_with_cookie(&app, "/login", &body, Some(&csrf_cookie)).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let login_cookie = response
-        .headers()
-        .get(header::SET_COOKIE)
-        .expect("login sets a cookie")
-        .to_str()
-        .expect("cookie is ASCII")
-        .to_string();
+    let session_full = set_cookie_header_full(&response, "ekpi_session=");
     assert!(
-        login_cookie.contains("; Secure"),
+        session_full.contains("; Secure"),
         "login must honor EKPI_COOKIE_SECURE"
     );
-    let session = login_cookie
-        .split(';')
-        .next()
-        .expect("cookie pair")
-        .to_string();
+    let rotated_csrf = set_cookie_header_full(&response, "ekpi_csrf=");
+    assert!(
+        rotated_csrf.contains("; Secure"),
+        "the rotated csrf cookie must also honor EKPI_COOKIE_SECURE"
+    );
+    let session = set_cookie_header(&response, "ekpi_session=").expect("session pair");
+    let rotated_pair = set_cookie_header(&response, "ekpi_csrf=").expect("rotated csrf pair");
 
-    let response = post_authed(&app, &session, "/logout", "").await;
+    let response = post_authed(&app, &format!("{session}; {rotated_pair}"), "/logout", "").await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let cleared = response
         .headers()
