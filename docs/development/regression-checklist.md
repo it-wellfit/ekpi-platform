@@ -56,7 +56,7 @@ These are dated observations. Re-run them for the revision being delivered and a
 
 This section supersedes the `--audit-log` behavior described in the `23b8996` section above.
 
-- `platform` has **366 tests** at the current `028037a` revision: 294 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; the canonical run also executes all 366 in the debug profile, and `eval` has **20 tests + 10 self-test checks + 16 corpus checks over 67 cases**. The preceding `6ae475d` revision has the same **366 tests** with eval 12 + 10 self-test checks. The earlier `d502147` revision has **356 tests** (284 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health). The earlier `eec11f2` revision has **354 tests** (282 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health). The earlier `279c919` revision has **345 tests** in the release profile: 273 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; both canonical runs also execute all 345 in the debug profile. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile had **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the earlier `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§10.
+- `platform` has **366 tests** at the current `db7fc95` revision: 294 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; the canonical run also executes all 366 in the debug profile, and `eval` has **41 tests (27 unit + 14 real-process CLI contract) + 10 self-test checks + 18 corpus checks over 67 cases**. The preceding code `028037a` revision has the same **366 platform tests** with eval 20 tests + 10 self-test checks + 16 corpus checks. The earlier `6ae475d` revision has the same **366 tests** with eval 12 + 10 self-test checks. The earlier `d502147` revision has **356 tests** (284 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health). The earlier `eec11f2` revision has **354 tests** (282 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health). The earlier `279c919` revision has **345 tests** in the release profile: 273 unit, 31 CLI contract, 2 edge-case, 20 governance web, 8 engine integration, 7 search evaluation, 4 web health; both canonical runs also execute all 345 in the debug profile. The self-test reports 49 assertions and the schema command validates 20 records. At `21e23d6` the release profile had **308 executed tests** (265 unit, 31 CLI contract, 8 integration, 4 web health) plus 27 tests **BLOCKED** at spawn (`governance_web` 18, `search_eval` 7, `edge_cases` 2); at `b2d8afc` the release profile had **329 executed tests** (262 unit, 30 CLI contract, 18 governance web, 8 integration, 7 search evaluation, 4 web health) plus 2 edge tests **BLOCKED** at spawn; at `bbe49eb` the release profile had **325 tests** (257 unit, 30 CLI contract, 2 edge, 17 governance web, 8 integration, 7 search evaluation, 4 web health); at the earlier `c827351` revision the inventory was **312 executed + 2 edge tests NOT RUN** (250 unit, 28 CLI contract, 15 governance web, 8 integration, 7 search evaluation, 4 web health); see §6–§10.
 - `--audit-log` requires `--search` and appends one JSONL `KnowledgeSearch` event to a hash chain. It reads and verifies the existing chain first; a malformed line, broken chain or legacy single-object file exits `1` without modifying the file. Local writers serialise on a sibling `<PATH>.lock` directory. It is tamper-evident, not WORM or an authenticated audit service.
 - Every `governance_web` mutation derives the ledger actor from the validated local session username and ignores submitted `actor`/`reviewer` fields. The `/inspections` reviewer comes from the session. This is a local process-memory identity, not enterprise authentication.
 - Regression tests to preserve: JSONL round-trip, tamper refusal without modification, legacy-format refusal, 8-thread concurrent append forming one verified chain, two CLI runs forming a 2-event chain, and a POST with `actor=Jordan` recording the session user `tester`.
@@ -350,7 +350,7 @@ This section records the regression baseline added by `fix: enforce second-preci
 
 Evidence: [E-037](../assurance/test-evidence.md#e-037-second-precision-deadlines-and-inclusive-effective-windows-6ae475d) and [phase gates](../quality/phase-gates.md). Five observations were red before the fixes: a `PT12H` deadline exceeded by one second returned `Comply` with no notes; `2026-03-0~` returned `Comply` with no notes; `0000-01-01` was accepted; `in_force(..., "2026-02-28T23:59:59")` returned `Ok(false)`; and the engine `effective_to` boundary returned `InsufficientEvidence` with `rule_expired_or_not_yet_effective`. Ten new unit tests and four extended tests cover the behavior, including the fail-closed duration/anchor guards. No test was deleted to hide a failure or weakened.
 
-## 14. Revision record: `028037a` eval corpus execution and κ study tooling (2026-11-03)
+## 14. Revision record: `028037a` eval corpus execution and κ study tooling (2026-11-03) — historical
 
 This section records the regression baseline added by `feat: execute the 67-case eval corpus and add kappa study tooling`. It supplements, and does not replace, the area checklists and §13.
 
@@ -369,8 +369,34 @@ This section records the regression baseline added by `feat: execute the 67-case
 | --- | --- |
 | `cargo fmt -- --check` / `cargo clippy --locked --all-targets -- -D warnings` (eval) | Exit 0 |
 | `eval` `cargo test --locked` | 20 passed (was 12) |
-| `eval` `--selftest` / `--corpus-selftest` | 10 checks / 17 checks over 67 cases |
+| `eval` `--selftest` / `--corpus-selftest` | 10 checks / 16 checks over 67 cases (the earlier 17 was an overcount) |
 | Corpus distribution | 28 comply, 11 violate, 10 escalate, 18 insufficient_evidence |
-| Canonical `scripts/check.ps1` at `028037a` | **PASS**, exit 0 on one run on the exact code commit; docs 53/695/106, secrets 235, eval 20 + 10 + 17 checks, platform 366, self-test 49, schema 20, search 28 |
+| Canonical `scripts/check.ps1` at `028037a` | **PASS**, exit 0 on one run on the exact code commit; docs 53/695/106, secrets 235, eval 20 + 10 + 16 checks, platform 366, self-test 49, schema 20, search 28 |
 
 Evidence: [E-038](../assurance/test-evidence.md#e-038-r2-7-eval-corpus-execution-and-κ-study-tooling-028037a) and [phase gates](../quality/phase-gates.md). Red before the change: `--corpus-selftest`, `--kappa` and `--make-annotation-sheet` were unknown arguments (exit 2), and the default report ran 9 cases. A synthetic 60-record κ smoke returned 0.8667 but is tooling evidence only: **κ is NOT MEASURED (0/2 annotators)** and the CI workflow has **NEVER EXECUTED**. No test was deleted, renamed to hide a failure, weakened or skipped.
+
+## 15. Revision record: `db7fc95` eval CLI hardening and exact-corpus κ binding (2026-11-04)
+
+This section records the regression baseline added by `fix: harden eval CLI and bind kappa studies to the fixed corpus`. It supersedes the §14 tooling behavior; §14 remains the historical record of `028037a`.
+
+### New behavior to preserve
+
+- `--selftest`, `--corpus-selftest`, `--make-annotation-sheet`, `--kappa` and the report modes are mutually exclusive where they conflict. `--selftest`/`--corpus-selftest` accept no other argument; `--cases` and `--corpus` cannot be combined; every accepted flag consumes exactly one value.
+- `--systems` must name at least one adapter and must not repeat one. An empty, duplicate, flag-shaped or missing value exits `2` before any report is written.
+- `--kappa A.jsonl B.jsonl [--corpus PATH]` loads the fixed `cases/corpus.json` by default and requires exact coverage of its 67 case ids. A missing, extra or foreign case id exits `2`. The JSON result records `corpus_id` and `corpus_cases`.
+- Annotation records use `deny_unknown_fields`. A file containing `expected_verdict`, `notes`, `citations`, `category` or any other extra field is rejected.
+- Landis–Koch interpretation is inclusive at the upper bound: `0.80` is `Substantial`, `0.81+` is `Almost perfect`; a non-finite κ is `Undefined`. The proposed `0.80` threshold must not be reported with the stronger label.
+- The blinded sheet must have 67 unique rows, no prefilled `verdict` or `annotator` values and none of the forbidden fields.
+- Do not relax exact-corpus coverage, re-enable unknown annotation fields, widen the interpretation bands or delete the CLI contract tests merely to make a study pass.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt -- --check` / `cargo clippy --locked --all-targets -- -D warnings` (eval) | Exit 0 |
+| `eval` `cargo test --locked` | 41 passed (27 unit + 14 CLI contract; was 20) |
+| `eval` `--selftest` / `--corpus-selftest` | 10 checks / 18 checks over 67 cases |
+| Corpus distribution | 28 comply, 11 violate, 10 escalate, 18 insufficient_evidence |
+| Canonical `scripts/check.ps1` at `db7fc95` | **PASS**, exit 0 on one run on the exact code commit; docs 53/700/106, secrets 236, eval 41 + 10 + 18 checks, platform 366, self-test 49, schema 20, search 28 |
+
+Evidence: [E-039](../assurance/test-evidence.md#e-039-eval-cli-hardening-and-exact-corpus-κ-binding-db7fc95) and [phase gates](../quality/phase-gates.md). Red before the change: at `028037a`, `--selftest --bogus` exited 0, `--systems ","` exited 0 and wrote a report, and a κ study with 60 invented case ids exited 0 with `cohens_kappa = 1.0` and `PASS`. At `db7fc95` each is exit 2 with no report; the invented study is rejected before a κ value is printed. **κ is still NOT MEASURED (0/2 annotators)** and the CI workflow has **NEVER EXECUTED**. The 41 tests and 18 checks are tooling evidence, not a human agreement result or CI execution. No test was deleted, renamed to hide a failure, weakened or skipped.

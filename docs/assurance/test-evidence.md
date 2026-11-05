@@ -3,8 +3,8 @@
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
 - **Last reviewed:** 2026-11-03
-- **Repository revision for the re-run:** current R2-7 eval revision `028037a630a854506edc7e057ccb2c83d9275f92`; preceding hardening revision `6ae475d8cb07fdce8f5fb864df6930767c81b852`; earlier hardening revision `d502147d3db70aefb108f2245c8e3232871225fe`; earlier hardening revisions `eec11f2a9a02827e50317fbd0d146a3092f89ccf`, `279c919471940e5a0406814ba78c1600bfb3c175`, `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
-- **Working tree during the re-run:** code and eval files committed at `028037a` in an isolated git worktree on branch `audit/export-hardening` based on `c0c0e33`; the worktree was clean when the canonical run started. The separate main worktree contains unrelated uncommitted 2026-10-30 changes and was not part of the revision. `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
+- **Repository revision for the re-run:** current R2-7 eval revision `db7fc95fcdec3496c1898e43967d6faab4cf0b45`; preceding code revision `028037a630a854506edc7e057ccb2c83d9275f92`; documentation-only commit between them `db691ca8e0a56a5649f1afb76ca5bf2d4bb0b67d`; earlier hardening revision `6ae475d8cb07fdce8f5fb864df6930767c81b852`; earlier hardening revision `d502147d3db70aefb108f2245c8e3232871225fe`; earlier hardening revisions `eec11f2a9a02827e50317fbd0d146a3092f89ccf`, `279c919471940e5a0406814ba78c1600bfb3c175`, `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
+- **Working tree during the re-run:** code and eval files committed at `db7fc95` in an isolated git worktree on branch `audit/export-hardening` based on `c0c0e33`; the worktree was clean when the canonical run started. The separate main worktree contains unrelated uncommitted 2026-10-30 changes and was not part of the revision. `db691ca` is documentation-only and `028037a` is the preceding code revision. `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
 - **Evidence classes:** `LOCAL` unless explicitly marked `SIMULATED` or `HISTORICAL`
 
@@ -50,7 +50,9 @@
 | E-034 | LOCAL | Multiline textarea, BPMN parser and Secure-cookie hardening: release tests, runtime checks and canonical entry point | `279c919` | 0 | PASS. Platform **345** (273 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); `--health` OK; fmt and Clippy pass in both crates. Ten new tests (2 governance unit, 5 BPMN unit, 1 governance-web unit, 2 governance-web integration) cover LF/CRLF acceptance and CR/control rejection, workflow/quality-case/gate replay, BPMN local names, quote styles, attribute boundaries, comments/CDATA and Secure-cookie mirroring. **Canonical `scripts/check.ps1` exited 0 on two same-command runs:** docs 53 required/680 links in 115 files, secrets 231, eval 12 + 10 self-test checks, platform 345, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 | E-035 | LOCAL | LegalRuleML export and BPMN entity hardening: red/green regression, export smoke and canonical entry point | `eec11f2` | 0 | PASS. Platform **354** (282 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Nine new tests (6 export, 3 BPMN; one export test extended with a spoofed-reference negative case) cover comment escaping, XML 1.0 character validity, comment/declaration well-formedness, real calendar dates, element-only forbidden-name matching, tag-only ID/ref scanning, entity decoding and invalid numeric references. Seven of them were observed failing before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/682 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 354, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 | E-036 | LOCAL | RAG citation confidence and xs:dateTime year-zero hardening: red/green regression and canonical entry point | `d502147` | 0 | PASS. Platform **356** (284 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Two new RAG tests and one extended date test cover cited-confidence threshold enforcement, cite-aware confidence, rejection of xs:dateTime year `0000` and acceptance of `0001`. All three observations were red before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit (two same-command runs; the second captured `EXITCODE=0`):** docs 53 required/687 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 356, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
-| E-038 | LOCAL | R2-7 eval corpus execution, κ study tooling and CI wiring | `028037a` | 0 | PASS for the executable scope. Eval **20** tests (was 12), 10 selftest checks and **17 corpus checks over 67 cases** (9 seed + 46 casebook + 12 edge); corpus manifest rejects duplicate ids and a sub-50 corpus; the 67-row blinded sheet is checked for label leakage; three stubs exercise the full corpus. Platform **366** (294 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Red before the change: `--corpus-selftest`, `--kappa` and `--make-annotation-sheet` were unknown arguments (exit 2), and the default report ran only 9 cases. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/695 links in 106 files, secrets 235, eval 20 + 10 + 17 checks, platform 366, self-test 49, schema 20, search 28, `ALL CHECKS PASSED`. **κ is NOT MEASURED (0/2 annotators); the CI workflow has NEVER EXECUTED.** R2-7 remains partial, not complete |
+| E-038 | HISTORICAL LOCAL | R2-7 eval corpus execution, κ study tooling and CI wiring | `028037a` | 0 | PASS for the executable scope. Eval **20** tests (was 12), 10 selftest checks and **16 corpus checks over 67 cases** (9 seed + 46 casebook + 12 edge); the earlier "17" count in this row was an arithmetic overcount corrected by E-039. Corpus manifest rejects duplicate ids and a sub-50 corpus; the 67-row blinded sheet is checked for label leakage; three stubs exercise the full corpus. Platform **366** (294 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Red before the change: `--corpus-selftest`, `--kappa` and `--make-annotation-sheet` were unknown arguments (exit 2), and the default report ran only 9 cases. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/695 links in 106 files, secrets 235, eval 20 + 10 + 16 checks, platform 366, self-test 49, schema 20, search 28, `ALL CHECKS PASSED`. **κ is NOT MEASURED (0/2 annotators); the CI workflow has NEVER EXECUTED.** Superseded by E-039; R2-7 remains partial |
+
+| E-039 | LOCAL | Eval CLI hardening and exact-corpus κ binding | `db7fc95` | 0 | PASS. Eval **41** tests (27 unit + 14 real-process CLI contract; was 20), 10 self-test checks and **18 corpus selftest checks** (corrected from the actual **16** on `028037a`). CLI is fail-closed: `--selftest`/`--corpus-selftest` accept no other argument, `--cases`/`--corpus` are mutually exclusive, empty or duplicate `--systems` selections and duplicate/flag-shaped values exit `2` before any report is written. `--kappa` now loads the fixed 67-case corpus and requires exact coverage; missing, extra and foreign case ids exit `2`. Annotation records reject unknown fields, so a leaked `expected_verdict` cannot enter a study. Landis–Koch bands are inclusive at the upper bound (`0.80` = `Substantial`, `0.81+` = `Almost perfect`) and non-finite κ is `Undefined`. Red evidence at `028037a`: `--selftest --bogus` exited 0, `--systems ","` exited 0 and wrote a report, and an invented 60-case study reported `cohens_kappa = 1.0`/`PASS`. **Canonical `scripts/check.ps1` exited 0 on exact `db7fc95`:** docs 53 required/700 links in 106 files, secrets 236, eval 41 tests + 10 + 18 checks, platform 366, self-test 49, schema 20, search 28, `ALL CHECKS PASSED`. **κ is NOT MEASURED (0/2 annotators); the CI workflow has NEVER EXECUTED.** R2-7 remains partial |
 
 ## E-001: canonical check (blocked)
 
@@ -984,7 +986,7 @@ Observed on 2026-11-03 at `028037a630a854506edc7e057ccb2c83d9275f92` (code commi
 | --- | --- | --- |
 | Eval unit tests | 20 (was 12) | 0 |
 | Eval self-test checks | 10 | 0 |
-| Eval corpus selftest checks | 17 | 0 |
+| Eval corpus selftest checks | 16 | 0 |
 | Fixed corpus cases | 67 (9 seed + 46 casebook + 12 edge) | 0 |
 | Platform unit (`--lib`) | 294 | 0 |
 | Platform CLI contract | 31 | 0 |
@@ -1006,7 +1008,7 @@ What changed in this revision:
 4. **CI is wired to the fixed entry point.** `scripts/check.ps1` and `check.sh` run `--corpus-selftest` and the workflow calls those scripts. The workflow also has `workflow_dispatch`. However, the repository has no remote or runner, so the workflow has never executed; `actionlint` exit 0 is static linting, not a CI run.
 5. **Tests.** Eight new eval tests cover the shipped corpus, the 50-case minimum, same-annotator rejection, mismatched case sets, duplicate ids, unknown verdicts, a short study and an undefined κ. Eval tests increased from 12 to 20; no test was deleted, renamed to hide a failure, weakened or skipped.
 
-Red/green evidence: before the change, `cargo run --locked -- --corpus-selftest`, `--kappa` and `--make-annotation-sheet` were unknown arguments and exited 2. The default `cargo run --locked -- --out target/red-baseline` report contained `"n_cases": 9` even though the repository held 67 cases. After the change, `--corpus-selftest` exits 0 with 67 cases and 17 checks, `--corpus` writes a 67-case report, and the annotation sheet has 67 rows. A synthetic CLI smoke test with 60 records (5 deliberate disagreements) produced `cohens_kappa = 0.8666666666666667`, `passed = true`, exit 0; that is a tool smoke test, not an annotation study and not evidence for M-11. The fail-closed unit tests cover the rejection paths.
+Red/green evidence: before the change, `cargo run --locked -- --corpus-selftest`, `--kappa` and `--make-annotation-sheet` were unknown arguments and exited 2. The default `cargo run --locked -- --out target/red-baseline` report contained `"n_cases": 9` even though the repository held 67 cases. After the change, `--corpus-selftest` exits 0 with 67 cases and **16** checks, `--corpus` writes a 67-case report, and the annotation sheet has 67 rows. (An earlier version of this section said 17; a line-by-line recount of the `028037a` output found 16 `[PASS]` lines. E-039 records the corrected count and the 18-check output of the hardened revision.) A synthetic CLI smoke test with 60 records (5 deliberate disagreements) produced `cohens_kappa = 0.8666666666666667`, `passed = true`, exit 0; that is a tool smoke test, not an annotation study and not evidence for M-11. The fail-closed unit tests cover the rejection paths.
 
 **Non-claims.** Inter-annotator agreement remains **NOT MEASURED**: 0 of 2 annotators are assigned, no `annotator-a.jsonl` or `annotator-b.jsonl` exists and no κ value is reported. The CI workflow remains **NEVER EXECUTED**: there is no remote, runner, run ID, branch protection or PR. The corpus is synthetic and the adapters are deterministic stubs, so this is not AI quality, user validation or pilot acceptance. R2-7 is therefore **partial**: the 50+ corpus is complete and executable, while the human κ study and the CI execution are still external blockers.
 
@@ -1020,13 +1022,89 @@ Observed on 2026-11-03 at `028037a`, **exit 0** on one same-command run:
 
 - Documentation PASS: 53 required documents, 695 relative links in 106 files.
 - Secret patterns PASS: 235 files.
-- Eval fmt, Clippy, 20 tests, 10 self-test checks and 17 corpus selftest checks PASS.
+- Eval fmt, Clippy, 20 tests, 10 self-test checks and 16 corpus selftest checks PASS.
 - Platform fmt, Clippy and **366 tests** PASS.
 - Platform self-test 49 assertions, schema 20 records, search 28 cases with gate PASS, `=== ALL CHECKS PASSED ===`.
 
 This is a local run in an isolated git worktree on the same managed host, not CI, staging, production, a clean clone or an independent execution. The branch has no remote and no pull request. A future denial must still be recorded as `BLOCKED`.
 
 After the E-038 documentation edits, `scripts/check-docs.ps1` passed with 53 required documents and 700 relative links in 106 files, and `scripts/check-secrets.ps1` passed with 235 files. That is a documentation-only check of the uncommitted evidence edits, not an additional canonical run; the canonical PASS remains bound to the code revision `028037a`.
+
+## E-039: eval CLI hardening and exact-corpus κ binding (`db7fc95`)
+
+```powershell
+cd eval
+cargo fmt -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo run --locked -- --selftest
+cargo run --locked -- --corpus-selftest
+cargo run --locked -- --kappa target/annotator-a.jsonl target/annotator-b.jsonl --corpus cases/corpus.json
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+`db7fc95` is the child of documentation-only `db691ca`; its code parent is `028037a`. The commit changed 10 files (647 insertions, 97 deletions): `eval/src/annotation.rs`, `eval/src/main.rs`, the new `eval/tests/cli_contract.rs`, and the eval/contract/quality/development documents that describe them.
+
+Observed on 2026-11-04 at `db7fc95fcdec3496c1898e43967d6faab4cf0b45` (worktree clean when the canonical run started; evidence edits made after the run):
+
+| Target | Count | Exit |
+| --- | --- | --- |
+| Eval unit tests | 27 | 0 |
+| Eval CLI contract tests (real process) | 14 | 0 |
+| **Eval Cargo tests total** | **41** (was 20) | 0 |
+| Eval self-test checks | 10 | 0 |
+| Eval corpus selftest checks | 18 (was 16) | 0 |
+| Fixed corpus cases | 67 | 0 |
+| Platform unit (`--lib`) | 294 | 0 |
+| Platform CLI contract | 31 | 0 |
+| Platform edge cases | 2 | 0 |
+| Platform governance web | 20 | 0 |
+| Platform integration | 8 | 0 |
+| Platform search evaluation | 7 | 0 |
+| Platform web health | 4 | 0 |
+| **Platform total** | **366** | 0 |
+| Platform self-test assertions | 49 | 0 |
+| Declared-rules schema records | 20 | 0 |
+| Search gate cases | 28 (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) | 0 |
+
+What changed in this revision:
+
+1. **Fail-closed CLI parsing.** `--selftest` and `--corpus-selftest` are exclusive single-argument modes. `--cases` and `--corpus` are mutually exclusive. `--systems` must select at least one adapter and must not repeat one. Duplicate flags and flag-shaped values (for example `--out --selftest`) exit `2` before any report is written. Each accepted flag consumes exactly one value.
+2. **κ studies are bound to the fixed corpus.** `--kappa A.jsonl B.jsonl [--corpus PATH]` loads `cases/corpus.json` by default and calls `evaluate_study_for_corpus`. The two annotation files must cover every fixed-corpus case id exactly once. A subset, an extra case or an invented id exits `2`; the result cannot silently shrink to whatever the annotators happened to label. The JSON output now records `corpus_id` and `corpus_cases`, so a result names the frozen corpus it belongs to.
+3. **Strict annotation records.** `Annotation` uses `serde(deny_unknown_fields)`. A file containing `expected_verdict`, `notes` or any other extra field is rejected instead of being accepted while the label leaks into the study.
+4. **Corrected interpretation bands.** Landis–Koch bands are inclusive at the upper bound: `0.80` is `Substantial` and `0.81+` is `Almost perfect`; non-finite κ is `Undefined`. This prevents the proposed `0.80` acceptance threshold from being reported with the stronger label.
+5. **Blinded-sheet integrity.** `--corpus-selftest` now also requires unique sheet rows and rejects prefilled `verdict` or `annotator` values, in addition to the existing row-count, case-id and forbidden-field checks. The sheet itself remains 67 rows with null labels.
+6. **Real-process tests.** The new `eval/tests/cli_contract.rs` spawns `CARGO_BIN_EXE_ekp_eval` for 14 tests: self-test exclusivity, unknown flags with no report write, `--cases`/`--corpus` exclusion, empty and duplicate adapter selections, κ argument errors, exact-corpus success, a missing case, a foreign id, the same annotator id, a leaked `expected_verdict`, blinded-sheet generation and sheet-mode refusal.
+
+Red/green evidence. The red observations were taken from a detached checkout of the preceding code revision `028037a`, then the same commands were re-run on `db7fc95`:
+
+| Observation | `028037a` | `db7fc95` |
+| --- | --- | --- |
+| `--selftest --bogus` | exit 0 | exit 2 |
+| `--corpus-selftest --bogus` | not rejected as a mode conflict | exit 2 |
+| `--systems ","` | exit 0 and wrote a report | exit 2, no report |
+| `--kappa` with 60 invented case ids | exit 0, `cohens_kappa = 1.0`, `PASS` | exit 2 |
+| `--corpus-selftest` PASS lines | 16 | 18 |
+
+The invented-case κ observation is the important one: the old command computed a perfect score for a study that did not cover the corpus at all. The new command rejects it before reporting a κ value. A degenerate one-label study is still an error (`Undefined`), never a fabricated 1.0.
+
+### Canonical entry-point result
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-11-04 at `db7fc95`, **exit 0** on one same-command run (log: `canonical-db7fc95.log`):
+
+- Documentation PASS: 53 required documents, 700 relative links in 106 files.
+- Secret patterns PASS: 236 files.
+- Eval fmt, Clippy, 41 tests (27 unit + 14 CLI contract), 10 self-test checks and 18 corpus selftest checks PASS.
+- Platform fmt, Clippy and **366 tests** PASS.
+- Platform self-test 49 assertions, schema 20 records, search 28 cases with gate PASS, `=== ALL CHECKS PASSED ===`.
+
+This is a local run in an isolated git worktree on the same managed host, not CI, staging, production, a clean clone or an independent execution. The branch has no remote and no pull request. A future denial must still be recorded as `BLOCKED`.
+
+**Non-claims.** The hardening proves that the tooling rejects the specific fail-open paths above; it does not produce inter-annotator agreement. κ remains **NOT MEASURED**: 0 of 2 annotators are assigned, no completed annotation files exist and no κ value is reported. The CI workflow remains **NEVER EXECUTED**: there is no remote, runner, run ID or branch protection. The corpus is synthetic and the adapters are deterministic stubs, so this is not AI quality, user validation or pilot acceptance. R2-7 remains **partial**: the 50+ corpus is complete and executable, while the human κ study and CI execution are external blockers.
 
 ## Reproduction notes
 
@@ -1043,6 +1121,6 @@ After the E-038 documentation edits, `scripts/check-docs.ps1` passed with 53 req
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI. The current `028037a` worktree passed once on the same host (E-038); the preceding `6ae475d` worktree passed once (E-037); the `d502147` worktree passed twice (E-036); the earlier `eec11f2` worktree passed once (E-035); the earlier `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run; the defined workflow has never executed.
+- It does not show that the canonical check is reproducible on a different host or in CI. The current `db7fc95` worktree passed once on the same host (E-039); the preceding `028037a` worktree passed once (E-038; its corpus-check count is 16, corrected from the earlier 17); the `6ae475d` worktree passed once (E-037); the `d502147` worktree passed twice (E-036); the earlier `eec11f2` worktree passed once (E-035); the earlier `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run; the defined workflow has never executed.
 - It does not show LegalRuleML 1.0 conformance beyond the repository validator and one local .NET parser smoke check; no external schema validator, conformance suite or independent review was run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.
