@@ -81,73 +81,37 @@ impl From<std::io::Error> for EkpiError {
     }
 }
 
-/// Helper function to create error responses
+/// Helper function to create error responses. `request_id` should carry the
+/// per-request correlation id resolved by the request-context middleware;
+/// `None` falls back to `unknown` (no environment variable is consulted —
+/// a global env var cannot represent concurrent requests).
 pub fn error_response<T: Into<String>>(
     error: T,
     status: StatusCode,
+    request_id: Option<&str>,
 ) -> impl axum::response::IntoResponse {
     let error_string = error.into();
-    let _error = EkpiError::Generic {
-        code: status.as_str().to_string(),
-        message: error_string.clone(),
-    };
 
     let body = json!({
         "error": {
             "code": status.as_str(),
-            "type": match status.as_u16() {
-                400 => "VALIDATION_ERROR",
-                401 => "AUTHENTICATION_ERROR",
-                403 => "AUTHORIZATION_ERROR",
-                404 => "NOT_FOUND_ERROR",
-                405 => "METHOD_NOT_ALLOWED_ERROR",
-                408 => "TIMEOUT_ERROR",
-                409 => "CONFLICT_ERROR",
-                422 => "PROCESSING_ERROR",
-                429 => "RATE_LIMIT_ERROR",
-                500 => "INTERNAL_ERROR",
-                502 => "SERVICE_UNAVAILABLE_ERROR",
-                503 => "SERVICE_OVERLOADED_ERROR",
-                _ => "APPLICATION_ERROR",
-            },
+            "type": error_type_for(status),
             "message": error_string,
             "timestamp": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
-            "request_id": std::env::var("REQUEST_ID").unwrap_or_else(|_| "unknown".to_string()),
+            "request_id": request_id.unwrap_or("unknown"),
             "details": null,
-            "documentation_url": format!("https://docs.ekpi.ai/errors/{}", match status.as_u16() {
-                400 => "VALIDATION_ERROR",
-                401 => "AUTHENTICATION_ERROR",
-                403 => "AUTHORIZATION_ERROR",
-                404 => "NOT_FOUND_ERROR",
-                405 => "METHOD_NOT_ALLOWED_ERROR",
-                408 => "TIMEOUT_ERROR",
-                409 => "CONFLICT_ERROR",
-                422 => "PROCESSING_ERROR",
-                429 => "RATE_LIMIT_ERROR",
-                500 => "INTERNAL_ERROR",
-                502 => "SERVICE_UNAVAILABLE_ERROR",
-                503 => "SERVICE_OVERLOADED_ERROR",
-                _ => "APPLICATION_ERROR",
-            }),
+            "documentation_url": format!("https://docs.ekpi.ai/errors/{}", error_type_for(status)),
         }
     });
 
     (status, Json(body)).into_response()
 }
 
-/// Enhanced error response with context information for debugging and diagnostics
-pub fn error_response_with_context<T: Into<String>>(
-    error: T,
-    status: StatusCode,
-    context: Option<serde_json::Value>,
-) -> impl axum::response::IntoResponse {
-    let error_string = error.into();
-    let error_code = status.as_str().to_string();
-
-    let error_type = match status.as_u16() {
+fn error_type_for(status: StatusCode) -> &'static str {
+    match status.as_u16() {
         400 => "VALIDATION_ERROR",
         401 => "AUTHENTICATION_ERROR",
         403 => "AUTHORIZATION_ERROR",
@@ -160,19 +124,31 @@ pub fn error_response_with_context<T: Into<String>>(
         500 => "INTERNAL_ERROR",
         502 => "SERVICE_UNAVAILABLE_ERROR",
         503 => "SERVICE_OVERLOADED_ERROR",
+        504 => "TIMEOUT_ERROR",
         _ => "APPLICATION_ERROR",
-    };
+    }
+}
+
+/// Enhanced error response with context information for debugging and diagnostics
+pub fn error_response_with_context<T: Into<String>>(
+    error: T,
+    status: StatusCode,
+    context: Option<serde_json::Value>,
+    request_id: Option<&str>,
+) -> impl axum::response::IntoResponse {
+    let error_string = error.into();
+    let error_type = error_type_for(status);
 
     let body = serde_json::json!({
         "error": {
-            "code": error_code,
+            "code": status.as_str(),
             "type": error_type,
             "message": error_string,
             "timestamp": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
-            "request_id": std::env::var("REQUEST_ID").unwrap_or_else(|_| "unknown".to_string()),
+            "request_id": request_id.unwrap_or("unknown"),
             "details": context,
             "documentation_url": format!("https://docs.ekpi.ai/errors/{}", error_type),
         }
@@ -186,6 +162,7 @@ pub fn validation_error_response(
     field_errors: std::collections::HashMap<String, serde_json::Value>,
     global_message: Option<String>,
     status: StatusCode,
+    request_id: Option<&str>,
 ) -> impl axum::response::IntoResponse {
     let context = serde_json::json!({
         "field_errors": field_errors,
@@ -194,7 +171,7 @@ pub fn validation_error_response(
         "summary": format!("Validation failed for {} field(s)", field_errors.len()),
     });
 
-    error_response_with_context("Validation failed", status, Some(context))
+    error_response_with_context("Validation failed", status, Some(context), request_id)
 }
 
 /// Authentication error response with session details
@@ -204,6 +181,7 @@ pub fn auth_error_response(
     remaining_lockout_time: Option<u64>,
     attempt_count: u32,
     account_status: Option<String>,
+    request_id: Option<&str>,
 ) -> impl axum::response::IntoResponse {
     let context = serde_json::json!({
         "error_type": error_type,
@@ -214,7 +192,7 @@ pub fn auth_error_response(
         "authentication_method": "local_session",
     });
 
-    error_response_with_context(message, StatusCode::UNAUTHORIZED, Some(context))
+    error_response_with_context(message, StatusCode::UNAUTHORIZED, Some(context), request_id)
 }
 
 /// Rate limiting error response with quota details
@@ -223,6 +201,7 @@ pub fn rate_limit_error_response(
     remaining: u32,
     reset_time: u64,
     retry_after: u64,
+    request_id: Option<&str>,
 ) -> impl axum::response::IntoResponse {
     let context = serde_json::json!({
         "rate_limit": {
@@ -239,6 +218,7 @@ pub fn rate_limit_error_response(
         format!("Rate limit exceeded: {} requests per minute", limit),
         StatusCode::TOO_MANY_REQUESTS,
         Some(context),
+        request_id,
     )
 }
 

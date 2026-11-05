@@ -238,6 +238,14 @@ async fn request_context_with(
         .filter(|value| valid_request_id(value))
         .map(str::to_owned)
         .unwrap_or_else(generate_request_id);
+    // Propagate the resolved id so inner middleware layers can correlate
+    // their structured error bodies with the same request.
+    if let Ok(value) = HeaderValue::from_str(&request_id) {
+        request.headers_mut().insert(
+            HeaderName::from_static(REQUEST_ID_HEADER),
+            value,
+        );
+    }
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
     let started = Instant::now();
@@ -248,11 +256,16 @@ async fn request_context_with(
 
     let mut response = if permit.is_err() {
         RATE_LIMITED_TOTAL.fetch_add(1, Ordering::Relaxed);
-        let mut response = (
+        let mut response = crate::errors::error_response_with_context(
+            "too many concurrent requests",
             StatusCode::TOO_MANY_REQUESTS,
-            "too many concurrent requests\n",
+            Some(serde_json::json!({
+                "limit": REQUEST_LIMIT.available_permits(),
+                "recommendation": "Retry after the in-flight request completes.",
+            })),
+            Some(&request_id),
         )
-            .into_response();
+        .into_response();
         response
             .headers_mut()
             .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
@@ -261,8 +274,16 @@ async fn request_context_with(
         match tokio::time::timeout(timeout, next.run(request)).await {
             Ok(response) => response,
             Err(_) => {
-                let mut response =
-                    (StatusCode::GATEWAY_TIMEOUT, "request timed out\n").into_response();
+                let mut response = crate::errors::error_response_with_context(
+                    "request timed out",
+                    StatusCode::GATEWAY_TIMEOUT,
+                    Some(serde_json::json!({
+                        "timeout_ms": timeout.as_millis() as u64,
+                        "recommendation": "Reduce the workload or raise the configured timeout.",
+                    })),
+                    Some(&request_id),
+                )
+                .into_response();
                 response
                     .headers_mut()
                     .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
@@ -322,7 +343,32 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
 }
 
 fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, "authentication required").into_response()
+    crate::errors::error_response(
+        "authentication required",
+        StatusCode::UNAUTHORIZED,
+        None,
+    )
+    .into_response()
+}
+
+/// Structured 401 used by middleware layers that know the request id.
+fn unauthorized_with_id(request_id: &str) -> Response {
+    crate::errors::error_response(
+        "authentication required",
+        StatusCode::UNAUTHORIZED,
+        Some(request_id),
+    )
+    .into_response()
+}
+
+/// Structured 403 used by middleware layers that know the request id.
+fn forbidden_with_id(request_id: &str, message: &str) -> Response {
+    crate::errors::error_response(
+        message,
+        StatusCode::FORBIDDEN,
+        Some(request_id),
+    )
+    .into_response()
 }
 
 /// Extract the `ekpi_csrf` cookie with the same fail-closed ambiguity policy
@@ -370,22 +416,38 @@ async fn validate_csrf_token(
     }
 
     let headers = request.headers();
+    let request_id = headers
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("unknown");
     let session_token = match session_token(headers) {
         Some(token) => token,
-        None => return (StatusCode::UNAUTHORIZED, "Session token required").into_response(),
+        None => {
+            return unauthorized_with_id(request_id);
+        }
     };
 
     let session = {
-        let auth_store = auth
-            .lock()
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Auth store locked").into_response());
+        let auth_store = auth.lock().map_err(|_| {
+            crate::errors::error_response(
+                "auth store locked",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Some(request_id),
+            )
+            .into_response()
+        });
         let Some(auth_store) = auth_store.ok() else {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Auth store error").into_response();
+            return crate::errors::error_response(
+                "auth store error",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Some(request_id),
+            )
+            .into_response();
         };
         match auth_store.validate_session(&session_token).cloned() {
             Some(session) => session,
             None => {
-                return (StatusCode::UNAUTHORIZED, "Invalid or expired session").into_response();
+                return unauthorized_with_id(request_id);
             }
         }
     };
@@ -402,7 +464,7 @@ async fn validate_csrf_token(
     let csrf_cookie = csrf_cookie_value(headers).unwrap_or_default();
 
     if csrf_header != session.csrf_token && csrf_cookie != session.csrf_token {
-        return (StatusCode::FORBIDDEN, "Invalid CSRF token").into_response();
+        return forbidden_with_id(request_id, "Invalid CSRF token");
     }
 
     next.run(request).await
@@ -476,6 +538,10 @@ async fn rate_limit_guard(request: Request, next: Next) -> Response {
         .to_string();
 
     if !RATE_LIMITER.check_rate_limit(&client_ip) {
+        let request_id = request
+            .headers()
+            .get(REQUEST_ID_HEADER)
+            .and_then(|value| value.to_str().ok());
         return crate::errors::rate_limit_error_response(
             RATE_LIMIT_PER_MINUTE,
             0,
@@ -484,6 +550,7 @@ async fn rate_limit_guard(request: Request, next: Next) -> Response {
                 .map(|d| d.as_secs() + RATE_LIMIT_WINDOW_SECS)
                 .unwrap_or(0),
             RATE_LIMIT_WINDOW_SECS,
+            request_id,
         )
         .into_response();
     }
@@ -621,15 +688,28 @@ async fn login_post(
             );
             response
         }
-        Ok(Err(_)) => crate::errors::auth_error_response(
-            "invalid_credentials",
-            "invalid username or password".to_string(),
-            None,
-            0,
-            None,
+        Ok(Err(_)) => {
+            let request_id = headers
+                .get(REQUEST_ID_HEADER)
+                .and_then(|value| value.to_str().ok());
+            crate::errors::auth_error_response(
+                "invalid_credentials",
+                "invalid username or password".to_string(),
+                None,
+                0,
+                None,
+                request_id,
+            )
+            .into_response()
+        }
+        Err(_) => crate::errors::error_response(
+            "login task failed",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            headers
+                .get(REQUEST_ID_HEADER)
+                .and_then(|value| value.to_str().ok()),
         )
         .into_response(),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "login task failed").into_response(),
     }
 }
 
