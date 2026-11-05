@@ -37,7 +37,7 @@ It runs, in order:
 
 1. Documentation required-file and relative-link check (`scripts/check-docs`).
 2. High-signal secret-pattern scan (`scripts/check-secrets`). This is a limited scan, not a full secret scanner.
-3. `eval`: `cargo fmt -- --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`, `cargo run --locked -- --selftest`.
+3. `eval`: `cargo fmt -- --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`, `cargo run --locked -- --selftest`, `cargo run --locked -- --corpus-selftest`.
 4. `platform`: the same format/Clippy/test steps, plus `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json`.
 
 The equivalent per-crate commands are:
@@ -48,6 +48,7 @@ cargo fmt -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo run --locked -- --selftest
+cargo run --locked -- --corpus-selftest
 Set-Location ..
 
 Set-Location platform
@@ -60,7 +61,7 @@ cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval
 Set-Location ..
 ```
 
-The integration suite exercises governance web routes and main lifecycle paths. Keep new behavior covered at the narrowest useful layer and add an end-to-end test when a user journey crosses module boundaries.
+The integration suite exercises governance web routes and main lifecycle paths. Keep new behavior covered at the narrowest useful layer and add an end-to-end test when a user journey crosses module boundaries. The eval CLI contract tests spawn the real binary; the strict self-test modes, empty adapter selections, mutually exclusive case sources and exact-corpus κ binding are regression-protected there.
 
 The repository-root `.cargo/config.toml` contains narrow codegen overrides for packages that Windows Application Control has blocked by hash on this managed host. Cargo applies them automatically, so the commands above remain canonical and were executed without extra flags at `7f6ab97` (2026-10-26). The overrides do not change program semantics or disable debug assertions. If a host still blocks a harness, follow [troubleshooting](../deployment/troubleshooting.md#windows-application-control-blocks-target-binaries) and record `Blocked` rather than weakening the gate.
 

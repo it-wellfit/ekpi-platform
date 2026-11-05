@@ -11,7 +11,7 @@ A contract is any interface another person, process or test depends on. This rep
 | ID | Contract | Canonical document | Version | Consumers | Verification |
 | --- | --- | --- | --- | --- | --- |
 | CTR-CLI-001 | `ekp_platform` CLI | [CLI](cli.md#ekp_platform) | 0.1.0 | Operators, CI, release checks | `--selftest`, schema check, argument-contract tests, smoke gate |
-| CTR-CLI-002 | `ekp_eval` CLI | [CLI](cli.md#ekp_eval) | 0.1.0 | Evaluation runs, CI | `--selftest`, tests |
+| CTR-CLI-002 | `ekp_eval` CLI | [CLI](cli.md#ekp_eval) | 0.1.0 | Evaluation runs, CI | `--selftest`, `--corpus-selftest`, `eval/tests/cli_contract.rs`; strict argument and exact-corpus κ checks |
 | CTR-WEB-001 | Local governance HTML routes and forms | [Web routes](web-routes.md) | Local prototype | Browser operator, route tests | `platform/tests/governance_web.rs` |
 | CTR-DATA-001 | `platform/data/docs.json` | [Data formats](data-formats.md#documents) | Fixture v1 | Engine, tests | Integration tests; SHA-256 binding |
 | CTR-DATA-002 | `platform/data/rules.json` | [Data formats](data-formats.md#rules) | Schema v0.1.1 | Engine, export, coverage | `--declared-rules-schema` |
@@ -49,7 +49,7 @@ For any contract change:
 | Contract | Minimum check |
 | --- | --- |
 | CLI | `cargo run --locked --bin ekp_platform -- --selftest`; `--declared-rules-schema`; `--eval --test-set data/eval/search_eval.json`; `platform/tests/cli_contract.rs` (exit-code and no-write rejection paths); smoke gate with report/export/coverage/HTML |
-| Eval CLI | `cargo test --locked`; `cargo run --locked -- --selftest` |
+| Eval CLI | `cargo test --locked`; `cargo run --locked -- --selftest`; `cargo run --locked -- --corpus-selftest`; real-process argument and κ contract tests in `eval/tests/cli_contract.rs` |
 | Search evaluation set | `platform/tests/search_eval.rs`; gate rejects wrong expectations and a missing data source |
 | Web routes/forms | `cargo test --locked` (governance route tests) |
 | Rule schema | `--declared-rules-schema`; schema validation of all 20 records |

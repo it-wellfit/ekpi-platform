@@ -10,7 +10,7 @@ use ekp_eval::report;
 use ekp_eval::systems::{self, System};
 use ekp_eval::types::{self, Case, Decision};
 
-const USAGE: &str = "usage: ekp_eval [--selftest] [--corpus-selftest] [--cases PATH] [--corpus PATH] [--out DIR] [--systems a,b,c]\n       ekp_eval --make-annotation-sheet PATH [--corpus PATH]\n       ekp_eval --kappa ANNOTATOR_A.jsonl ANNOTATOR_B.jsonl";
+const USAGE: &str = "usage: ekp_eval [--cases PATH | --corpus PATH] [--out DIR] [--systems a,b,c]\n       ekp_eval --selftest\n       ekp_eval --corpus-selftest\n       ekp_eval --make-annotation-sheet PATH [--corpus PATH]\n       ekp_eval --kappa ANNOTATOR_A.jsonl ANNOTATOR_B.jsonl [--corpus PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -54,20 +54,38 @@ fn collect(sys: &dyn System, cases: &[Case]) -> Result<Vec<Decision>, String> {
     Ok(decisions)
 }
 
-fn next_value<'a>(args: &'a [String], i: &mut usize) -> Option<&'a str> {
-    let value = args.get(*i + 1)?;
+/// Return the value for a flag, rejecting a missing, empty or flag-shaped value.
+fn require_value<'a>(args: &'a [String], i: &mut usize, flag: &str) -> Result<&'a str, String> {
+    let Some(value) = args.get(*i + 1) else {
+        return Err(format!("{flag} requires a value"));
+    };
+    if value.is_empty() || value.starts_with("--") {
+        return Err(format!("{flag} has an invalid value: {value:?}"));
+    }
     *i += 1;
-    Some(value.as_str())
+    Ok(value.as_str())
+}
+
+fn usage_error(message: &str) -> i32 {
+    eprintln!("{message}");
+    eprintln!("{USAGE}");
+    2
 }
 
 fn run(args: &[String]) -> i32 {
-    if args.iter().any(|a| a == "--selftest") {
-        return selftest();
-    }
-    if args.iter().any(|a| a == "--corpus-selftest") {
-        return corpus_selftest();
-    }
     match args.first().map(String::as_str) {
+        Some("--selftest") => {
+            if args.len() != 1 {
+                return usage_error("--selftest must be the only argument");
+            }
+            return selftest();
+        }
+        Some("--corpus-selftest") => {
+            if args.len() != 1 {
+                return usage_error("--corpus-selftest must be the only argument");
+            }
+            return corpus_selftest();
+        }
         Some("--kappa") => return kappa_cmd(&args[1..]),
         Some("--make-annotation-sheet") => return make_annotation_sheet_cmd(&args[1..]),
         _ => {}
@@ -81,56 +99,53 @@ fn run(args: &[String]) -> i32 {
         "stub:allow_all".to_string(),
         "stub:refuse_all".to_string(),
     ];
+    let mut seen_flags: BTreeSet<&str> = BTreeSet::new();
     let mut i = 0usize;
     while i < args.len() {
-        match args[i].as_str() {
-            "--cases" => match next_value(args, &mut i) {
-                Some(value) => cases_path = Some(PathBuf::from(value)),
-                None => {
-                    eprintln!("{USAGE}");
-                    return 2;
-                }
+        let flag = args[i].as_str();
+        if flag.starts_with("--") && !seen_flags.insert(flag) {
+            return usage_error(&format!("duplicate argument: {flag}"));
+        }
+        match flag {
+            "--cases" => match require_value(args, &mut i, "--cases") {
+                Ok(value) => cases_path = Some(PathBuf::from(value)),
+                Err(e) => return usage_error(&e),
             },
-            "--corpus" => match next_value(args, &mut i) {
-                Some(value) => corpus_path = Some(PathBuf::from(value)),
-                None => {
-                    eprintln!("{USAGE}");
-                    return 2;
-                }
+            "--corpus" => match require_value(args, &mut i, "--corpus") {
+                Ok(value) => corpus_path = Some(PathBuf::from(value)),
+                Err(e) => return usage_error(&e),
             },
-            "--out" => match next_value(args, &mut i) {
-                Some(value) => out_dir = PathBuf::from(value),
-                None => {
-                    eprintln!("{USAGE}");
-                    return 2;
-                }
+            "--out" => match require_value(args, &mut i, "--out") {
+                Ok(value) => out_dir = PathBuf::from(value),
+                Err(e) => return usage_error(&e),
             },
-            "--systems" => match next_value(args, &mut i) {
-                Some(value) => {
-                    systems_wanted = value
+            "--systems" => match require_value(args, &mut i, "--systems") {
+                Ok(value) => {
+                    let parsed: Vec<String> = value
                         .split(',')
-                        .filter_map(|s| {
-                            let s = s.trim();
-                            if s.is_empty() {
-                                None
-                            } else {
-                                Some(s.to_string())
-                            }
-                        })
+                        .map(str::trim)
+                        .filter(|part| !part.is_empty())
+                        .map(ToOwned::to_owned)
                         .collect();
+                    if parsed.is_empty() {
+                        return usage_error("--systems must select at least one adapter");
+                    }
+                    systems_wanted = parsed;
                 }
-                None => {
-                    eprintln!("{USAGE}");
-                    return 2;
-                }
+                Err(e) => return usage_error(&e),
             },
             other => {
-                eprintln!("unknown argument: {other}");
-                eprintln!("{USAGE}");
-                return 2;
+                return usage_error(&format!("unknown argument: {other}"));
             }
         }
         i += 1;
+    }
+
+    if cases_path.is_some() && corpus_path.is_some() {
+        return usage_error("--cases and --corpus are mutually exclusive");
+    }
+    if systems_wanted.iter().collect::<BTreeSet<_>>().len() != systems_wanted.len() {
+        return usage_error("--systems contains a duplicate adapter");
     }
 
     let (cases, warnings, corpus_id, sources) = if let Some(path) = corpus_path {
@@ -200,25 +215,66 @@ fn run(args: &[String]) -> i32 {
 }
 
 fn kappa_cmd(args: &[String]) -> i32 {
-    if args.len() != 2 {
-        eprintln!("{USAGE}");
-        return 2;
+    let mut annotation_paths: Vec<&str> = Vec::new();
+    let mut corpus_path = default_corpus_path();
+    let mut seen_corpus = false;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--corpus" => {
+                if seen_corpus {
+                    return usage_error("duplicate --corpus");
+                }
+                seen_corpus = true;
+                match require_value(args, &mut i, "--corpus") {
+                    Ok(value) => corpus_path = PathBuf::from(value),
+                    Err(e) => return usage_error(&e),
+                }
+            }
+            value if value.starts_with("--") => {
+                return usage_error(&format!("unknown argument: {value}"));
+            }
+            value => {
+                if annotation_paths.len() >= 2 {
+                    return usage_error("--kappa takes exactly two annotation files");
+                }
+                annotation_paths.push(value);
+            }
+        }
+        i += 1;
     }
-    let a = match annotation::load_annotations(Path::new(&args[0])) {
+    if annotation_paths.len() != 2 {
+        return usage_error("--kappa takes exactly two annotation files");
+    }
+
+    let (corpus, _warnings) = match types::load_corpus(&corpus_path) {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("load corpus: {e}");
+            return 2;
+        }
+    };
+    let corpus_case_ids: BTreeSet<String> = corpus
+        .cases
+        .iter()
+        .map(|case| case.case_id.clone())
+        .collect();
+
+    let a = match annotation::load_annotations(Path::new(annotation_paths[0])) {
         Ok(value) => value,
         Err(e) => {
             eprintln!("load annotator A: {e}");
             return 2;
         }
     };
-    let b = match annotation::load_annotations(Path::new(&args[1])) {
+    let b = match annotation::load_annotations(Path::new(annotation_paths[1])) {
         Ok(value) => value,
         Err(e) => {
             eprintln!("load annotator B: {e}");
             return 2;
         }
     };
-    let study = match annotation::evaluate_study(&a, &b) {
+    let study = match annotation::evaluate_study_for_corpus(&a, &b, &corpus_case_ids) {
         Ok(value) => value,
         Err(e) => {
             eprintln!("kappa study: {e}");
@@ -233,6 +289,8 @@ fn kappa_cmd(args: &[String]) -> i32 {
     };
     let output = serde_json::json!({
         "status": status,
+        "corpus_id": &corpus.id,
+        "corpus_cases": corpus_case_ids.len(),
         "annotator_a": &study.annotator_a,
         "annotator_b": &study.annotator_b,
         "n": study.n,
@@ -259,18 +317,37 @@ fn kappa_cmd(args: &[String]) -> i32 {
 }
 
 fn make_annotation_sheet_cmd(args: &[String]) -> i32 {
-    let Some(out_arg) = args.first() else {
-        eprintln!("{USAGE}");
-        return 2;
-    };
-    let out = PathBuf::from(out_arg);
+    let mut out_path: Option<PathBuf> = None;
     let mut corpus_path = default_corpus_path();
-    if args.len() == 3 && args[1] == "--corpus" {
-        corpus_path = PathBuf::from(&args[2]);
-    } else if args.len() != 1 {
-        eprintln!("{USAGE}");
-        return 2;
+    let mut seen_corpus = false;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--corpus" => {
+                if seen_corpus {
+                    return usage_error("duplicate --corpus");
+                }
+                seen_corpus = true;
+                match require_value(args, &mut i, "--corpus") {
+                    Ok(value) => corpus_path = PathBuf::from(value),
+                    Err(e) => return usage_error(&e),
+                }
+            }
+            value if value.starts_with("--") => {
+                return usage_error(&format!("unknown argument: {value}"));
+            }
+            value => {
+                if out_path.is_some() {
+                    return usage_error("--make-annotation-sheet takes exactly one output path");
+                }
+                out_path = Some(PathBuf::from(value));
+            }
+        }
+        i += 1;
     }
+    let Some(out) = out_path else {
+        return usage_error("--make-annotation-sheet requires an output path");
+    };
 
     let (corpus, warnings) = match types::load_corpus(&corpus_path) {
         Ok(value) => value,
@@ -452,6 +529,7 @@ struct SheetInspection {
     ids: BTreeSet<String>,
     ids_match: bool,
     forbidden_fields: Vec<String>,
+    prefilled_labels: Vec<String>,
 }
 
 fn inspect_annotation_sheet(
@@ -462,6 +540,7 @@ fn inspect_annotation_sheet(
     let mut rows = 0usize;
     let mut ids = BTreeSet::new();
     let mut forbidden = BTreeSet::new();
+    let mut prefilled = Vec::new();
     for (lineno, line) in text.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -495,6 +574,11 @@ fn inspect_annotation_sheet(
                 forbidden.insert(key.to_string());
             }
         }
+        for key in ["verdict", "annotator"] {
+            if object.get(key).is_some_and(|value| !value.is_null()) {
+                prefilled.push(format!("{id}:{key}"));
+            }
+        }
     }
     let corpus_ids: BTreeSet<String> = corpus
         .cases
@@ -506,6 +590,7 @@ fn inspect_annotation_sheet(
         ids_match: ids == corpus_ids,
         ids,
         forbidden_fields: forbidden.into_iter().collect(),
+        prefilled_labels: prefilled,
     })
 }
 
@@ -568,6 +653,16 @@ fn corpus_selftest() -> i32 {
                 "blinded annotation sheet hides labels",
                 sheet.forbidden_fields.is_empty(),
                 &format!("forbidden fields: {:?}", sheet.forbidden_fields),
+            );
+            checker.check(
+                "blinded annotation sheet rows are unique",
+                sheet.ids.len() == sheet.rows,
+                &format!("{} unique ids for {} rows", sheet.ids.len(), sheet.rows),
+            );
+            checker.check(
+                "blinded annotation sheet has no prefilled labels",
+                sheet.prefilled_labels.is_empty(),
+                &format!("prefilled labels: {:?}", sheet.prefilled_labels),
             );
         }
         Err(e) => checker.check("blinded annotation sheet", false, &e),

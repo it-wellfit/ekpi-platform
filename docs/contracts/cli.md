@@ -132,30 +132,45 @@ cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval
 ### Usage
 
 ```text
-usage: ekp_eval [--selftest] [--cases PATH] [--out DIR] [--systems a,b,c]
+usage: ekp_eval [--cases PATH | --corpus PATH] [--out DIR] [--systems a,b,c]
+       ekp_eval --selftest
+       ekp_eval --corpus-selftest
+       ekp_eval --make-annotation-sheet PATH [--corpus PATH]
+       ekp_eval --kappa ANNOTATOR_A.jsonl ANNOTATOR_B.jsonl [--corpus PATH]
 ```
 
 Run from `eval/`.
 
 | Flag | Argument | Behavior | Default |
 | --- | --- | --- | --- |
-| `--selftest` | none | Runs the harness self-test and exits | — |
+| `--selftest` | none | Runs the 9-case adapter self-test and exits. It must be the only argument. | — |
+| `--corpus-selftest` | none | Runs the fixed 67-case corpus self-test and exits. It must be the only argument. | — |
 | `--cases` | file path | Case JSONL input | `eval/cases/seed_cases.jsonl` |
+| `--corpus` | manifest path | Loads the corpus declared by a manifest. Mutually exclusive with `--cases`. | `eval/cases/corpus.json` for corpus, κ and sheet modes |
 | `--out` | directory | Report output directory | `report_out` |
-| `--systems` | comma-separated names | Selects adapters | `stub:oracle,stub:allow_all,stub:refuse_all` |
+| `--systems` | comma-separated names | Selects adapters; the list must be non-empty and contain no duplicates | `stub:oracle,stub:allow_all,stub:refuse_all` |
+| `--make-annotation-sheet` | output file path | Writes the blinded annotation sheet and exits. Accepts one optional `--corpus`. | — |
+| `--kappa` | two annotation file paths | Computes Cohen's κ for two independent annotators. Accepts one optional `--corpus`. | — |
+
+`--kappa` requires the two annotation files to cover the fixed corpus case ids exactly once. A missing case, an extra case or an invented case id is rejected; the study cannot silently shrink to the cases the annotators happened to label.
 
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success |
-| `2` | Usage error, case-load failure, unknown adapter, or adapter bookkeeping failure |
+| `0` | Success; for `--kappa`, the proposed threshold was met |
+| `1` | `--kappa` only: the study is valid but below the proposed 0.80 threshold |
+| `2` | Usage error, case/corpus-load failure, unknown or duplicate adapter, corpus-coverage failure, invalid annotation input, or artifact-write failure |
 
-`ekp_eval` does not return `1` in the current implementation. Treat any non-zero exit as a failed run, not as a partial pass.
+Treat any non-zero exit as a failed run, not as a partial pass. `--selftest` and `--corpus-selftest` also exit `2` when they receive any extra argument.
 
 ### Artifacts
 
 `report.json` and `report.md` under `--out`. The report includes per-system metrics and per-case failure analysis. The default adapters are deterministic stubs used to prove the metric pipeline; they are not production systems.
+
+`--make-annotation-sheet` writes the requested JSONL file. Each row contains only the case facts (`case_id`, `task`, `doc_versions`, `events`, `rules`, `loop`) plus `verdict: null` and `annotator: null`; it must not contain `expected_verdict`, `notes`, `citations`, `category` or `abstain_required`.
+
+`--kappa` prints a JSON object to standard output with `corpus_id`, `corpus_cases`, `n`, observed and expected agreement, `cohens_kappa`, the interpretation band, the acceptance threshold and the pass flag. It does not write a report directory.
 
 ## Compatibility rules
 
@@ -168,7 +183,8 @@ Run from `eval/`.
 
 - `cargo test --locked` in both crates.
 - `platform/tests/cli_contract.rs` runs the real binary for the rejection paths: unknown flag (alone and after a valid flag), missing/empty value, flag-as-value, unexpected positional argument, `--test-set`/`--cases`/`--html` prerequisites, `--search` + `--eval`, report flags with eval, and self-test precedence. It asserts that `--selftest` combined with a valid mode flag exits `2` without running that mode. It also covers `--audit-log` refusal without `--search`, two successive runs forming a verified 2-event chain, refusal of a corrupt chain and of a legacy single-object file without modifying either file, a hostile query whose quotes/backslashes/control characters must still produce a valid JSON payload, `--llm mock` labeling with a versioned citation, unsupported-provider rejection before audit write, and legacy `--import-wellfit` fail-closed/validation behavior. `--health` tests cover the OK and DEGRADED exits, unknown-flag rejection and refusal to combine it with another mode. The suite asserts exit codes (including exit `1` for an audit write failure) and that no report, audit or imported data is written on a usage error. Audit unit tests additionally cover timestamp hashing, pre-v2/blank/truncated refusal, structural validation of existing events, duplicate event IDs, leftover lock files, rollback and concurrent appenders.
-- `--selftest` in both crates.
+- `eval/tests/cli_contract.rs` spawns the real `ekp_eval` binary. It covers `--selftest` and `--corpus-selftest` exclusivity, unknown flags with no report write, `--cases`/`--corpus` mutual exclusion, empty and duplicate `--systems` selections, κ argument errors, exact-corpus κ success, a missing case, a foreign case id, a reused annotator id, a leaked `expected_verdict` field, and blinded-sheet generation and refusal. The κ success case asserts that the reported `corpus_id`, `corpus_cases`, `n` and `cohens_kappa` agree with the fixed corpus.
+- `--selftest` and `--corpus-selftest` in `eval/`; `--selftest` in `platform/`.
 - `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json` in `platform/`.
 - `gate.ps1 -IncludeSmoke` for report/export/coverage/HTML and structural LegalRuleML checks.
 - `scripts/check-docs.ps1` for documentation links (not a CLI behavior test).

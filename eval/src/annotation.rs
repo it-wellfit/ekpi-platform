@@ -23,6 +23,7 @@ pub const MIN_ANNOTATED_CASES: usize = 50;
 pub const KAPPA_ACCEPTANCE: f64 = 0.80;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Annotation {
     pub case_id: String,
     pub verdict: String,
@@ -95,13 +96,19 @@ fn agreement_stats(rater1: &[&str], rater2: &[&str]) -> Option<(f64, f64, f64)> 
 }
 
 /// Cohen's κ qualitative interpretation bands (Landis & Koch, 1977).
+///
+/// The published bands are inclusive at their upper bound: 0.61–0.80 is
+/// "Substantial" and 0.81–1.00 is "Almost perfect". Treating 0.80 as
+/// "Almost perfect" would overstate the result at the proposed acceptance
+/// threshold.
 pub fn kappa_interpretation(kappa: f64) -> &'static str {
     match kappa {
+        k if !k.is_finite() => "Undefined",
         k if k < 0.0 => "Poor (less than chance)",
-        k if k < 0.20 => "Slight",
-        k if k < 0.40 => "Fair",
-        k if k < 0.60 => "Moderate",
-        k if k < 0.80 => "Substantial",
+        k if k <= 0.20 => "Slight",
+        k if k <= 0.40 => "Fair",
+        k if k <= 0.60 => "Moderate",
+        k if k <= 0.80 => "Substantial",
         _ => "Almost perfect",
     }
 }
@@ -215,6 +222,42 @@ pub fn evaluate_study(a: &[Annotation], b: &[Annotation]) -> Result<Study, Strin
         passed,
         identical_label_vectors,
     })
+}
+
+/// Validate a study against the exact case ids of a frozen corpus.
+///
+/// [`evaluate_study`] only proves that both annotators labelled the same set.
+/// This wrapper additionally requires that set to be the fixed corpus itself,
+/// so a study cannot silently omit cases, invent case ids or drift from the
+/// versioned corpus. The corpus case ids must be unique; `load_corpus`
+/// guarantees that for the shipped corpus.
+pub fn evaluate_study_for_corpus(
+    a: &[Annotation],
+    b: &[Annotation],
+    corpus_case_ids: &BTreeSet<String>,
+) -> Result<Study, String> {
+    if corpus_case_ids.is_empty() {
+        return Err("fixed corpus has no case ids".to_string());
+    }
+    let study = evaluate_study(a, b)?;
+    if study.n != corpus_case_ids.len() {
+        return Err(format!(
+            "study covers {} cases but the fixed corpus has {}",
+            study.n,
+            corpus_case_ids.len()
+        ));
+    }
+    if let Some(extra) = a
+        .iter()
+        .map(|record| record.case_id.as_str())
+        .find(|case_id| !corpus_case_ids.contains(*case_id))
+    {
+        return Err(format!("case {extra:?} is not in the fixed corpus"));
+    }
+    // The study validator already proved that A and B have identical, unique
+    // case sets. Equal counts plus every A id being in the corpus therefore
+    // means the corpus is covered exactly once.
+    Ok(study)
 }
 
 #[cfg(test)]
@@ -369,5 +412,74 @@ mod tests {
         let error = evaluate_study(&all_same, &all_same_b)
             .expect_err("undefined kappa must not be reported as a pass");
         assert!(error.contains("undefined"));
+    }
+
+    #[test]
+    fn interpretation_bands_are_inclusive_at_the_upper_bound() {
+        assert_eq!(kappa_interpretation(-0.01), "Poor (less than chance)");
+        assert_eq!(kappa_interpretation(0.0), "Slight");
+        assert_eq!(kappa_interpretation(0.20), "Slight");
+        assert_eq!(kappa_interpretation(0.40), "Fair");
+        assert_eq!(kappa_interpretation(0.60), "Moderate");
+        assert_eq!(kappa_interpretation(0.80), "Substantial");
+        assert_eq!(kappa_interpretation(0.81), "Almost perfect");
+        assert_eq!(kappa_interpretation(1.0), "Almost perfect");
+    }
+
+    #[test]
+    fn interpretation_handles_non_finite_values() {
+        assert_eq!(kappa_interpretation(f64::NAN), "Undefined");
+        assert_eq!(kappa_interpretation(f64::INFINITY), "Undefined");
+    }
+
+    #[test]
+    fn annotation_record_rejects_unknown_fields() {
+        let json =
+            r#"{"case_id":"C-001","verdict":"comply","annotator":"a","expected_verdict":"comply"}"#;
+        let error = serde_json::from_str::<Annotation>(json)
+            .expect_err("a leaked expected_verdict must be rejected");
+        assert!(error.to_string().contains("unknown field"), "{error}");
+    }
+
+    #[test]
+    fn study_bound_to_corpus_accepts_exact_case_set() {
+        let a = records(60, "annotator-a");
+        let b = records(60, "annotator-b");
+        let expected: BTreeSet<String> = a.iter().map(|r| r.case_id.clone()).collect();
+        let study = evaluate_study_for_corpus(&a, &b, &expected).expect("exact coverage must pass");
+        assert_eq!(study.n, 60);
+        assert!(study.passed);
+    }
+
+    #[test]
+    fn study_bound_to_corpus_rejects_foreign_case_id() {
+        let a = records(60, "annotator-a");
+        let b = records(60, "annotator-b");
+        let mut expected: BTreeSet<String> = a.iter().map(|r| r.case_id.clone()).collect();
+        expected.remove("C-000");
+        expected.insert("FOREIGN-999".to_string());
+        let error = evaluate_study_for_corpus(&a, &b, &expected)
+            .expect_err("a case outside the corpus must fail");
+        assert!(error.contains("not in the fixed corpus"), "{error}");
+    }
+
+    #[test]
+    fn study_bound_to_corpus_rejects_missing_case() {
+        let a = records(60, "annotator-a");
+        let b = records(60, "annotator-b");
+        let mut expected: BTreeSet<String> = a.iter().map(|r| r.case_id.clone()).collect();
+        expected.insert("EXTRA-999".to_string());
+        let error = evaluate_study_for_corpus(&a, &b, &expected)
+            .expect_err("an omitted corpus case must fail");
+        assert!(error.contains("fixed corpus has"), "{error}");
+    }
+
+    #[test]
+    fn study_bound_to_corpus_rejects_empty_expected_set() {
+        let a = records(60, "annotator-a");
+        let b = records(60, "annotator-b");
+        let error = evaluate_study_for_corpus(&a, &b, &BTreeSet::new())
+            .expect_err("an empty corpus must fail");
+        assert!(error.contains("no case ids"), "{error}");
     }
 }

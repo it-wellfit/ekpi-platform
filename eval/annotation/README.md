@@ -1,7 +1,7 @@
 # Inter-annotator agreement study (R2-7 / M-11)
 
 - **Status:** NOT STARTED. 0 of 2 annotators assigned; Cohen's κ is **not measured**.
-- **Corpus:** 67 synthetic verdict cases declared by `../cases/corpus.json`.
+- **Corpus:** the fixed 67 synthetic verdict cases declared by `../cases/corpus.json`. A study must cover every corpus case id exactly once; a subset or a foreign case id is rejected.
 - **Proposed acceptance threshold:** κ ≥ 0.80 (`KAPPA_ACCEPTANCE` in `../src/annotation.rs`). Product-owner sign-off is still required before it becomes a release gate.
 - **Non-claims:** this directory contains no label evidence. The blank sheet is not an annotation. A single author's labels, an AI pass, or two passes by the same person do not satisfy M-11.
 
@@ -65,10 +65,12 @@ If a case refers to a rule or document that cannot be resolved from those files,
 5. Compute agreement:
 
    ```powershell
-   cargo run --locked -- --kappa annotation/annotator-a.jsonl annotation/annotator-b.jsonl
+   cargo run --locked -- --kappa annotation/annotator-a.jsonl annotation/annotator-b.jsonl --corpus cases/corpus.json
    ```
 
-   Exit codes: `0` = threshold met, `1` = below threshold, `2` = invalid input or not run.
+   `--kappa` loads the fixed corpus even when `--corpus` is omitted. Pass it explicitly when freezing the study so the corpus is named in the command. The output records `corpus_id`, `corpus_cases` and `n`; all three must agree with the frozen corpus.
+
+   Exit codes: `0` = threshold met, `1` = below threshold, `2` = invalid input, not run, or a case set that does not exactly cover the fixed corpus. A subset, an extra case or an invented case id is an error, not a partial study.
 6. Record the command output verbatim in the evidence register. Do not edit the output.
 7. If κ < 0.80, adjudicate every disagreement with a third party, record each adjudication, revise the rubric if needed, and run a new blinded round. Do not relabel cases merely to reach the threshold.
 8. If κ ≥ 0.80, record the result. The corpus labels remain unchanged unless an adjudication is approved through change control.
@@ -80,6 +82,7 @@ If a case refers to a rule or document that cannot be resolved from those files,
 | Annotators assigned | 0 of 2 |
 | Completed annotation files | 0 |
 | κ | **NOT MEASURED** |
+| Tooling state | Exact-corpus κ validator, strict annotation schema and 67-row blinded sheet are implemented and tested |
 | CI execution of this study | Not applicable; the study is manual |
 
 Do not describe a synthetic smoke test, a self-review, or an AI-generated label set as an inter-annotator study.

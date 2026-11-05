@@ -7,8 +7,9 @@
 ## 執行狀態（2026-11-03）
 
 - 固定 67 案 verdict corpus 已可一次載入、去重、驗證，並由 `--corpus-selftest` 全量執行；此命令已納入 canonical `scripts/check.ps1` / `check.sh`。
-- `--selftest` 仍以 9 案種子集驗證 adapter 契約；`--corpus-selftest` 另外驗證 67 案 corpus、四類 verdict 覆蓋、盲化標註表與三個 stub 的硬門檻。
-- `--kappa`、`--make-annotation-sheet` 與 `eval/annotation/` 研究協定已就緒。
+- `--selftest` 仍以 9 案種子集驗證 adapter 契約；`--corpus-selftest` 另外驗證 67 案 corpus、四類 verdict 覆蓋、盲化標註表（含唯一性與無預填標籤）與三個 stub 的硬門檻。
+- `--kappa` 會把兩個標註檔的 case 集合綁定到固定 corpus，必須精確覆蓋全部 67 案；`--make-annotation-sheet` 與 `eval/annotation/` 研究協定已就緒。
+- CLI 採 fail-closed 參數契約：`--selftest` / `--corpus-selftest` 不得與其他參數併用，`--cases` 與 `--corpus` 互斥，空或重複的 `--systems` 選取、重複旗標與把旗標當值都會以 exit `2` 拒絕。`eval/tests/cli_contract.rs` 以真實程序覆蓋這些路徑。
 - **雙人標註 κ 尚未測量**：0/2 位標註者、0 份完成檔案。工具存在不等於 agreement 存在。
 - **CI 尚未執行**：workflow 已定義且 canonical 入口已包含 corpus selftest，但此 repo 沒有 remote/runner；不得把 workflow 檔或本機執行稱為 CI PASS。
 
@@ -23,11 +24,12 @@ cargo run -- --corpus cases/corpus.json --out target/corpus-report
 cargo run -- --systems stub:oracle --out r # 只跑指定 adapter
 cargo run -- --make-annotation-sheet annotation/blinded-cases.jsonl
 cargo run -- --kappa annotation/annotator-a.jsonl annotation/annotator-b.jsonl
+cargo run -- --kappa annotation/annotator-a.jsonl annotation/annotator-b.jsonl --corpus cases/corpus.json
 cargo fmt ; cargo clippy --all-targets -- -D warnings   # 提交前必跑（工作區規則）
 ```
 
-`--kappa` 退出碼：`0` = 達門檻、`1` = 低於門檻、`2` = 輸入無效或未執行。
-`--corpus-selftest` 在 corpus 少於 50 案、case id 重複、verdict 類別缺漏、盲化表洩漏標籤或硬門檻未觸發時退出 `2`。
+`--kappa` 退出碼：`0` = 達門檻、`1` = 低於門檻、`2` = 輸入無效、未執行或 case 集合未精確覆蓋固定 corpus。
+`--corpus-selftest` 在 corpus 少於 50 案、case id 重複、verdict 類別缺漏、盲化表洩漏或預填標籤、重複列或硬門檻未觸發時退出 `2`。
 
 adapter 註冊：`src/systems.rs` 的 `registry()` 加入你的 `System` 實作即可。
 `Decision` 標籤會被完整性檢查驗證（system tag 必須與 adapter 名一致）。
@@ -88,11 +90,12 @@ runner 目前以 `--systems` 選擇 adapter，旗標對映在接入真實系統�
 
 ## 雙人標註與 Cohen's κ（M-11）
 
-- 工具：`src/annotation.rs` 的 `evaluate_study` 會拒絕少於 50 案、同一 annotator id、兩邊 case 集合不一致、重複 id、未知 verdict 與 undefined κ。
-- 盲化表：`annotation/blinded-cases.jsonl` 由 `--make-annotation-sheet` 從 corpus 產生，只含 `case_id`、`task`、`doc_versions`、`events`、`rules`、`loop`；不含 `expected_verdict`、`notes`、`citations`、`category`、`abstain_required`。
+- 工具：`src/annotation.rs` 的 `evaluate_study` 會拒絕少於 50 案、同一 annotator id、兩邊 case 集合不一致、重複 id、未知 verdict 與 undefined κ；`evaluate_study_for_corpus` 另外要求 case 集合與固定 corpus 完全相同，不能少案、多案或使用虛構 id。
+- 標註檔採嚴格 schema：未知欄位（例如外洩的 `expected_verdict`）會被拒絕，避免把答案帶進標註流程。
+- 盲化表：`annotation/blinded-cases.jsonl` 由 `--make-annotation-sheet` 從 corpus 產生，只含 `case_id`、`task`、`doc_versions`、`events`、`rules`、`loop`，以及必須為 `null` 的 `verdict` / `annotator`；不含 `expected_verdict`、`notes`、`citations`、`category`、`abstain_required`。
 - 協定與 rubric：`annotation/README.md`；record schema：`annotation/annotation.schema.json`。
 - **現況：NOT MEASURED。** 尚未指派兩位獨立標註者，也沒有 `annotator-a.jsonl` / `annotator-b.jsonl`。單一作者、AI 標註或同一人的兩次標註都不構成 inter-annotator agreement。
-- 提議門檻 κ ≥ 0.80；仍需 product owner 簽核才成為 release gate。
+- 提議門檻 κ ≥ 0.80；仍需 product owner 簽核才成為 release gate。Landis–Koch 級距在 0.80 為 `Substantial`，0.81 以上才是 `Almost perfect`；工具已按此邊界輸出。
 
 ## R2-7 狀態（2026-11-03）
 

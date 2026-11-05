@@ -26,7 +26,7 @@ Do not use deterministic-corpus results to claim AI quality, and do not use an A
 | **Total** | **67** | Fixed corpus (≥50 target M-12) |
 | `platform/data/eval/search_eval.json` | 28 | Fixed retrieval regression set for `--search`/`--eval` (20 answer, 8 refusal; 2 evaluation-only restricted fixtures and 4 permission cases) |
 
-`eval/cases/corpus.json` declares the three JSONL files and a `minimum_cases` of 50. `--corpus-selftest` loads all three, rejects duplicate case ids, checks the four verdict classes and the blinded annotation sheet, and runs the three deterministic stubs over all 67 cases. The canonical `scripts/check.ps1` / `check.sh` now runs that command, so the 67-case corpus is part of the fixed entry point rather than an optional manual step. The corpus is still synthetic; executing it is regression evidence, not user validation.
+`eval/cases/corpus.json` declares the three JSONL files and a `minimum_cases` of 50. `--corpus-selftest` loads all three, rejects duplicate case ids, checks the four verdict classes and the blinded annotation sheet (rows, ids, duplicate rows, prefilled labels and forbidden fields), and runs the three deterministic stubs over all 67 cases. The canonical `scripts/check.ps1` / `check.sh` now runs that command, so the 67-case corpus is part of the fixed entry point rather than an optional manual step. The corpus is still synthetic; executing it is regression evidence, not user validation.
 
 Observed verdict distribution on 2026-10-26: `comply` 28, `violate` 11, `escalate` 10, `insufficient_evidence` 18. The search set has its own threshold (0.42) and categories; it is not part of the 67-case verdict corpus and must not be counted as one.
 
@@ -114,10 +114,10 @@ For a tool/AI path, add a comparison run for each model/prompt/tool version, rec
 
 The engineering package is ready:
 
-- `eval/annotation/blinded-cases.jsonl` contains all 67 cases with only the case facts (`case_id`, `task`, `doc_versions`, `events`, `rules`, `loop`). It excludes `expected_verdict`, `notes`, `citations`, `category` and `abstain_required`. `--corpus-selftest` checks that the sheet has 67 rows, matches the corpus case ids and contains no label-leaking fields.
+- `eval/annotation/blinded-cases.jsonl` contains all 67 cases with only the case facts (`case_id`, `task`, `doc_versions`, `events`, `rules`, `loop`) plus null `verdict` and `annotator` fields. It excludes `expected_verdict`, `notes`, `citations`, `category` and `abstain_required`. `--corpus-selftest` checks that the sheet has 67 rows, matches the corpus case ids, has no duplicate or prefilled rows and contains no label-leaking fields.
 - `eval/annotation/README.md` defines the independence rules, rubric, inputs, adjudication procedure and the exact κ command.
-- `eval/annotation/annotation.schema.json` defines the completed record.
-- `eval/src/annotation.rs` implements Cohen's κ and a fail-closed study validator. `--kappa A.jsonl B.jsonl` exits `2` for fewer than 50 cases, the same annotator id, mismatched case sets, duplicate ids, unknown verdicts or an undefined κ; it exits `1` when κ is below 0.80 and `0` only when the proposed threshold is met.
+- `eval/annotation/annotation.schema.json` defines the completed record. The Rust reader also rejects unknown fields, so a leaked `expected_verdict` cannot be smuggled into an annotation file.
+- `eval/src/annotation.rs` implements Cohen's κ and a fail-closed study validator. `--kappa A.jsonl B.jsonl [--corpus PATH]` requires the two files to cover every fixed-corpus case id exactly once. It exits `2` for fewer than 50 cases, the same annotator id, mismatched case sets, duplicate ids, unknown verdicts, a missing/extra/foreign case id or an undefined κ; it exits `1` when κ is valid but below 0.80 and `0` only when the proposed threshold is met. The JSON output records the corpus id and case count so a result is bound to the frozen corpus.
 
 **Current state:** 0 of 2 annotators assigned, 0 completed annotation files, no κ value. A single author's labels, an AI-generated label set, or two passes by the same person are not inter-annotator agreement. See `eval/annotation/README.md` and `EVAL-GAP-03`.
 
@@ -134,13 +134,14 @@ The engineering package is ready:
 
 ## Current status
 
-- Deterministic corpus: 67 cases, fixed and versioned. `--corpus-selftest` loads `cases/corpus.json`, rejects duplicate ids and verifies the 50-case minimum, all four verdict classes, the 67-row blinded annotation sheet and the three stub hard-gate behaviors. The command is part of the canonical `scripts/check.ps1` / `check.sh`.
+- Deterministic corpus: 67 cases, fixed and versioned. `--corpus-selftest` runs 18 checks: it loads `cases/corpus.json`, rejects duplicate ids and verifies the 50-case minimum, the three declared source files, all four verdict classes, the 67-row blinded annotation sheet (including unique rows, no prefilled labels and no label-leaking fields) and the three stub hard-gate behaviors. The command is part of the canonical `scripts/check.ps1` / `check.sh`.
 - Search retrieval regression: 28 cases (20 answer, 8 refusal), threshold 0.42; the canonical gate at `b2bae3e` (2026-10-27) reported 20/20 top-1, 8/8 refusals, 4 role-restricted cases and 0 violations. Lexical only; paraphrases can abstain.
 - Permission coverage in the fixed set: 4 role-restricted cases (2 allowed, 2 denied), 0 violations, isolation 1.00; `EVAL-GAP-06` is closed. The fixtures and roles are synthetic and evaluation-only; this is library-filter evidence, not authenticated authorization or tenant isolation (`S19`, `PR-03`).
 - Hard gates H-1–H-6: exercised by the engine self-test/report pipeline; see the dated regression baseline.
 - AI/agent: not implemented; no quality claim. The `--llm` path is mock-only, labeled `mock-answer`, and covered by CLI contract tests; it is not evidence of model quality, hallucination resistance, cost or latency (`EVAL-GAP-02`).
 - Tool failure: not covered for a future connector/LLM/tool path (`EVAL-GAP-01`). The retrieval CLI calls no tool; its missing-data fail-closed test is not a substitute.
-- Annotation agreement: **not measured**. The κ tool, 67-row blinded sheet, record schema and protocol exist; 0 of 2 annotators are assigned and no completed annotation file exists (`EVAL-GAP-03`).
+- Annotation agreement: **not measured**. The exact-corpus κ validator, 67-row blinded sheet, strict record schema, real-process CLI tests and protocol exist; 0 of 2 annotators are assigned and no completed annotation file exists (`EVAL-GAP-03`). Tooling readiness is not agreement.
+- CLI contract: `eval/tests/cli_contract.rs` spawns the real binary for strict argument handling, no-write rejection paths, exact-corpus κ binding and blinded-sheet generation. This is local test evidence, not CI evidence.
 - CI: `.github/workflows/ci.yml` calls the fixed entry point that now includes `--corpus-selftest`. The workflow has **never executed**; the repository has no remote or runner, so there is no CI run ID or CI PASS.
 
 ## Update triggers
