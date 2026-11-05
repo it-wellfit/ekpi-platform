@@ -294,13 +294,56 @@ async fn error_response_structure_validation() {
     let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
     let app = governance_web::router(ledger, auth);
 
+    // A client-supplied correlation id must come back in both the response
+    // header and the structured error body.
     let response = app
-        .oneshot(Request::get("/projects").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/projects")
+                .header("host", "127.0.0.1:8080")
+                .header("x-request-id", "test-req-42")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     // Unauthenticated request should return 401 with structured error
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-request-id")
+            .map(|v| v.to_str().unwrap()),
+        Some("test-req-42"),
+        "the request id must round-trip"
+    );
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&body).expect("error body must be structured JSON");
+    let error = parsed
+        .get("error")
+        .expect("error envelope present")
+        .as_object()
+        .expect("error is an object");
+    assert_eq!(error.get("code").and_then(|v| v.as_str()), Some("401"));
+    assert_eq!(
+        error.get("type").and_then(|v| v.as_str()),
+        Some("AUTHENTICATION_ERROR")
+    );
+    assert!(
+        error
+            .get("message")
+            .and_then(|v| v.as_str())
+            .is_some_and(|m| !m.is_empty()),
+        "message must be non-empty"
+    );
+    assert_eq!(
+        error.get("request_id").and_then(|v| v.as_str()),
+        Some("test-req-42"),
+        "the body must carry the same correlation id"
+    );
 }
 
 #[tokio::test]

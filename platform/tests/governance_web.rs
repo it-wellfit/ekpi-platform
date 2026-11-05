@@ -515,7 +515,10 @@ async fn login_form_and_cookie_carry_the_same_csrf_token() {
         .to_str()
         .expect("cookie is ASCII")
         .to_string();
-    assert!(set_cookie.starts_with("ekpi_csrf="), "cookie is the csrf pair");
+    assert!(
+        set_cookie.starts_with("ekpi_csrf="),
+        "cookie is the csrf pair"
+    );
     assert!(set_cookie.contains("HttpOnly") && set_cookie.contains("SameSite=Strict"));
     let cookie_token = set_cookie
         .split(';')

@@ -13,11 +13,11 @@ use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use getrandom::getrandom;
 use maud::{DOCTYPE, Markup, html};
 use serde::Deserialize;
 use serde_urlencoded;
 use tokio::sync::Semaphore;
-use getrandom::getrandom;
 
 use crate::governance::{
     GovernanceSnapshot, Ledger, Project, QUALITY_CHECKLIST, QualityCheckResult,
@@ -226,7 +226,7 @@ async fn request_context(request: Request, next: Next) -> Response {
 }
 
 async fn request_context_with(
-    request: Request,
+    mut request: Request,
     next: Next,
     timeout: Duration,
     limit: &Semaphore,
@@ -241,10 +241,9 @@ async fn request_context_with(
     // Propagate the resolved id so inner middleware layers can correlate
     // their structured error bodies with the same request.
     if let Ok(value) = HeaderValue::from_str(&request_id) {
-        request.headers_mut().insert(
-            HeaderName::from_static(REQUEST_ID_HEADER),
-            value,
-        );
+        request
+            .headers_mut()
+            .insert(HeaderName::from_static(REQUEST_ID_HEADER), value);
     }
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
@@ -342,15 +341,6 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
     token
 }
 
-fn unauthorized() -> Response {
-    crate::errors::error_response(
-        "authentication required",
-        StatusCode::UNAUTHORIZED,
-        None,
-    )
-    .into_response()
-}
-
 /// Structured 401 used by middleware layers that know the request id.
 fn unauthorized_with_id(request_id: &str) -> Response {
     crate::errors::error_response(
@@ -363,12 +353,7 @@ fn unauthorized_with_id(request_id: &str) -> Response {
 
 /// Structured 403 used by middleware layers that know the request id.
 fn forbidden_with_id(request_id: &str, message: &str) -> Response {
-    crate::errors::error_response(
-        message,
-        StatusCode::FORBIDDEN,
-        Some(request_id),
-    )
-    .into_response()
+    crate::errors::error_response(message, StatusCode::FORBIDDEN, Some(request_id)).into_response()
 }
 
 /// Extract the `ekpi_csrf` cookie with the same fail-closed ambiguity policy
@@ -494,20 +479,34 @@ fn session_identity(
     headers: &HeaderMap,
     required: Role,
 ) -> std::result::Result<String, Box<Response>> {
-    let token = session_token(headers).ok_or_else(|| Box::new(unauthorized()))?;
+    let request_id = headers
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok());
+    let token = session_token(headers)
+        .ok_or_else(|| Box::new(unauthorized_with_id(request_id.unwrap_or("unknown"))))?;
     let store = auth.lock().map_err(|_| {
-        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
+        Box::new(
+            crate::errors::error_response(
+                "auth store locked",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                request_id,
+            )
+            .into_response(),
+        )
     })?;
     match store.validate_session(&token) {
         Some(session) if session.role >= required => Ok(session.username.clone()),
         Some(_) => Err(Box::new(
-            (
-                StatusCode::FORBIDDEN,
+            crate::errors::error_response(
                 "insufficient role for this operation",
+                StatusCode::FORBIDDEN,
+                request_id,
             )
-                .into_response(),
+            .into_response(),
         )),
-        None => Err(Box::new(unauthorized())),
+        None => Err(Box::new(unauthorized_with_id(
+            request_id.unwrap_or("unknown"),
+        ))),
     }
 }
 
@@ -567,11 +566,12 @@ async fn login_page(State((_ledger, _auth)): State<(SharedLedger, SharedAuth)>) 
     let csrf_token = match random_hex(TOKEN_BYTES) {
         Ok(token) => token,
         Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
+            return crate::errors::error_response(
                 "csrf token generation failed",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                None,
             )
-                .into_response();
+            .into_response();
         }
     };
     let html = html! {
@@ -623,21 +623,30 @@ async fn login_post(
 ) -> Response {
     // Headers must be captured before the body is consumed by `to_bytes`.
     let headers = request.headers().clone();
+    let request_id = headers
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok());
     let form_limit = max_form_bytes_for_path(request.uri().path());
     let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(body) => body,
         Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
+            return crate::errors::error_response(
                 format!("cannot read login request body: {error}"),
+                StatusCode::BAD_REQUEST,
+                request_id,
             )
-                .into_response();
+            .into_response();
         }
     };
     let form: LoginForm = match serde_urlencoded::from_bytes(&body) {
         Ok(form) => form,
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, "malformed login form").into_response();
+            return crate::errors::error_response(
+                "malformed login form",
+                StatusCode::BAD_REQUEST,
+                request_id,
+            )
+            .into_response();
         }
     };
     // Double-submit login CSRF: the hidden field must match the `ekpi_csrf`
@@ -645,7 +654,12 @@ async fn login_post(
     // not reveal whether the cookie or the field was missing.
     let csrf_cookie = csrf_cookie_value(&headers).unwrap_or_default();
     if form.csrf_token.is_empty() || csrf_cookie != form.csrf_token {
-        return (StatusCode::FORBIDDEN, "invalid login request").into_response();
+        return crate::errors::error_response(
+            "invalid login request",
+            StatusCode::FORBIDDEN,
+            request_id,
+        )
+        .into_response();
     }
     let username = form.username;
     let password = form.password;
