@@ -116,8 +116,11 @@ async fn get_with_cookie(
 }
 
 async fn login(app: &axum::Router, username: &str, password: &str) -> String {
-    let body = format!("username={username}&password={password}");
-    let response = post_form(app, "/login", &body).await;
+    // Browser-equivalent flow: fetch the login page, take the CSRF token from
+    // the hidden field, send it back with the matching `ekpi_csrf` cookie.
+    let (token, csrf_cookie) = login_page_csrf(app).await;
+    let body = format!("csrf_token={token}&username={username}&password={password}");
+    let response = post_form_with_cookie(app, "/login", &body, Some(&csrf_cookie)).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let set_cookie = response
         .headers()
@@ -129,10 +132,44 @@ async fn login(app: &axum::Router, username: &str, password: &str) -> String {
     assert!(set_cookie.contains("HttpOnly"));
     assert!(set_cookie.contains("SameSite=Strict"));
     assert!(set_cookie.contains("Max-Age="));
-    set_cookie
+    let session_pair = set_cookie
         .split(';')
         .next()
         .expect("cookie pair")
+        .to_string();
+    format!("{session_pair}; {csrf_cookie}")
+}
+
+/// Fetches the login page and returns its fresh CSRF token plus the matching
+/// `ekpi_csrf` cookie pair, mirroring what a zero-JS browser would hold.
+async fn login_page_csrf(app: &axum::Router) -> (String, String) {
+    let page = get_with_cookie(app, "/login", None).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    let token = extract_hidden_csrf(&html).expect("login form carries a CSRF token");
+    (token.clone(), format!("ekpi_csrf={token}"))
+}
+
+/// Pulls the value of the hidden `csrf_token` input out of a login page.
+fn extract_hidden_csrf(html: &str) -> Option<String> {
+    let marker = "name=\"csrf_token\" value=\"";
+    let start = html.find(marker)? + marker.len();
+    let rest = &html[start..];
+    let end = rest.find('"')?;
+    let token = &rest[..end];
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+/// Keeps only the session pair from a combined cookie header.
+fn session_only(combined: &str) -> String {
+    combined
+        .split("; ")
+        .find(|pair| pair.starts_with("ekpi_session="))
+        .expect("session pair present")
         .to_string()
 }
 
@@ -383,7 +420,9 @@ async fn viewer_role_cannot_mutate() {
 async fn login_rejects_a_bad_password_without_a_cookie() {
     let path = test_path();
     let app = test_app(&path);
-    let response = post_form(&app, "/login", "username=tester&password=wrong-password").await;
+    let (token, csrf_cookie) = login_page_csrf(&app).await;
+    let body = format!("csrf_token={token}&username=tester&password=wrong-password");
+    let response = post_form_with_cookie(&app, "/login", &body, Some(&csrf_cookie)).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(response.headers().get(header::SET_COOKIE).is_none());
 
@@ -398,6 +437,120 @@ async fn login_rejects_a_bad_password_without_a_cookie() {
         .expect("router responds");
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response_text(response).await.contains("form"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn login_post_without_csrf_token_is_refused() {
+    let path = test_path();
+    let app = test_app(&path);
+    let response = post_form(
+        &app,
+        "/login",
+        "username=tester&password=correct-horse-battery-staple",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn login_post_with_mismatched_csrf_token_is_refused() {
+    let path = test_path();
+    let app = test_app(&path);
+    let (_, csrf_cookie) = login_page_csrf(&app).await;
+    let response = post_form_with_cookie(
+        &app,
+        "/login",
+        "csrf_token=deadbeef&username=tester&password=correct-horse-battery-staple",
+        Some(&csrf_cookie),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn login_form_and_cookie_carry_the_same_csrf_token() {
+    let path = test_path();
+    let app = test_app(&path);
+    let page = get_with_cookie(&app, "/login", None).await;
+    let set_cookie = page
+        .headers()
+        .get(header::SET_COOKIE)
+        .expect("login page sets the csrf cookie")
+        .to_str()
+        .expect("cookie is ASCII")
+        .to_string();
+    assert!(set_cookie.starts_with("ekpi_csrf="), "cookie is the csrf pair");
+    assert!(set_cookie.contains("HttpOnly") && set_cookie.contains("SameSite=Strict"));
+    let cookie_token = set_cookie
+        .split(';')
+        .next()
+        .expect("cookie pair")
+        .strip_prefix("ekpi_csrf=")
+        .expect("csrf prefix")
+        .to_string();
+    let html = response_text(page).await;
+    let field_token = extract_hidden_csrf(&html).expect("hidden CSRF token present");
+    assert_eq!(field_token.len(), 64, "token is 32 bytes of hex");
+    assert_eq!(
+        field_token, cookie_token,
+        "hidden field and cookie must carry the same double-submit token"
+    );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn zero_js_mutation_passes_with_session_and_csrf_cookies_without_a_header() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookies = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookies,
+        "/projects",
+        "name=Pilot+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "a server-rendered form POST (cookies only, no header) must pass CSRF"
+    );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn mutation_with_session_but_without_csrf_cookie_is_refused() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookies = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &session_only(&cookies),
+        "/projects",
+        "name=Pilot+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
@@ -773,8 +926,9 @@ async fn logout_mirrors_the_secure_cookie_attribute() {
     let path = test_path();
     let app = test_app(&path);
 
-    let body = format!("username=tester&password={ADMIN_PASSWORD}");
-    let response = post_form(&app, "/login", &body).await;
+    let (token, csrf_cookie) = login_page_csrf(&app).await;
+    let body = format!("csrf_token={token}&username=tester&password={ADMIN_PASSWORD}");
+    let response = post_form_with_cookie(&app, "/login", &body, Some(&csrf_cookie)).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let login_cookie = response
         .headers()

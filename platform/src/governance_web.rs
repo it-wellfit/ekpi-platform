@@ -325,6 +325,29 @@ fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "authentication required").into_response()
 }
 
+/// Extract the `ekpi_csrf` cookie with the same fail-closed ambiguity policy
+/// as `session_token`: duplicate Cookie header lines, a duplicate pair or an
+/// empty value refuse the whole request instead of picking one silently.
+fn csrf_cookie_value(headers: &HeaderMap) -> Option<String> {
+    let mut header_values = headers.get_all(header::COOKIE).iter();
+    let header = header_values.next()?;
+    if header_values.next().is_some() {
+        return None;
+    }
+    let cookie = header.to_str().ok()?;
+    let mut token: Option<String> = None;
+    for part in cookie.split(';') {
+        let part = part.trim();
+        if let Some(value) = part.strip_prefix("ekpi_csrf=") {
+            if value.is_empty() || token.is_some() {
+                return None;
+            }
+            token = Some(value.to_string());
+        }
+    }
+    token
+}
+
 /// Validate the session cookie, require at least the given role, and return
 /// the local session username. Mutating handlers use this value as the ledger
 /// actor instead of trusting a form field.
@@ -339,8 +362,9 @@ async fn validate_csrf_token(
     if method == Method::GET || method == Method::HEAD {
         return next.run(request).await;
     }
-    // Login endpoint is exempt from CSRF: there is no prior session to bind a
-    // CSRF token to, and the login page establishes the session.
+    // Login is exempt here because it has no session to bind a token to yet;
+    // it enforces its own double-submit check (fresh token in the hidden form
+    // field mirrored by the `ekpi_csrf` cookie) inside `login_post`.
     if method == Method::POST && request.uri().path() == "/login" {
         return next.run(request).await;
     }
@@ -366,12 +390,18 @@ async fn validate_csrf_token(
         }
     };
 
+    // Zero-JS HTML forms cannot set custom headers, so the session CSRF token
+    // is accepted from the `X-CSRF-Token` header (programmatic clients) or the
+    // `ekpi_csrf` cookie (server-rendered forms). The browser attaches the
+    // cookie to same-site POSTs automatically, and `SameSite=Strict` keeps
+    // cross-site requests from sending it at all.
     let csrf_header = headers
         .get(CSRF_TOKEN_NAME)
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
+    let csrf_cookie = csrf_cookie_value(headers).unwrap_or_default();
 
-    if csrf_header != session.csrf_token {
+    if csrf_header != session.csrf_token && csrf_cookie != session.csrf_token {
         return (StatusCode::FORBIDDEN, "Invalid CSRF token").into_response();
     }
 
@@ -461,18 +491,22 @@ async fn rate_limit_guard(request: Request, next: Next) -> Response {
     next.run(request).await
 }
 
-async fn login_page(State(auth): State<SharedAuth>) -> Response {
-    let store = auth
-        .lock()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())?;
-    let session = store
-        .sessions
-        .iter()
-        .next()
-        .map(|(_, s)| s.clone());
-    let csrf_token = session
-        .map(|s| s.csrf_token.clone())
-        .unwrap_or_else(|| random_hex(TOKEN_BYTES).unwrap_or_else(|_| "".to_string()));
+async fn login_page(State((_ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+    // Pre-auth login CSRF uses a fresh double-submit token: the value is
+    // rendered into the hidden form field and mirrored in the `ekpi_csrf`
+    // cookie; `login_post` refuses the POST unless both match. The token is
+    // generated per page load and is never read from an existing session, so
+    // one visitor's token can never be served to another.
+    let csrf_token = match random_hex(TOKEN_BYTES) {
+        Ok(token) => token,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "csrf token generation failed",
+            )
+                .into_response();
+        }
+    };
     let html = html! {
         (DOCTYPE)
         html lang="zh-Hant" {
@@ -487,7 +521,7 @@ async fn login_page(State(auth): State<SharedAuth>) -> Response {
                     h2 { "本機登入" }
                     p class="form-hint" { "僅限本機試點使用；尚未連接企業身分平台。" }
                     form class="form-stack" method="post" action="/login" {
-                        input type="hidden" name="csrf_token" value={csrf_token.clone()};
+                        input type="hidden" name="csrf_token" value=(csrf_token.clone());
                         label class="field" { span { "使用者名稱" } input type="text" name="username" required maxlength="80" placeholder="姓名"; }
                         label class="field" { span { "密碼" } input type="password" name="password" required maxlength="128" placeholder="密碼"; }
                         button class="button button-primary" type="submit" { "登入" }
@@ -499,8 +533,11 @@ async fn login_page(State(auth): State<SharedAuth>) -> Response {
     let mut response = Html(html.into_string()).into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
-        HeaderValue::from_str(&format!("ekpi_csrf={}; Path=/; HttpOnly; SameSite=Strict{}", csrf_token, configured_secure_cookie_suffix()))
-            .unwrap_or_else(|_| HeaderValue::from_static("ekpi_csrf=; Path=/; Max-Age=0")),
+        HeaderValue::from_str(&format!(
+            "ekpi_csrf={csrf_token}; Path=/; HttpOnly; SameSite=Strict{}",
+            configured_secure_cookie_suffix()
+        ))
+        .unwrap_or_else(|_| HeaderValue::from_static("ekpi_csrf=; Path=/; Max-Age=0")),
     );
     response
 }
@@ -517,6 +554,8 @@ async fn login_post(
     State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
+    // Headers must be captured before the body is consumed by `to_bytes`.
+    let headers = request.headers().clone();
     let form_limit = max_form_bytes_for_path(request.uri().path());
     let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(body) => body,
@@ -534,6 +573,13 @@ async fn login_post(
             return (StatusCode::BAD_REQUEST, "malformed login form").into_response();
         }
     };
+    // Double-submit login CSRF: the hidden field must match the `ekpi_csrf`
+    // cookie that `login_page` set. A refusal is generic on purpose — it must
+    // not reveal whether the cookie or the field was missing.
+    let csrf_cookie = csrf_cookie_value(&headers).unwrap_or_default();
+    if form.csrf_token.is_empty() || csrf_cookie != form.csrf_token {
+        return (StatusCode::FORBIDDEN, "invalid login request").into_response();
+    }
     let username = form.username;
     let password = form.password;
     let auth_for_task = auth.clone();
@@ -609,6 +655,8 @@ async fn logout_post(
 }
 #[derive(Deserialize)]
 struct LoginForm {
+    #[serde(default)]
+    csrf_token: String,
     username: String,
     password: String,
 }
