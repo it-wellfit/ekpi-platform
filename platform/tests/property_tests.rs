@@ -82,7 +82,7 @@ proptest! {
     }
 
     #[test]
-    fn cosine_empty_is_one(dummy in Just(())) {
+    fn cosine_empty_is_one(_dummy in Just(())) {
         let score = ekp_platform::retrieval::char_bigram_cosine("", "");
         assert!((score - 1.0).abs() < 1e-9);
     }
