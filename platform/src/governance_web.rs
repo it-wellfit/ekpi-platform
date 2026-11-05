@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Path, Request, State};
+use axum::extract::{Extension, Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -66,6 +66,7 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
         .route("/assets/governance.css", get(stylesheet))
+        .fallback(not_found)
         .with_state((ledger, auth))
         .layer(middleware::from_fn_with_state(
             auth_for_guard,
@@ -230,45 +231,59 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
     token
 }
 
-fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, "authentication required").into_response()
+#[derive(Clone, Debug)]
+struct CurrentUser {
+    username: String,
+    role: Role,
 }
 
-/// Validate the session cookie, require at least the given role, and return
-/// the local session username. Mutating handlers use this value as the ledger
-/// actor instead of trusting a form field.
-fn session_identity(
-    auth: &SharedAuth,
-    headers: &HeaderMap,
-    required: Role,
-) -> Result<String, Box<Response>> {
-    let token = session_token(headers).ok_or_else(|| Box::new(unauthorized()))?;
-    let store = auth.lock().map_err(|_| {
-        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
-    })?;
-    match store.validate_session(&token) {
-        Some(session) if session.role >= required => Ok(session.username.clone()),
-        Some(_) => Err(Box::new(
-            (
-                StatusCode::FORBIDDEN,
-                "insufficient role for this operation",
-            )
-                .into_response(),
-        )),
-        None => Err(Box::new(unauthorized())),
+impl CurrentUser {
+    fn initial(&self) -> String {
+        self.username
+            .chars()
+            .next()
+            .map(|character| character.to_uppercase().collect::<String>())
+            .unwrap_or_else(|| "?".to_string())
     }
 }
 
-/// Validate the session cookie and require at least the given role.
-/// Returns `Some(Response)` when the request must be rejected.
-fn check_session_with_role(
+fn role_label(role: Role) -> &'static str {
+    match role {
+        Role::Viewer => "檢視者",
+        Role::Editor => "編輯者",
+        Role::Approver => "核准者",
+        Role::Admin => "管理者",
+    }
+}
+
+enum SessionLookupError {
+    Unauthenticated,
+    Unavailable,
+}
+
+/// Resolve the session cookie to the local identity that every page and
+/// mutation must render or record. The caller never supplies the actor.
+fn load_current_user(
     auth: &SharedAuth,
     headers: &HeaderMap,
-    required: Role,
-) -> Option<Response> {
-    session_identity(auth, headers, required)
-        .err()
-        .map(|response| *response)
+) -> Result<CurrentUser, SessionLookupError> {
+    let token = session_token(headers).ok_or(SessionLookupError::Unauthenticated)?;
+    let store = auth.lock().map_err(|_| SessionLookupError::Unavailable)?;
+    match store.validate_session(&token) {
+        Some(session) => Ok(CurrentUser {
+            username: session.username.clone(),
+            role: session.role,
+        }),
+        None => Err(SessionLookupError::Unauthenticated),
+    }
+}
+
+fn require_role(user: &CurrentUser, required: Role) -> Result<(), Box<Response>> {
+    if user.role >= required {
+        Ok(())
+    } else {
+        Err(Box::new(forbidden_page(user, required)))
+    }
 }
 
 fn is_public_path(path: &str) -> bool {
@@ -277,41 +292,127 @@ fn is_public_path(path: &str) -> bool {
 
 /// Require a valid session for every data page. The liveness probe, aggregate
 /// metrics, login page and stylesheet remain reachable so an unauthenticated
-/// operator can log in and monitoring can run.
-async fn require_session(State(auth): State<SharedAuth>, request: Request, next: Next) -> Response {
+/// operator can log in and monitoring can run. Rejected pages render the same
+/// HTML shell as the rest of the workbench instead of a bare text response.
+async fn require_session(
+    State(auth): State<SharedAuth>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     if is_public_path(request.uri().path()) {
         return next.run(request).await;
     }
-    if let Some(response) = check_session_with_role(&auth, request.headers(), Role::Viewer) {
-        return response;
+    match load_current_user(&auth, request.headers()) {
+        Ok(user) => {
+            request.extensions_mut().insert(user);
+            next.run(request).await
+        }
+        Err(SessionLookupError::Unauthenticated) => login_response(
+            StatusCode::UNAUTHORIZED,
+            Some("請先登入，才能開啟治理工作台。"),
+            "",
+        ),
+        Err(SessionLookupError::Unavailable) => standalone_error_page(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "登入服務暫時無法使用",
+            "本機工作階段資料暫時無法讀取，沒有顯示或寫入任何治理資料。請稍後重新整理；若持續發生，請重新啟動本機原型。",
+        ),
     }
-    next.run(request).await
 }
 
-async fn login_page() -> Response {
+async fn login_page(
+    State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    headers: HeaderMap,
+) -> Response {
+    if load_current_user(&auth, &headers).is_ok() {
+        return Redirect::to("/").into_response();
+    }
+    login_response(StatusCode::OK, None, "")
+}
+
+const LOGIN_FAILURE_MESSAGE: &str =
+    "使用者名稱或密碼不正確。請確認大小寫與輸入內容；連續失敗會暫時鎖定本機帳號。";
+
+fn login_response(status: StatusCode, error: Option<&str>, username: &str) -> Response {
+    let username: String = username.chars().take(80).collect();
     let html = html! {
         (DOCTYPE)
         html lang="zh-Hant" {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
+                meta name="color-scheme" content="light";
                 title { "登入 · EKPI 治理工作台" }
                 link rel="stylesheet" href="/assets/governance.css";
             }
-            body {
-                div class="auth-page" {
-                    h2 { "本機登入" }
-                    p class="form-hint" { "僅限本機試點使用；尚未連接企業身分平台。" }
-                    form class="form-stack" method="post" action="/login" {
-                        label class="field" { span { "使用者名稱" } input type="text" name="username" required maxlength="80" placeholder="姓名"; }
-                        label class="field" { span { "密碼" } input type="password" name="password" required maxlength="128" placeholder="密碼"; }
-                        button class="button button-primary" type="submit" { "登入" }
+            body class="auth-body" {
+                main class="auth-shell" {
+                    div class="auth-brand" aria-label="EKPI 治理工作台" {
+                        span class="brand-mark" aria-hidden="true" { "E" }
+                        div { strong { "EKPI" } small { "治理工作台" } }
                     }
+                    section class="auth-card" aria-labelledby="login-title" {
+                        p class="eyebrow" { "本機試點" }
+                        h1 id="login-title" { "登入治理工作台" }
+                        p class="auth-intro" { "使用本機帳號檢視專案、證據、品質檢查與治理紀錄。" }
+                        @if let Some(error) = error {
+                            div class="alert alert-error" role="alert" { (error) }
+                        }
+                        form class="form-stack" method="post" action="/login" {
+                            label class="field" {
+                                span { "使用者名稱" }
+                                input type="text" name="username" value=(username) required maxlength="80" placeholder="輸入使用者名稱" autocomplete="username" autofocus;
+                            }
+                            label class="field" {
+                                span { "密碼" }
+                                input type="password" name="password" required maxlength="128" placeholder="輸入密碼" autocomplete="current-password";
+                            }
+                            button class="button button-primary button-block" type="submit" { "登入" }
+                        }
+                        div class="auth-note" {
+                            strong { "本機限定" }
+                            p { "此工作台沒有企業 SSO、MFA 或帳號復原，工作階段只存在於目前程序。請勿輸入機密或受管制資料。" }
+                        }
+                    }
+                    p class="auth-footer" { "EKPI · 跨專案治理試點" }
                 }
             }
         }
     };
-    Html(html.into_string()).into_response()
+    (status, Html(html.into_string())).into_response()
+}
+
+/// A minimal standalone failure page for failures that happen before an
+/// identity is available. It deliberately contains no ledger content.
+fn standalone_error_page(status: StatusCode, title: &str, message: &str) -> Response {
+    let html = html! {
+        (DOCTYPE)
+        html lang="zh-Hant" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                meta name="color-scheme" content="light";
+                title { (title) " · EKPI 治理工作台" }
+                link rel="stylesheet" href="/assets/governance.css";
+            }
+            body class="auth-body" {
+                main class="auth-shell" {
+                    div class="auth-brand" aria-label="EKPI 治理工作台" {
+                        span class="brand-mark" aria-hidden="true" { "E" }
+                        div { strong { "EKPI" } small { "治理工作台" } }
+                    }
+                    section class="auth-card" aria-labelledby="error-title" {
+                        p class="eyebrow" { "系統狀態" }
+                        h1 id="error-title" { (title) }
+                        div class="alert alert-error" role="alert" { (message) }
+                        div class="button-row" { a class="button button-secondary" href="/login" { "前往登入" } }
+                    }
+                    p class="auth-footer" { "EKPI · 跨專案治理試點" }
+                }
+            }
+        }
+    };
+    (status, Html(html.into_string())).into_response()
 }
 
 fn secure_cookie_suffix(value: Option<&str>) -> &'static str {
@@ -332,20 +433,25 @@ async fn login_post(
 ) -> Response {
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(body) => body,
-        Err(error) => {
-            return (
+        Err(_) => {
+            return login_response(
                 StatusCode::BAD_REQUEST,
-                format!("cannot read login request body: {error}"),
+                Some("登入表單超過大小限制或無法讀取。請縮短輸入後再試。"),
+                "",
             )
-                .into_response()
         }
     };
     let form: LoginForm = match serde_urlencoded::from_bytes(&body) {
         Ok(form) => form,
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, "malformed login form").into_response();
+            return login_response(
+                StatusCode::BAD_REQUEST,
+                Some("登入表單格式不正確。請重新輸入使用者名稱與密碼。"),
+                "",
+            )
         }
     };
+    let display_username = form.username.clone();
     let username = form.username;
     let password = form.password;
     let auth_for_task = auth.clone();
@@ -378,8 +484,16 @@ async fn login_post(
             );
             response
         }
-        Ok(Err(_)) => (StatusCode::UNAUTHORIZED, "invalid username or password").into_response(),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "login task failed").into_response(),
+        Ok(Err(_)) => login_response(
+            StatusCode::UNAUTHORIZED,
+            Some(LOGIN_FAILURE_MESSAGE),
+            &display_username,
+        ),
+        Err(_) => login_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some("本機登入暫時無法使用，沒有建立任何工作階段。請稍後再試。"),
+            &display_username,
+        ),
     }
 }
 
@@ -577,37 +691,58 @@ async fn same_origin_guard(request: Request, next: Next) -> Response {
     }
     next.run(request).await
 }
-async fn dashboard(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn dashboard(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("工作總覽", "overview", dashboard_content(&data)),
-        Err(error) => error_response("overview", &error),
+        Ok(data) => page_response(&user, "工作總覽", "overview", dashboard_content(&data)),
+        Err(error) => error_response(&user, "overview", &error),
     }
 }
 
-async fn projects_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn projects_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("專案登錄", "projects", projects_content(&data, None)),
-        Err(error) => error_response("projects", &error),
+        Ok(data) => page_response(
+            &user,
+            "專案登錄",
+            "projects",
+            projects_content(&data, None, None),
+        ),
+        Err(error) => error_response(&user, "projects", &error),
     }
 }
 
 async fn create_project(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Editor) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "projects",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: ProjectForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "projects",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let result = ledger
         .lock()
@@ -618,47 +753,66 @@ async fn create_project(
                 &form.department,
                 &form.owner,
                 &form.risk_tier,
-                &actor,
+                &user.username,
             )
         });
     match result {
         Ok(_) => Redirect::to("/projects").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "專案登錄",
                 "projects",
-                projects_content(&data, Some(&error)),
+                projects_content(&data, Some(&error), Some(&form)),
             )
             .into_response(),
-            Err(_) => error_response("projects", &error),
+            Err(_) => error_response(&user, "projects", &error),
         },
     }
 }
 
-async fn evidence_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn evidence_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("文件與證據", "evidence", evidence_content(&data, None)),
-        Err(error) => error_response("evidence", &error),
+        Ok(data) => page_response(
+            &user,
+            "文件與證據",
+            "evidence",
+            evidence_content(&data, None, None, None),
+        ),
+        Err(error) => error_response(&user, "evidence", &error),
     }
 }
 
 async fn link_evidence(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Editor) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "evidence",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: EvidenceForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "evidence",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let result = ledger
         .lock()
@@ -672,84 +826,114 @@ async fn link_evidence(
                 &form.source_version,
                 &form.evidence_type,
                 &form.owner,
-                &actor,
+                &user.username,
             )
         });
     match result {
         Ok(_) => Redirect::to("/evidence").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "文件與證據",
                 "evidence",
-                evidence_content(&data, Some(&error)),
+                evidence_content(&data, Some(&error), Some(&form), None),
             )
             .into_response(),
-            Err(_) => error_response("evidence", &error),
+            Err(_) => error_response(&user, "evidence", &error),
         },
     }
 }
 
 async fn review_evidence(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Approver) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "evidence",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: ReviewForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "evidence",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
-        .and_then(|mut db| db.review_evidence(&id, &form.result, &actor, &form.note));
+        .and_then(|mut db| db.review_evidence(&id, &form.result, &user.username, &form.note));
     match result {
         Ok(()) => Redirect::to("/evidence").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "文件與證據",
                 "evidence",
-                evidence_content(&data, Some(&error)),
+                evidence_content(&data, Some(&error), None, Some((&id, &form))),
             )
             .into_response(),
-            Err(_) => error_response("evidence", &error),
+            Err(_) => error_response(&user, "evidence", &error),
         },
     }
 }
 
-async fn workflows_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn workflows_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("流程範本", "workflows", workflows_content(&data, None)),
-        Err(error) => error_response("workflows", &error),
+        Ok(data) => page_response(
+            &user,
+            "流程範本",
+            "workflows",
+            workflows_content(&data, None, None),
+        ),
+        Err(error) => error_response(&user, "workflows", &error),
     }
 }
 
 async fn save_workflow(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Editor) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "workflows",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: WorkflowForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "workflows",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let stages: Vec<String> = form
         .stages
@@ -758,86 +942,105 @@ async fn save_workflow(
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect();
-    let base_id = (!form.base_id.trim().is_empty()).then_some(form.base_id);
+    let base_id = (!form.base_id.trim().is_empty()).then(|| form.base_id.clone());
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
         .and_then(|mut db| {
             db.save_workflow(WorkflowDraftInput {
                 base_id,
-                title: form.title,
-                department: form.department,
-                owner: form.owner,
-                description: form.description,
+                title: form.title.clone(),
+                department: form.department.clone(),
+                owner: form.owner.clone(),
+                description: form.description.clone(),
                 stages,
-                actor,
+                actor: user.username.clone(),
             })
         });
     match result {
         Ok(_) => Redirect::to("/workflows").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "流程範本",
                 "workflows",
-                workflows_content(&data, Some(&error)),
+                workflows_content(&data, Some(&error), Some(&form)),
             )
             .into_response(),
-            Err(_) => error_response("workflows", &error),
+            Err(_) => error_response(&user, "workflows", &error),
         },
     }
 }
 
 async fn publish_workflow(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     Path((id, version)): Path<(String, u32)>,
-    request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Approver) {
+        return *response;
+    }
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
-        .and_then(|mut db| db.publish_workflow(&id, version, &actor));
+        .and_then(|mut db| db.publish_workflow(&id, version, &user.username));
     match result {
         Ok(()) => Redirect::to("/workflows").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "流程範本",
                 "workflows",
-                workflows_content(&data, Some(&error)),
+                workflows_content(&data, Some(&error), None),
             )
             .into_response(),
-            Err(_) => error_response("workflows", &error),
+            Err(_) => error_response(&user, "workflows", &error),
         },
     }
 }
 
-async fn controls_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn controls_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("風險與品質事件", "controls", controls_content(&data, None)),
-        Err(error) => error_response("controls", &error),
+        Ok(data) => page_response(
+            &user,
+            "風險與品質事件",
+            "controls",
+            controls_content(&data, None, None, None),
+        ),
+        Err(error) => error_response(&user, "controls", &error),
     }
 }
 
 async fn create_quality_case(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Editor) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Editor) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "controls",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: QualityCaseForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "controls",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let result = ledger
         .lock()
@@ -850,84 +1053,114 @@ async fn create_quality_case(
                 &form.description,
                 &form.owner,
                 &form.due_date,
-                &actor,
+                &user.username,
             )
         });
     match result {
         Ok(_) => Redirect::to("/controls").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "風險與品質事件",
                 "controls",
-                controls_content(&data, Some(&error)),
+                controls_content(&data, Some(&error), Some(&form), None),
             )
             .into_response(),
-            Err(_) => error_response("controls", &error),
+            Err(_) => error_response(&user, "controls", &error),
         },
     }
 }
 
 async fn update_quality_case(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Approver) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "controls",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: QualityCaseUpdateForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "controls",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let result = ledger
         .lock()
         .map_err(|_| "資料鎖定失敗".to_string())
-        .and_then(|mut db| db.update_quality_case(&id, &form.status, &actor, &form.note));
+        .and_then(|mut db| db.update_quality_case(&id, &form.status, &user.username, &form.note));
     match result {
         Ok(()) => Redirect::to("/controls").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "風險與品質事件",
                 "controls",
-                controls_content(&data, Some(&error)),
+                controls_content(&data, Some(&error), None, Some((&id, &form))),
             )
             .into_response(),
-            Err(_) => error_response("controls", &error),
+            Err(_) => error_response(&user, "controls", &error),
         },
     }
 }
 
-async fn inspections_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn inspections_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("品質檢查", "inspections", inspections_content(&data, None)),
-        Err(error) => error_response("inspections", &error),
+        Ok(data) => page_response(
+            &user,
+            "品質檢查",
+            "inspections",
+            inspections_content(&data, None, None),
+        ),
+        Err(error) => error_response(&user, "inspections", &error),
     }
 }
 
 async fn record_inspection(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     request: Request,
 ) -> Response {
-    let reviewer = match session_identity(&auth, request.headers(), Role::Editor) {
-        Ok(reviewer) => reviewer,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Editor) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "inspections",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let fields: HashMap<String, String> = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "inspections",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     let get = |field: &str| fields.get(field).cloned().unwrap_or_default();
     let results = QUALITY_CHECKLIST
@@ -945,7 +1178,7 @@ async fn record_inspection(
         .collect();
     let input = QualityInspectionInput {
         project_id: get("project_id"),
-        reviewer,
+        reviewer: user.username.clone(),
         results,
     };
     let result = ledger
@@ -956,49 +1189,69 @@ async fn record_inspection(
         Ok(_) => Redirect::to("/inspections").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "品質檢查",
                 "inspections",
-                inspections_content(&data, Some(&error)),
+                inspections_content(&data, Some(&error), Some(&fields)),
             )
             .into_response(),
-            Err(_) => error_response("inspections", &error),
+            Err(_) => error_response(&user, "inspections", &error),
         },
     }
 }
 
-async fn lifecycle_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn lifecycle_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("階段與關卡", "lifecycle", lifecycle_content(&data, None)),
-        Err(error) => error_response("lifecycle", &error),
+        Ok(data) => page_response(
+            &user,
+            "階段與關卡",
+            "lifecycle",
+            lifecycle_content(&data, None, None),
+        ),
+        Err(error) => error_response(&user, "lifecycle", &error),
     }
 }
 
 async fn record_gate_decision(
-    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
     request: Request,
 ) -> Response {
-    let actor = match session_identity(&auth, request.headers(), Role::Approver) {
-        Ok(actor) => actor,
-        Err(response) => return *response,
-    };
+    if let Err(response) = require_role(&user, Role::Approver) {
+        return *response;
+    }
     let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
         Ok(b) => b,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "lifecycle",
+                "要求本文超過 64 KiB 或無法讀取。請縮短輸入後再試。",
+            )
         }
     };
     let form: GateDecisionForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(_) => {
+            return request_error_response(
+                &user,
+                "lifecycle",
+                "表單格式不正確，沒有寫入任何資料。請重新輸入。",
+            )
+        }
     };
     if !["yes", "no"].contains(&form.non_waivable.as_str()) {
         return match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "階段與關卡",
                 "lifecycle",
-                lifecycle_content(&data, Some("請明確選擇是否涉及不可豁免要求。")),
+                lifecycle_content(&data, Some("請明確選擇是否涉及不可豁免要求。"), Some(&form)),
             ),
-            Err(error) => error_response("lifecycle", &error),
+            Err(error) => error_response(&user, "lifecycle", &error),
         };
     }
     let result = ledger
@@ -1009,7 +1262,7 @@ async fn record_gate_decision(
                 &form.project_id,
                 &form.gate_id,
                 &form.decision,
-                &actor,
+                &user.username,
                 &form.reason,
                 &form.evidence_reference,
                 &form.risk_acceptor,
@@ -1021,23 +1274,27 @@ async fn record_gate_decision(
         Ok(_) => Redirect::to("/lifecycle").into_response(),
         Err(error) => match snapshot(&ledger) {
             Ok(data) => page_response(
+                &user,
                 "階段與關卡",
                 "lifecycle",
-                lifecycle_content(&data, Some(&error)),
+                lifecycle_content(&data, Some(&error), Some(&form)),
             )
             .into_response(),
-            Err(_) => error_response("lifecycle", &error),
+            Err(_) => error_response(&user, "lifecycle", &error),
         },
     }
 }
 
-async fn audit_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+async fn audit_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+) -> Response {
     match snapshot(&ledger) {
         Ok(data) => {
             let integrity = ledger.lock().map(|db| db.verify().is_ok()).unwrap_or(false);
-            page_response("稽核紀錄", "audit", audit_content(&data, integrity))
+            page_response(&user, "稽核紀錄", "audit", audit_content(&data, integrity))
         }
-        Err(error) => error_response("audit", &error),
+        Err(error) => error_response(&user, "audit", &error),
     }
 }
 
@@ -1048,20 +1305,122 @@ fn snapshot(ledger: &SharedLedger) -> Result<GovernanceSnapshot, String> {
         .map_err(|_| "資料鎖定失敗，請重新啟動本機原型".to_string())
 }
 
-fn page_response(title: &str, active: &str, content: Markup) -> Response {
-    Html(layout(title, active, content).into_string()).into_response()
+fn page_response(user: &CurrentUser, title: &str, active: &str, content: Markup) -> Response {
+    Html(layout(Some(user), title, active, content).into_string()).into_response()
 }
 
-fn error_response(active: &str, message: &str) -> Response {
+fn error_response(user: &CurrentUser, active: &str, message: &str) -> Response {
     let content = html! {
-        section class="page-heading" { p class="eyebrow" { "系統資料無法使用" } h1 { "需要檢查稽核資料" } }
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "系統資料無法使用" }
+                h1 { "需要檢查稽核資料" }
+                p class="page-subtitle" { "工作台沒有顯示任何治理內容，也沒有寫入新的資料。" }
+            }
+        }
         div class="alert alert-error" role="alert" { (message) }
-        p { "請停止寫入，保留資料檔並聯絡管理者。原型不會自動修補不完整的稽核鏈。" }
+        div class="panel error-panel" {
+            h2 { "處理方式" }
+            p { "請停止寫入，保留資料檔並聯絡管理者。原型不會自動修補不完整的稽核鏈。" }
+            div class="button-row" { a class="button button-secondary" href=(active_href(active)) { "返回目前頁面" } }
+        }
     };
-    page_response("資料錯誤", active, content)
+    page_response(user, "資料錯誤", active, content)
 }
 
-fn layout(title: &str, active: &str, content: Markup) -> Markup {
+/// A 400 response for an oversized or unparsable request body. It keeps the
+/// authenticated shell so the operator can navigate away without losing the
+/// local session, and it never echoes raw parser errors or ledger content.
+fn request_error_response(user: &CurrentUser, active: &str, message: &str) -> Response {
+    let content = html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "要求無法處理" }
+                h1 { "表單內容不完整" }
+                p class="page-subtitle" { "沒有寫入任何資料；請返回表單修正後再送出。" }
+            }
+        }
+        div class="alert alert-error" role="alert" { (message) }
+        div class="panel error-panel" {
+            h2 { "下一步" }
+            p { "若表單內容很長，請先縮短或分批處理。重新整理頁面不會遺失已儲存的治理紀錄。" }
+            div class="button-row" {
+                a class="button button-secondary" href=(active_href(active)) { "返回表單" }
+                a class="button button-quiet" href="/" { "回到工作總覽" }
+            }
+        }
+    };
+    (
+        StatusCode::BAD_REQUEST,
+        Html(layout(Some(user), "表單錯誤", active, content).into_string()),
+    )
+        .into_response()
+}
+
+fn forbidden_page(user: &CurrentUser, required: Role) -> Response {
+    let content = html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "授權檢查" }
+                h1 { "權限不足" }
+                p class="page-subtitle" { "此操作需要較高的本機角色；沒有寫入任何資料。" }
+            }
+        }
+        div class="alert alert-error" role="alert" {
+            "目前角色為「" (role_label(user.role)) "」，此操作需要「" (role_label(required)) "」以上權限。"
+        }
+        div class="panel error-panel" {
+            h2 { "下一步" }
+            p { "請聯絡本機管理者調整角色，或改用具備權限的本機帳號登入。角色只存在於目前程序，重新啟動後需要重新建立帳號。" }
+            div class="button-row" { a class="button button-secondary" href="/" { "回到工作總覽" } }
+        }
+    };
+    (
+        StatusCode::FORBIDDEN,
+        Html(layout(Some(user), "權限不足", "", content).into_string()),
+    )
+        .into_response()
+}
+
+async fn not_found(Extension(user): Extension<CurrentUser>) -> Response {
+    let content = html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "找不到頁面" }
+                h1 { "此頁面不存在" }
+                p class="page-subtitle" { "連結可能已變更，或路徑輸入有誤。沒有顯示任何治理資料。" }
+            }
+        }
+        div class="panel error-panel" {
+            h2 { "可用入口" }
+            p { "請從左側導覽選擇功能，或回到工作總覽重新開始。" }
+            div class="button-row" {
+                a class="button button-secondary" href="/" { "回到工作總覽" }
+                a class="button button-quiet" href="/projects" { "前往專案登錄" }
+            }
+        }
+    };
+    (
+        StatusCode::NOT_FOUND,
+        Html(layout(Some(&user), "找不到頁面", "", content).into_string()),
+    )
+        .into_response()
+}
+
+fn active_href(active: &str) -> &'static str {
+    match active {
+        "projects" => "/projects",
+        "evidence" => "/evidence",
+        "inspections" => "/inspections",
+        "workflows" => "/workflows",
+        "controls" => "/controls",
+        "lifecycle" => "/lifecycle",
+        "audit" => "/audit",
+        _ => "/",
+    }
+}
+
+fn layout(user: Option<&CurrentUser>, title: &str, active: &str, content: Markup) -> Markup {
     html! {
         (DOCTYPE)
         html lang="zh-Hant" {
@@ -1081,12 +1440,25 @@ fn layout(title: &str, active: &str, content: Markup) -> Markup {
                     }
                     div class="topbar-meta" {
                         span class="local-chip" { "本機試點" }
-                        span class="avatar" aria-hidden="true" { "G" }
+                        @if let Some(user) = user {
+                            div class="user-chip" {
+                                span class="avatar" aria-hidden="true" { (user.initial()) }
+                                span class="user-meta" {
+                                    strong { (user.username) }
+                                    small { (role_label(user.role)) }
+                                }
+                            }
+                            form class="logout-form" method="post" action="/logout" {
+                                button class="button button-quiet button-small" type="submit" { "登出" }
+                            }
+                        } @else {
+                            a class="button button-secondary button-small" href="/login" { "登入" }
+                        }
                     }
                 }
                 div class="prototype-banner" role="note" {
                     strong { "原型模式" }
-                    span { "僅限本機與非敏感試用資料；沒有企業登入，也未連接 Microsoft、Google 或 AI。" }
+                    span { "僅限本機與非敏感試用資料；使用本機帳號，沒有企業 SSO／MFA，也未連接 Microsoft、Google 或 AI。" }
                 }
                 div class="app-shell" {
                     aside class="sidebar" aria-label="主要導覽" {
@@ -1178,7 +1550,17 @@ fn metric(label: &str, value: usize, note: &str) -> Markup {
     html! { article class="metric-card" { p { (label) } strong class="metric-value" { (value) } small { (note) } } }
 }
 
-fn projects_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
+fn projects_content(
+    data: &GovernanceSnapshot,
+    error: Option<&str>,
+    draft: Option<&ProjectForm>,
+) -> Markup {
+    let name = draft.map(|form| form.name.as_str()).unwrap_or("");
+    let department = draft.map(|form| form.department.as_str()).unwrap_or("");
+    let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
+    let risk_tier = draft
+        .map(|form| form.risk_tier.as_str())
+        .unwrap_or("medium");
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 專案" } h1 { "專案登錄" } p class="page-subtitle" { "使用共同識別碼串連流程、證據、決策與改善事項。" } } }
         (alert(error))
@@ -1186,10 +1568,10 @@ fn projects_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
             div class="panel" {
                 div class="panel-heading" { div { h2 { "建立專案" } p { "第一版先記錄責任、部門與風險層級。" } } }
                 form class="form-stack" method="post" action="/projects" {
-                    (text_field("name", "專案名稱", "例如：跨部門文件治理試點", true, ""))
-                    (text_field("department", "主要部門", "", true, ""))
-                    (text_field("owner", "專案負責人", "", true, ""))
-                    label class="field" { span { "初始風險等級" } select name="risk_tier" required { option value="medium" selected { "中" } option value="low" { "低" } option value="high" { "高" } option value="critical" { "重大" } } }
+                    (text_field("name", "專案名稱", "例如：跨部門文件治理試點", true, name))
+                    (text_field("department", "主要部門", "", true, department))
+                    (text_field("owner", "專案負責人", "", true, owner))
+                    label class="field" { span { "初始風險等級" } select name="risk_tier" required { option value="medium" selected[risk_tier == "medium"] { "中" } option value="low" selected[risk_tier == "low"] { "低" } option value="high" selected[risk_tier == "high"] { "高" } option value="critical" selected[risk_tier == "critical"] { "重大" } } }
                     p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "建立專案" }
                     p class="form-hint" { "請勿在本機原型輸入機密或受管制資訊。" }
@@ -1223,7 +1605,21 @@ fn project_table(projects: &[Project], limit: usize) -> Markup {
     }
 }
 
-fn evidence_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
+fn evidence_content(
+    data: &GovernanceSnapshot,
+    error: Option<&str>,
+    draft: Option<&EvidenceForm>,
+    review: Option<(&str, &ReviewForm)>,
+) -> Markup {
+    let project_id = draft.map(|form| form.project_id.as_str()).unwrap_or("");
+    let title = draft.map(|form| form.title.as_str()).unwrap_or("");
+    let source_system = draft
+        .map(|form| form.source_system.as_str())
+        .unwrap_or("Microsoft 365");
+    let source_url = draft.map(|form| form.source_url.as_str()).unwrap_or("");
+    let source_version = draft.map(|form| form.source_version.as_str()).unwrap_or("");
+    let evidence_type = draft.map(|form| form.evidence_type.as_str()).unwrap_or("");
+    let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 文件與證據" } h1 { "文件與證據追溯" } p class="page-subtitle" { "記錄權威來源、版本與審查結果；文件本體保留在原平台。" } } }
         (alert(error))
@@ -1232,26 +1628,26 @@ fn evidence_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
             div class="panel" {
                 div class="panel-heading" { div { h2 { "連結證據" } p { "這是來源參照，不會複製或同步雲端文件。" } } }
                 form class="form-stack" method="post" action="/evidence" {
-                    label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) { (project.id) " · " (project.name) } } } }
-                    (text_field("title", "文件／證據標題", "", true, ""))
-                    label class="field" { span { "來源平台" } select name="source_system" required { option value="Microsoft 365" { "Microsoft 365" } option value="Google Workspace" { "Google Workspace" } option value="Other" { "其他／混合工具" } } }
-                    (text_field("source_url", "來源連結", "https://…", true, ""))
-                    (text_field("source_version", "來源版本／修訂", "例如：v3.2 或平台版本 ID", true, ""))
-                    (text_field("evidence_type", "證據類型", "例如：核准紀錄、測試報告", true, ""))
-                    (text_field("owner", "文件負責人", "", true, ""))
+                    label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
+                    (text_field("title", "文件／證據標題", "", true, title))
+                    label class="field" { span { "來源平台" } select name="source_system" required { option value="Microsoft 365" selected[source_system == "Microsoft 365"] { "Microsoft 365" } option value="Google Workspace" selected[source_system == "Google Workspace"] { "Google Workspace" } option value="Other" selected[source_system == "Other"] { "其他／混合工具" } } }
+                    (text_field("source_url", "來源連結", "https://…", true, source_url))
+                    (text_field("source_version", "來源版本／修訂", "例如：v3.2 或平台版本 ID", true, source_version))
+                    (text_field("evidence_type", "證據類型", "例如：核准紀錄、測試報告", true, evidence_type))
+                    (text_field("owner", "文件負責人", "", true, owner))
                     p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "登錄來源參照" }
                 }
             }
             div class="panel panel-wide" {
                 div class="panel-heading" { div { h2 { "證據索引" } p { (data.evidence.len()) " 筆來源參照" } } }
-                (evidence_table(data))
+                (evidence_table(data, review))
             }
         }
     }
 }
 
-fn evidence_table(data: &GovernanceSnapshot) -> Markup {
+fn evidence_table(data: &GovernanceSnapshot, review_draft: Option<(&str, &ReviewForm)>) -> Markup {
     html! {
         @if data.evidence.is_empty() {
             (empty_state("尚無證據參照", "先新增專案，再從來源平台登錄連結和文件版本。", "/projects", "建立專案"))
@@ -1264,6 +1660,9 @@ fn evidence_table(data: &GovernanceSnapshot) -> Markup {
                         @for item in data.evidence.iter().rev() {
                             @let project = data.projects.iter().find(|p| p.id == item.project_id);
                             @let review = data.reviews.get(&item.id);
+                            @let draft = review_draft.and_then(|(review_id, form)| (review_id == item.id).then_some(form));
+                            @let draft_result = draft.map(|form| form.result.as_str()).unwrap_or("accepted");
+                            @let draft_note = draft.map(|form| form.note.as_str()).unwrap_or("");
                             tr {
                                 th scope="row" {
                                     strong { (item.title) }
@@ -1276,8 +1675,8 @@ fn evidence_table(data: &GovernanceSnapshot) -> Markup {
                                 td {
                                     @if let Some(review) = review { small { (review.reviewer) " · " (format_timestamp(review.reviewed_at)) } }
                                     form class="inline-review" method="post" action=(format!("/evidence/{}/review", item.id)) {
-                                        select name="result" aria-label="審查結果" { option value="accepted" { "確認有效" } option value="changes_requested" { "退回補充" } }
-                                        input type="text" name="note" aria-label="審查備註或退回說明" placeholder="備註；退回必填" maxlength="1000";
+                                        select name="result" aria-label="審查結果" { option value="accepted" selected[draft_result == "accepted"] { "確認有效" } option value="changes_requested" selected[draft_result == "changes_requested"] { "退回補充" } }
+                                        input type="text" name="note" value=(draft_note) aria-label="審查備註或退回說明" placeholder="備註；退回必填" maxlength="1000";
                                         button class="button button-small" type="submit" { "記錄" }
                                     }
                                 }
@@ -1290,7 +1689,17 @@ fn evidence_table(data: &GovernanceSnapshot) -> Markup {
     }
 }
 
-fn workflows_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
+fn workflows_content(
+    data: &GovernanceSnapshot,
+    error: Option<&str>,
+    draft: Option<&WorkflowForm>,
+) -> Markup {
+    let base_id = draft.map(|form| form.base_id.as_str()).unwrap_or("");
+    let title = draft.map(|form| form.title.as_str()).unwrap_or("");
+    let department = draft.map(|form| form.department.as_str()).unwrap_or("");
+    let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
+    let description = draft.map(|form| form.description.as_str()).unwrap_or("");
+    let stages = draft.map(|form| form.stages.as_str()).unwrap_or("");
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 流程範本" } h1 { "可配置流程範本" } p class="page-subtitle" { "以步驟清單快速建立部門流程；每個草稿必須經流程負責人審查才可發布。" } } }
         (alert(error))
@@ -1299,12 +1708,12 @@ fn workflows_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
             div class="panel" {
                 div class="panel-heading" { div { h2 { "建立流程草稿" } p { "先定義流程目的、負責人與可驗證階段。" } } }
                 form class="form-stack" method="post" action="/workflows" {
-                    label class="field" { span { "基於既有範本（選填）" } select name="base_id" { option value="" { "建立新範本" } @for workflow in latest_workflows(&data.workflows) { option value=(workflow.id) { (workflow.id) " · " (workflow.title) " v" (workflow.version) } } } }
-                    (text_field("title", "流程名稱", "", true, ""))
-                    (text_field("department", "適用部門／跨部門範圍", "", true, ""))
-                    (text_field("owner", "流程負責人", "", true, ""))
-                    label class="field" { span { "流程目的" } textarea name="description" required maxlength="1500" rows="3" placeholder="這條流程要解決的業務問題與完成條件" {} }
-                    label class="field" { span { "流程階段" } textarea name="stages" required rows="7" placeholder="每行一個階段，例如：\n提出需求\n風險評估\n審查核准\n執行與驗證\n結案封存" {} }
+                    label class="field" { span { "基於既有範本（選填）" } select name="base_id" { option value="" selected[base_id.is_empty()] { "建立新範本" } @for workflow in latest_workflows(&data.workflows) { option value=(workflow.id) selected[base_id == workflow.id] { (workflow.id) " · " (workflow.title) " v" (workflow.version) } } } }
+                    (text_field("title", "流程名稱", "", true, title))
+                    (text_field("department", "適用部門／跨部門範圍", "", true, department))
+                    (text_field("owner", "流程負責人", "", true, owner))
+                    label class="field" { span { "流程目的" } textarea name="description" required maxlength="1500" rows="3" placeholder="這條流程要解決的業務問題與完成條件" { (description) } }
+                    label class="field" { span { "流程階段" } textarea name="stages" required rows="7" placeholder="每行一個階段，例如：\n提出需求\n風險評估\n審查核准\n執行與驗證\n結案封存" { (stages) } }
                     small class="field-help" { "每行一個階段，最多 30 階段。五個強制關卡在生命週期頁面管理。" }
                     p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "儲存為草稿" }
@@ -1357,7 +1766,18 @@ fn latest_workflows(workflows: &[Workflow]) -> Vec<&Workflow> {
     latest.into_values().collect()
 }
 
-fn controls_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
+fn controls_content(
+    data: &GovernanceSnapshot,
+    error: Option<&str>,
+    draft: Option<&QualityCaseForm>,
+    update: Option<(&str, &QualityCaseUpdateForm)>,
+) -> Markup {
+    let project_id = draft.map(|form| form.project_id.as_str()).unwrap_or("");
+    let kind = draft.map(|form| form.kind.as_str()).unwrap_or("risk");
+    let title = draft.map(|form| form.title.as_str()).unwrap_or("");
+    let description = draft.map(|form| form.description.as_str()).unwrap_or("");
+    let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
+    let due_date = draft.map(|form| form.due_date.as_str()).unwrap_or("");
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 品質閉環" } h1 { "風險與品質事件" } p class="page-subtitle" { "集中追蹤風險、變更、缺失及矯正措施，保留責任人、期限和處理紀錄。" } } }
         (alert(error))
@@ -1366,25 +1786,33 @@ fn controls_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
             div class="panel" {
                 div class="panel-heading" { div { h2 { "新增事件" } p { "CAPA 關閉時須附複驗或有效性紀錄。" } } }
                 form class="form-stack" method="post" action="/controls" {
-                    label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) { (project.id) " · " (project.name) } } } }
-                    label class="field" { span { "事件類型" } select name="kind" required { option value="risk" { "風險" } option value="change" { "變更" } option value="finding" { "缺失／問題" } option value="capa" { "CAPA 矯正預防" } } }
-                    (text_field("title", "標題", "", true, ""))
-                    label class="field" { span { "內容與影響" } textarea name="description" required maxlength="2000" rows="4" {} }
-                    (text_field("owner", "負責人", "", true, ""))
-                    label class="field" { span { "到期日" } input type="date" name="due_date" required; }
+                    label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
+                    label class="field" { span { "事件類型" } select name="kind" required { option value="risk" selected[kind == "risk"] { "風險" } option value="change" selected[kind == "change"] { "變更" } option value="finding" selected[kind == "finding"] { "缺失／問題" } option value="capa" selected[kind == "capa"] { "CAPA 矯正預防" } } }
+                    (text_field("title", "標題", "", true, title))
+                    label class="field" { span { "內容與影響" } textarea name="description" required maxlength="2000" rows="4" { (description) } }
+                    (text_field("owner", "負責人", "", true, owner))
+                    label class="field" { span { "到期日" } input type="date" name="due_date" value=(due_date) required; }
                     p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                     button class="button button-primary" type="submit" { "新增追蹤事項" }
                 }
             }
             div class="panel panel-wide" {
                 div class="panel-heading" { div { h2 { "追蹤清單" } p { (data.cases.len()) " 項風險與品質事件" } } }
-                (quality_case_list(data))
+                (quality_case_list(data, update))
             }
         }
     }
 }
 
-fn inspections_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
+fn inspections_content(
+    data: &GovernanceSnapshot,
+    error: Option<&str>,
+    draft: Option<&HashMap<String, String>>,
+) -> Markup {
+    let project_id = draft
+        .and_then(|fields| fields.get("project_id"))
+        .map(String::as_str)
+        .unwrap_or("");
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 品質保證" } h1 { "29 項品質檢查" } p class="page-subtitle" { "逐項記錄判定與可追溯依據；不適用項目需說明，不符合項目需連到缺失。" } } }
         (alert(error))
@@ -1395,7 +1823,7 @@ fn inspections_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup
             @else {
                 form class="form-stack" method="post" action="/inspections" {
                     div class="inspection-meta" {
-                        label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) { (project.id) " · " (project.name) } } } }
+                        label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
                     }
                     div class="notice notice-blue" { strong { "判定規則" } span { "符合：填可查證的證據 ID／連結；不符合：填說明及缺失編號；不適用：填理由。檢查人由目前登入的本機帳號自動記錄。" } }
                     div class="table-wrap" {
@@ -1407,12 +1835,16 @@ fn inspections_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup
                                 @let evidence_name = format!("evidence_{}", item.id);
                                 @let note_name = format!("note_{}", item.id);
                                 @let issue_name = format!("issue_{}", item.id);
+                                @let draft_result = draft.and_then(|fields| fields.get(&result_name)).map(String::as_str).unwrap_or("");
+                                @let draft_evidence = draft.and_then(|fields| fields.get(&evidence_name)).map(String::as_str).unwrap_or("");
+                                @let draft_note = draft.and_then(|fields| fields.get(&note_name)).map(String::as_str).unwrap_or("");
+                                @let draft_issue = draft.and_then(|fields| fields.get(&issue_name)).map(String::as_str).unwrap_or("");
                                 tr {
                                     th scope="row" { small class="row-id" { (item.id) " · " (item.category) } strong class="check-criterion" { (item.criterion) } }
-                                    td { select name=(result_name) required aria-label=(format!("{} 判定", item.id)) { option value="" selected disabled { "選擇" } option value="pass" { "符合" } option value="fail" { "不符合" } option value="not_applicable" { "不適用" } } }
-                                    td { input type="text" name=(evidence_name) maxlength="2048" aria-label=(format!("{} 證據參照", item.id)) placeholder="證據 ID／連結"; }
-                                    td { input type="text" name=(note_name) maxlength="1000" aria-label=(format!("{} 說明", item.id)) placeholder="說明／理由"; }
-                                    td { input type="text" name=(issue_name) maxlength="80" aria-label=(format!("{} 缺失編號", item.id)) placeholder="不符合時必填"; }
+                                    td { select name=(result_name) required aria-label=(format!("{} 判定", item.id)) { option value="" selected[draft_result.is_empty()] disabled { "選擇" } option value="pass" selected[draft_result == "pass"] { "符合" } option value="fail" selected[draft_result == "fail"] { "不符合" } option value="not_applicable" selected[draft_result == "not_applicable"] { "不適用" } } }
+                                    td { input type="text" name=(evidence_name) value=(draft_evidence) maxlength="2048" aria-label=(format!("{} 證據參照", item.id)) placeholder="證據 ID／連結"; }
+                                    td { input type="text" name=(note_name) value=(draft_note) maxlength="1000" aria-label=(format!("{} 說明", item.id)) placeholder="說明／理由"; }
+                                    td { input type="text" name=(issue_name) value=(draft_issue) maxlength="80" aria-label=(format!("{} 缺失編號", item.id)) placeholder="不符合時必填"; }
                                 }
                             } }
                         }
@@ -1463,20 +1895,26 @@ fn inspections_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup
     }
 }
 
-fn quality_case_list(data: &GovernanceSnapshot) -> Markup {
+fn quality_case_list(
+    data: &GovernanceSnapshot,
+    update: Option<(&str, &QualityCaseUpdateForm)>,
+) -> Markup {
     html! {
         @if data.cases.is_empty() { (empty_state("尚無追蹤事項", "新增風險、變更、缺失或 CAPA，並指定負責人與期限。", "/controls", "新增事項")) }
         @else {
             div class="case-list" {
                 @for case in data.cases.iter().rev() {
+                    @let draft = update.and_then(|(update_id, form)| (update_id == case.id).then_some(form));
+                    @let draft_status = draft.map(|form| form.status.as_str()).unwrap_or(case.status.as_str());
+                    @let draft_note = draft.map(|form| form.note.as_str()).unwrap_or("");
                     article class="case-card" {
                         div class="workflow-title-row" { div { p class="row-id" { (case.id) " · " (kind_label(&case.kind)) " · " (case.project_id) } h3 { (case.title) } } (case_status_badge(&case.status)) }
                         p class="multiline" { (case.description) }
                         p class="muted" { "負責人 " (case.owner) " · 到期 " (case.due_date) }
                         @if case.status != "closed" {
                             form class="publish-form" method="post" action=(format!("/controls/{}/status", case.id)) {
-                                label class="compact-field" { span { "更新狀態" } select name="status" { option value="open" selected[case.status == "open"] { "待處理" } option value="in_progress" selected[case.status == "in_progress"] { "處理中" } option value="verification" selected[case.status == "verification"] { "待複驗" } option value="closed" { "結案" } } }
-                                label class="compact-field" { span { "處理／結案紀錄" } input type="text" name="note" maxlength="1200" required placeholder="複驗結果或更新說明"; }
+                                label class="compact-field" { span { "更新狀態" } select name="status" { option value="open" selected[draft_status == "open"] { "待處理" } option value="in_progress" selected[draft_status == "in_progress"] { "處理中" } option value="verification" selected[draft_status == "verification"] { "待複驗" } option value="closed" selected[draft_status == "closed"] { "結案" } } }
+                                label class="compact-field" { span { "處理／結案紀錄" } input type="text" name="note" value=(draft_note) maxlength="1200" required placeholder="複驗結果或更新說明"; }
                                 p class="form-hint" { "更新人由目前登入的本機帳號自動記錄。" }
                                 button class="button button-small button-secondary" type="submit" { "記錄更新" }
                             }
@@ -1488,7 +1926,26 @@ fn quality_case_list(data: &GovernanceSnapshot) -> Markup {
     }
 }
 
-fn lifecycle_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
+fn lifecycle_content(
+    data: &GovernanceSnapshot,
+    error: Option<&str>,
+    draft: Option<&GateDecisionForm>,
+) -> Markup {
+    let project_id = draft.map(|form| form.project_id.as_str()).unwrap_or("");
+    let gate_id = draft.map(|form| form.gate_id.as_str()).unwrap_or("G1");
+    let decision = draft.map(|form| form.decision.as_str()).unwrap_or("hold");
+    let non_waivable = draft
+        .map(|form| form.non_waivable.as_str())
+        .unwrap_or("yes");
+    let reason = draft.map(|form| form.reason.as_str()).unwrap_or("");
+    let evidence_reference = draft
+        .map(|form| form.evidence_reference.as_str())
+        .unwrap_or("");
+    let risk_acceptor = draft.map(|form| form.risk_acceptor.as_str()).unwrap_or("");
+    let remediation_due = draft
+        .map(|form| form.remediation_due.as_str())
+        .unwrap_or("");
+
     let stages = [
         "專案立案與分類",
         "需求與合規分析",
@@ -1528,14 +1985,14 @@ fn lifecycle_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
                 @if data.projects.is_empty() { p class="empty-inline" { "先建立專案後才能記錄決議。" } }
                 @else {
                     form class="form-stack" method="post" action="/lifecycle" {
-                        label class="field" { span { "專案" } select name="project_id" required { option value="" selected disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) { (project.id) " · " (project.name) } } } }
-                        label class="field" { span { "關卡" } select name="gate_id" required { @for (id, name, _) in gates { option value=(id) { (id) " · " (name) } } } }
-                        label class="field" { span { "人工決議" } select name="decision" required { option value="hold" { "暫緩" } option value="go" { "放行" } option value="exception" { "一般例外" } } }
-                        label class="field" { span { "是否涉及不可豁免要求" } select name="non_waivable" required { option value="yes" { "是" } option value="no" { "否" } } }
-                        label class="field" { span { "原因／例外依據" } textarea name="reason" rows="2" maxlength="1200" placeholder="暫緩或例外時必填" {} }
-                        (text_field("evidence_reference", "證據參照（選填）", "來源系統連結或證據 ID", false, ""))
-                        (text_field("risk_acceptor", "風險接受者（例外必填）", "", false, ""))
-                        label class="field" { span { "補救期限（例外必填）" } input type="date" name="remediation_due"; }
+                        label class="field" { span { "專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
+                        label class="field" { span { "關卡" } select name="gate_id" required { @for (id, name, _) in gates { option value=(id) selected[gate_id == id] { (id) " · " (name) } } } }
+                        label class="field" { span { "人工決議" } select name="decision" required { option value="hold" selected[decision == "hold"] { "暫緩" } option value="go" selected[decision == "go"] { "放行" } option value="exception" selected[decision == "exception"] { "一般例外" } } }
+                        label class="field" { span { "是否涉及不可豁免要求" } select name="non_waivable" required { option value="yes" selected[non_waivable == "yes"] { "是" } option value="no" selected[non_waivable == "no"] { "否" } } }
+                        label class="field" { span { "原因／例外依據" } textarea name="reason" rows="2" maxlength="1200" placeholder="暫緩或例外時必填" { (reason) } }
+                        (text_field("evidence_reference", "證據參照（選填）", "來源系統連結或證據 ID", false, evidence_reference))
+                        (text_field("risk_acceptor", "風險接受者（例外必填）", "", false, risk_acceptor))
+                        label class="field" { span { "補救期限（例外必填）" } input type="date" name="remediation_due" value=(remediation_due); }
                         p class="form-hint" { "決議記錄人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
                         button class="button button-primary" type="submit" { "保存決議" }
                     }
@@ -1778,14 +2235,16 @@ fn review_label_text(value: &str) -> &'static str {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct ProjectForm {
     name: String,
     department: String,
     owner: String,
     risk_tier: String,
 }
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct EvidenceForm {
     project_id: String,
     title: String,
@@ -1795,12 +2254,14 @@ struct EvidenceForm {
     evidence_type: String,
     owner: String,
 }
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct ReviewForm {
     result: String,
     note: String,
 }
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct WorkflowForm {
     base_id: String,
     title: String,
@@ -1809,7 +2270,8 @@ struct WorkflowForm {
     description: String,
     stages: String,
 }
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct QualityCaseForm {
     project_id: String,
     kind: String,
@@ -1818,12 +2280,14 @@ struct QualityCaseForm {
     owner: String,
     due_date: String,
 }
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct QualityCaseUpdateForm {
     status: String,
     note: String,
 }
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct GateDecisionForm {
     project_id: String,
     gate_id: String,
@@ -1855,10 +2319,23 @@ mod tests {
 
     #[test]
     fn rendered_shell_uses_semantic_accessible_navigation_without_scripts() {
-        let rendered = layout("測試", "overview", html! { main { "content" } }).into_string();
+        let user = CurrentUser {
+            username: "tester".to_string(),
+            role: Role::Admin,
+        };
+        let rendered = layout(
+            Some(&user),
+            "測試",
+            "overview",
+            html! { main { "content" } },
+        )
+        .into_string();
         assert!(rendered.contains("lang=\"zh-Hant\""));
         assert!(rendered.contains("跳至主要內容"));
         assert!(rendered.contains("aria-label=\"主要導覽\""));
+        assert!(rendered.contains("tester"));
+        assert!(rendered.contains("管理者"));
+        assert!(rendered.contains("action=\"/logout\""));
         assert!(!rendered.contains("<script"));
     }
 

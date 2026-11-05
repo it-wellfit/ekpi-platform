@@ -157,6 +157,10 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
     let html = response_text(response).await;
     assert!(html.contains("跳至主要內容"));
     assert!(html.contains("文件與證據"));
+    assert!(html.contains("class=\"user-chip\""));
+    assert!(html.contains("tester"));
+    assert!(html.contains("管理者"));
+    assert!(html.contains("action=\"/logout\""));
     assert!(!html.contains("<script"));
 
     let response = get_with_cookie(&app, "/assets/governance.css", None).await;
@@ -168,6 +172,9 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
     let css = response_text(response).await;
     assert!(css.contains(":focus-visible"));
     assert!(css.contains("@media (max-width: 760px)"));
+    assert!(css.contains(".user-chip"));
+    assert!(css.contains(".auth-card"));
+    assert!(css.contains(".button-quiet"));
 
     for (route, expected_heading) in [
         ("/projects", "專案登錄"),
@@ -263,7 +270,16 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response_text(response).await.contains("待複驗狀態"));
+    let closure_error = response_text(response).await;
+    assert!(closure_error.contains("待複驗狀態"));
+    assert!(
+        closure_error.contains("value=\"Effectiveness confirmed\""),
+        "a rejected status change must preserve the entered note"
+    );
+    assert!(
+        closure_error.contains("value=\"closed\" selected"),
+        "a rejected status change must preserve the selected status"
+    );
 
     for (status, note) in [
         ("in_progress", "Corrective action performed"),
@@ -297,9 +313,14 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response_text(response)
-        .await
-        .contains("不可豁免要求不得以一般例外放行"));
+    let lifecycle_error = response_text(response).await;
+    assert!(lifecycle_error.contains("不可豁免要求不得以一般例外放行"));
+    assert!(
+        lifecycle_error.contains("Missing mandatory evidence"),
+        "a rejected gate decision must preserve its reason"
+    );
+    assert!(lifecycle_error.contains("value=\"Sponsor\""));
+    assert!(lifecycle_error.contains("value=\"2026-12-31\""));
 
     let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -342,6 +363,19 @@ async fn data_pages_require_authentication() {
             StatusCode::UNAUTHORIZED,
             "route {route} must require a session"
         );
+        let html = response_text(response).await;
+        assert!(
+            html.contains("action=\"/login\""),
+            "route {route} must render the login form"
+        );
+        assert!(
+            html.contains("請先登入"),
+            "route {route} must explain why the page is unavailable"
+        );
+        assert!(
+            !html.contains("工作總覽"),
+            "route {route} must not render ledger content"
+        );
     }
     let response = get_with_cookie(&app, "/login", None).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -366,6 +400,12 @@ async fn viewer_role_cannot_mutate() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let html = response_text(response).await;
+    assert!(html.contains("權限不足"));
+    assert!(html.contains("檢視者"));
+    assert!(html.contains("編輯者"));
+    assert!(html.contains("action=\"/logout\""));
+    assert!(!html.contains("Pilot project"));
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
@@ -379,6 +419,21 @@ async fn login_rejects_a_bad_password_without_a_cookie() {
     let response = post_form(&app, "/login", "username=tester&password=wrong-password").await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(response.headers().get(header::SET_COOKIE).is_none());
+    let html = response_text(response).await;
+    assert!(html.contains("action=\"/login\""));
+    assert!(html.contains("使用者名稱或密碼不正確"));
+    assert!(html.contains("value=\"tester\""));
+    assert!(!html.contains("wrong-password"));
+
+    let response = post_form(&app, "/login", "username=tester").await;
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "a login form missing its password must be a 400, not a panic or an empty body"
+    );
+    let html = response_text(response).await;
+    assert!(html.contains("登入表單格式不正確"));
+    assert!(html.contains("action=\"/login\""));
 
     let response = app
         .clone()
@@ -405,6 +460,9 @@ async fn oversized_login_body_is_rejected_before_parsing() {
     let response = post_form(&app, "/login", &body).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(response.headers().get(header::SET_COOKIE).is_none());
+    let html = response_text(response).await;
+    assert!(html.contains("登入表單超過大小限制"));
+    assert!(html.contains("action=\"/login\""));
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
@@ -449,6 +507,9 @@ async fn oversized_form_body_is_rejected_before_parsing() {
     let body = format!("name={}", "a".repeat(70_000));
     let response = post_authed(&app, &cookie, "/projects", &body).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let html = response_text(response).await;
+    assert!(html.contains("表單內容不完整"));
+    assert!(html.contains("action=\"/logout\""));
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
@@ -799,6 +860,277 @@ async fn logout_mirrors_the_secure_cookie_attribute() {
         "logout must mirror the login cookie's Secure attribute"
     );
 
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn login_page_redirects_an_authenticated_session() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = get_with_cookie(&app, "/login", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers().get(header::LOCATION).unwrap(), "/");
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn unknown_route_renders_a_consistent_html_404() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = get_with_cookie(&app, "/does-not-exist", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let html = response_text(response).await;
+    assert!(html.contains("此頁面不存在"));
+    assert!(html.contains("回到工作總覽"));
+    assert!(html.contains("action=\"/logout\""));
+    assert!(html.contains("tester"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn inspection_validation_error_preserves_all_entered_values() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Inspection+project&department=QA&owner=Alex&risk_tier=medium",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let mut body = "project_id=PRJ-000001".to_string();
+    for item in QUALITY_CHECKLIST {
+        if item.id == "QC-01" {
+            body.push_str("&result_QC-01=fail");
+        } else {
+            body.push_str(&format!(
+                "&result_{}=pass&evidence_{}=REF-{}",
+                item.id, item.id, item.id
+            ));
+        }
+    }
+    body.push_str("&note_QC-02=Preserve+note&issue_QC-03=ISSUE-77");
+
+    let response = post_authed(&app, &cookie, "/inspections", &body).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(
+        html.contains("不符合項目的說明不可空白"),
+        "the validation error must be shown: {html}"
+    );
+    assert!(html.contains("value=\"PRJ-000001\" selected"));
+    assert!(
+        html.contains("value=\"fail\" selected"),
+        "the selected QC-01 result must survive the re-render"
+    );
+    assert!(html.contains("value=\"REF-QC-02\""));
+    assert!(html.contains("value=\"Preserve note\""));
+    assert!(html.contains("value=\"ISSUE-77\""));
+    assert!(html.contains("0 份完整檢查紀錄"));
+    assert!(html.contains("action=\"/logout\""));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn workflow_validation_error_preserves_the_draft_and_stage_text() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let stages = (1..=31)
+        .map(|index| format!("Stage {index}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .replace(' ', "+")
+        .replace('\n', "%0A");
+    let body = format!(
+        "base_id=&title=Preserve+workflow&department=QA&owner=Alex&description=Keep+this+description&stages={stages}"
+    );
+    let response = post_authed(&app, &cookie, "/workflows", &body).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("流程需有 1 至 30 個階段"));
+    assert!(html.contains("value=\"Preserve workflow\""));
+    assert!(html.contains("value=\"QA\""));
+    assert!(html.contains("value=\"Alex\""));
+    assert!(html.contains("Keep this description"));
+    assert!(html.contains("Stage 31"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn project_validation_error_preserves_the_entered_values() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Preserve+project&department=PMO&owner=&risk_tier=critical",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("負責人不可空白"));
+    assert!(html.contains("value=\"Preserve project\""));
+    assert!(html.contains("value=\"PMO\""));
+    assert!(html.contains("value=\"critical\" selected"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn evidence_validation_error_preserves_the_entered_values() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Evidence+project&department=PMO&owner=Alex&risk_tier=low",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/evidence",
+        "project_id=PRJ-000001&title=Preserve+evidence&source_system=Other&source_url=not-a-url&source_version=v9&evidence_type=approval&owner=Alex",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("來源連結必須使用 http:// 或 https://"));
+    assert!(html.contains("value=\"PRJ-000001\" selected"));
+    assert!(html.contains("value=\"Preserve evidence\""));
+    assert!(html.contains("value=\"Other\" selected"));
+    assert!(html.contains("value=\"not-a-url\""));
+    assert!(html.contains("value=\"v9\""));
+    assert!(html.contains("value=\"approval\""));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn controls_validation_error_preserves_the_entered_values() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Controls+project&department=PMO&owner=Alex&risk_tier=low",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/controls",
+        "project_id=PRJ-000001&kind=capa&title=Preserve+control&description=Keep+this+impact&owner=Alex&due_date=2026/13/40",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("到期日請使用 YYYY-MM-DD 格式"));
+    assert!(html.contains("value=\"PRJ-000001\" selected"));
+    assert!(html.contains("value=\"capa\" selected"));
+    assert!(html.contains("value=\"Preserve control\""));
+    assert!(html.contains("Keep this impact"));
+    assert!(html.contains("value=\"2026/13/40\""));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn evidence_review_error_preserves_the_entered_note() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=Review+project&department=PMO&owner=Alex&risk_tier=low",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/evidence",
+        "project_id=PRJ-000001&title=Review+evidence&source_system=Other&source_url=https%3A%2F%2Fexample.test%2Fitem&source_version=v1&evidence_type=approval&owner=Alex",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/evidence/EVD-000002/review",
+        "result=bogus&note=Keep+review+note",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("請選擇有效的審查結果"));
+    assert!(html.contains("value=\"Keep review note\""));
+    assert!(html.contains("action=\"/evidence/EVD-000002/review\""));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn malformed_data_form_renders_html_400_without_appending() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=First&name=Second&department=PMO&owner=Alex&risk_tier=low",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let html = response_text(response).await;
+    assert!(html.contains("表單內容不完整"));
+    assert!(html.contains("action=\"/logout\""));
+    let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
+    assert!(response_text(response).await.contains("0 筆事件"));
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
