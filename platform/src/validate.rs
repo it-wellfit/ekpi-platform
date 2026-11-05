@@ -65,20 +65,20 @@ fn check(instance: &Value, schema: &Value, root: &Value, path: &str, errs: &mut 
                 }
             }
 
-            if let Some(type_spec) = map.get("type") {
-                if !type_conforms(type_spec, instance) {
-                    errs.push(format!(
-                        "{path}: type {}",
-                        describe_expected_type(type_spec)
-                    ));
-                    return;
-                }
+            if let Some(type_spec) = map.get("type")
+                && !type_conforms(type_spec, instance)
+            {
+                errs.push(format!(
+                    "{path}: type {}",
+                    describe_expected_type(type_spec)
+                ));
+                return;
             }
 
-            if let Some(variants) = map.get("enum").and_then(Value::as_array) {
-                if !variants.iter().any(|v| v == instance) {
-                    errs.push(format!("{path}: value not in enum"));
-                }
+            if let Some(variants) = map.get("enum").and_then(Value::as_array)
+                && !variants.iter().any(|v| v == instance)
+            {
+                errs.push(format!("{path}: value not in enum"));
             }
 
             match instance {
@@ -149,20 +149,20 @@ fn check(instance: &Value, schema: &Value, root: &Value, path: &str, errs: &mut 
                             _ => errs.push(format!("{path}: unsupported items schema form")),
                         }
                     }
-                    if let Some(min) = map.get("minItems").and_then(Value::as_u64) {
-                        if (items.len() as u64) < min {
-                            errs.push(format!("{path}: minItems {min} (got {})", items.len()));
-                        }
+                    if let Some(min) = map.get("minItems").and_then(Value::as_u64)
+                        && (items.len() as u64) < min
+                    {
+                        errs.push(format!("{path}: minItems {min} (got {})", items.len()));
                     }
                 }
                 Value::String(text) => {
-                    if let Some(min) = map.get("minLength").and_then(Value::as_u64) {
-                        if (text.chars().count() as u64) < min {
-                            errs.push(format!(
-                                "{path}: minLength {min} (got {})",
-                                text.chars().count()
-                            ));
-                        }
+                    if let Some(min) = map.get("minLength").and_then(Value::as_u64)
+                        && (text.chars().count() as u64) < min
+                    {
+                        errs.push(format!(
+                            "{path}: minLength {min} (got {})",
+                            text.chars().count()
+                        ));
                     }
                     if let Some(pattern) = map.get("pattern").and_then(Value::as_str) {
                         match pattern_matches(pattern, text) {
@@ -175,10 +175,10 @@ fn check(instance: &Value, schema: &Value, root: &Value, path: &str, errs: &mut 
                     }
                 }
                 Value::Number(num) => {
-                    if let Some(min) = map.get("minimum").and_then(Value::as_f64) {
-                        if num.as_f64().is_some_and(|v| v < min) {
-                            errs.push(format!("{path}: minimum {min} (got {num})"));
-                        }
+                    if let Some(min) = map.get("minimum").and_then(Value::as_f64)
+                        && num.as_f64().is_some_and(|v| v < min)
+                    {
+                        errs.push(format!("{path}: minimum {min} (got {num})"));
                     }
                 }
                 _ => {}

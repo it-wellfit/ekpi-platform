@@ -24,6 +24,11 @@ EKPI-backup/
 # Local governance ledger (default is outside the repo, but keep it out if copied in)
 governance-ledger.jsonl
 
-# Editor and tool output
-.vscode/
-.idea/
+# Session file management
+.kilo/sessions/*/runs/
+.kilo/sessions/*/tests/*.log
+artifacts/sessions/*/runs/
+artifacts/sessions/*/tests/*.log
+artifacts/sessions/*/io/input/
+artifacts/sessions/*/io/output/
+```

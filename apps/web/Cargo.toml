@@ -1,0 +1,45 @@
+[package]
+name = "ekp_web"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "EKPI web: Axum HTTP server, Askama HTML templates, handlers, routes, middleware"
+
+[dependencies]
+ekp_domain = { path = "../../crates/domain", version = "0.1.0" }
+ekp_application = { path = "../../crates/application", version = "0.1.0" }
+ekp_adapters = { path = "../../crates/adapters", version = "0.1.0" }
+
+# Web framework
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# HTML Template
+askama = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_urlencoded = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# IDs and time
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+
+[[bin]]
+name = "ekp_web"
+path = "src/main.rs"

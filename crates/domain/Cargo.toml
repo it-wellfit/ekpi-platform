@@ -1,0 +1,12 @@
+[package]
+name = "ekp_domain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "EKPI domain model and business rules: governance records, quality checklist, identity and tenant concepts. No I/O and no framework dependencies."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

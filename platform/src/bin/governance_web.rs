@@ -3,7 +3,7 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use ekp_platform::governance::{default_ledger_path, Ledger};
+use ekp_platform::governance::{Ledger, default_ledger_path};
 use ekp_platform::governance_web;
 use ekp_platform::local_auth::{AuthStore, Role};
 

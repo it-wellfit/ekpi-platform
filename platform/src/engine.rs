@@ -9,7 +9,7 @@ use crate::causal::{
     IdentificationStrategy,
 };
 use crate::docs::DocDatabase;
-use crate::process::{replay_case, ReplayEvent, ReplayFinding};
+use crate::process::{ReplayEvent, ReplayFinding, replay_case};
 use crate::rules::{Resolution, RuleDatabase};
 
 pub const DEFAULT_RETRIEVAL_THRESHOLD: f64 = 0.70;
@@ -181,20 +181,20 @@ impl Platform {
                     &rec.source.document_id,
                     &rec.source.document_version,
                     earliest_ts,
-                ) {
-                    if !in_force {
-                        expired_or_future = true;
-                    }
+                ) && !in_force
+                {
+                    expired_or_future = true;
                 }
                 if !rec.temporal.effective_from.is_empty()
                     && rec.temporal.effective_from.as_str() > earliest_ts
                 {
                     expired_or_future = true;
                 }
-                if let Some(to) = &rec.temporal.effective_to {
-                    if !to.is_empty() && to.as_str() < earliest_ts {
-                        expired_or_future = true;
-                    }
+                if let Some(to) = &rec.temporal.effective_to
+                    && !to.is_empty()
+                    && to.as_str() < earliest_ts
+                {
+                    expired_or_future = true;
                 }
             }
         }
@@ -266,59 +266,58 @@ impl Platform {
         let mut deadline_violated = false;
         let mut deadline_escalate = false;
         for r in &resolved {
-            if let Some(rec) = r.record {
-                if let Some(dl) = &rec.sequencing.deadline {
-                    let ref_act = dl.get("ref").and_then(|v| v.as_str()).unwrap_or("");
-                    let dur_iso = dl
-                        .get("duration_iso")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let on_violation = &rec.sequencing.on_violation;
-                    // Parse only the unambiguous day/time subset of ISO 8601:
-                    // PnW, PnD, PTnH, PTnM, PTnS and combinations such as
-                    // P1DT2H30M. Calendar months and years are rejected because
-                    // their length is not fixed.
-                    let dur_days = parse_iso_duration_days(dur_iso);
-                    if !dur_iso.is_empty() && dur_days.is_none() {
-                        notes.push("invalid_deadline_duration".to_string());
-                    }
-                    if let Some(dur_days) = dur_days.filter(|days| *days > 0 && !ref_act.is_empty())
-                    {
-                        let anchor_ts = case
-                            .events
-                            .iter()
-                            .filter(|e| e.activity == ref_act)
-                            .map(|e| e.ts.as_str())
-                            .min();
-                        let current_ts = case
-                            .events
-                            .iter()
-                            .filter(|e| e.activity == "execute_change")
-                            .map(|e| e.ts.as_str())
-                            .max();
-                        if let (Some(a), Some(c)) = (anchor_ts, current_ts) {
-                            if c > a {
-                                let diff = date_diff_days(a, c);
-                                if diff > dur_days {
-                                    match on_violation.as_deref() {
-                                        Some("escalate") => {
-                                            deadline_escalate = true;
-                                            notes.push("deadline_exceeded".to_string());
-                                        }
-                                        Some("warn") => {
-                                            notes.push("deadline_overdue_warned".to_string());
-                                        }
-                                        _ => {
-                                            deadline_violated = true;
-                                            notes.push("deadline_exceeded".to_string());
-                                        }
+            if let Some(rec) = r.record
+                && let Some(dl) = &rec.sequencing.deadline
+            {
+                let ref_act = dl.get("ref").and_then(|v| v.as_str()).unwrap_or("");
+                let dur_iso = dl
+                    .get("duration_iso")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let on_violation = &rec.sequencing.on_violation;
+                // Parse only the unambiguous day/time subset of ISO 8601:
+                // PnW, PnD, PTnH, PTnM, PTnS and combinations such as
+                // P1DT2H30M. Calendar months and years are rejected because
+                // their length is not fixed.
+                let dur_days = parse_iso_duration_days(dur_iso);
+                if !dur_iso.is_empty() && dur_days.is_none() {
+                    notes.push("invalid_deadline_duration".to_string());
+                }
+                if let Some(dur_days) = dur_days.filter(|days| *days > 0 && !ref_act.is_empty()) {
+                    let anchor_ts = case
+                        .events
+                        .iter()
+                        .filter(|e| e.activity == ref_act)
+                        .map(|e| e.ts.as_str())
+                        .min();
+                    let current_ts = case
+                        .events
+                        .iter()
+                        .filter(|e| e.activity == "execute_change")
+                        .map(|e| e.ts.as_str())
+                        .max();
+                    if let (Some(a), Some(c)) = (anchor_ts, current_ts) {
+                        if c > a {
+                            let diff = date_diff_days(a, c);
+                            if diff > dur_days {
+                                match on_violation.as_deref() {
+                                    Some("escalate") => {
+                                        deadline_escalate = true;
+                                        notes.push("deadline_exceeded".to_string());
+                                    }
+                                    Some("warn") => {
+                                        notes.push("deadline_overdue_warned".to_string());
+                                    }
+                                    _ => {
+                                        deadline_violated = true;
+                                        notes.push("deadline_exceeded".to_string());
                                     }
                                 }
                             }
-                        } else if anchor_ts.is_none() && current_ts.is_some() {
-                            has_missing_evidence = true;
-                            notes.push("deadline_anchor_missing".to_string());
                         }
+                    } else if anchor_ts.is_none() && current_ts.is_some() {
+                        has_missing_evidence = true;
+                        notes.push("deadline_anchor_missing".to_string());
                     }
                 }
             }
@@ -448,10 +447,10 @@ impl Platform {
             let mut cap = loop_cfg.get("cap").and_then(|v| v.as_u64()).unwrap_or(0);
             if cap == 0 {
                 for r in &self.rules.resolve_declared(&case.rules, &case.doc_versions) {
-                    if let Some(rec) = r.record {
-                        if let Some(lp) = &rec.sequencing.loop_policy {
-                            cap = lp.failures_cap as u64;
-                        }
+                    if let Some(rec) = r.record
+                        && let Some(lp) = &rec.sequencing.loop_policy
+                    {
+                        cap = lp.failures_cap as u64;
                     }
                 }
             }

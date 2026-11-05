@@ -119,6 +119,7 @@ pub struct Session {
     pub role: Role,
     pub created_at: u64,
     pub expires_at: u64,
+    pub csrf_token: String,
 }
 
 impl Session {
@@ -205,6 +206,7 @@ impl AuthStore {
         self.failed_logins.remove(username);
         self.sessions.retain(|_, session| !session.is_expired());
         let token = random_hex(TOKEN_BYTES)?;
+        let csrf_token = random_hex(TOKEN_BYTES)?;
         let session = Session {
             token: token.clone(),
             username: username.to_string(),
@@ -215,6 +217,7 @@ impl AuthStore {
                 .unwrap_or(Role::Viewer),
             created_at: now,
             expires_at: now.saturating_add(self.session_ttl_secs),
+            csrf_token,
         };
         self.sessions.insert(token, session.clone());
         Ok(session)
@@ -245,11 +248,15 @@ impl AuthStore {
         self.sessions.len()
     }
 
+    pub fn session_ttl_secs(&self) -> u64 {
+        self.session_ttl_secs
+    }
+
     fn clear_expired_lockout(&mut self, username: &str, now: u64) {
-        if let Some((_, first_failure)) = self.failed_logins.get(username) {
-            if now.saturating_sub(*first_failure) >= LOCKOUT_WINDOW_SECS {
-                self.failed_logins.remove(username);
-            }
+        if let Some((_, first_failure)) = self.failed_logins.get(username)
+            && now.saturating_sub(*first_failure) >= LOCKOUT_WINDOW_SECS
+        {
+            self.failed_logins.remove(username);
         }
     }
 

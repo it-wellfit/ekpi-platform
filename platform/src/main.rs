@@ -30,7 +30,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use serde_json::Value;
 
-use ekp_eval::metrics::{summarize, Summary};
+use ekp_eval::metrics::{Summary, summarize};
 use ekp_eval::report::{self, Report};
 use ekp_eval::systems::{AllowAll, Oracle, RefuseAll, System};
 use ekp_eval::types::{Case, Decision, Ver};
@@ -39,9 +39,9 @@ use ekp_platform::coverage_report::{
     coverage_markdown, default_cases_path, load_cases_at, markdown_to_html,
 };
 use ekp_platform::docs::DocDatabase;
-use ekp_platform::engine::{Platform, DEFAULT_RETRIEVAL_THRESHOLD};
+use ekp_platform::engine::{DEFAULT_RETRIEVAL_THRESHOLD, Platform};
 use ekp_platform::export as lrml;
-use ekp_platform::process::{events_sha256, ReplayEvent};
+use ekp_platform::process::{ReplayEvent, events_sha256};
 use ekp_platform::snapshot::DecisionSnapshot;
 use ekp_platform::{params as params_module, validate};
 
@@ -228,6 +228,9 @@ fn health_report(data_dir: &Path) -> bool {
 }
 
 fn run(args: &[String]) -> i32 {
+    // Setup panic recovery handler to prevent application crashes
+    ekp_platform::errors::setup_panic_handler();
+
     if has_flag(args, "--health") {
         // Validate before doing any work. Unlike `--selftest`, health has no
         // value as a diagnostic if a typo in another flag is silently ignored.
@@ -1111,7 +1114,9 @@ fn ablation(
     }
 
     // 主控台摘要（與 report.md 同表）。
-    println!("| system | n | acc | wrong_allow | viol_as_comply | refusal_on_def | correct_refusal | cite_recall | gate |");
+    println!(
+        "| system | n | acc | wrong_allow | viol_as_comply | refusal_on_def | correct_refusal | cite_recall | gate |"
+    );
     for (name, s) in &per_system {
         println!(
             "| {} | {} | {:.3} | {} | {} | {:.3} | {:.3} | {:.3} | {} |",

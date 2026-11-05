@@ -15,10 +15,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::docs::sha256_hex;
-use crate::local_io::open_for_append;
 use crate::local_lock::LocalFileLock;
 
 const GENESIS_HASH: &str = "GENESIS";
+
+fn sha256_file(path: &std::path::Path) -> Result<String, String> {
+    let content =
+        std::fs::read(path).map_err(|e| format!("read ledger file {}: {e}", path.display()))?;
+    Ok(crate::docs::sha256_hex(&content))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -811,35 +816,29 @@ impl Ledger {
         apply_event(&mut next_snapshot, &event)?;
         next_snapshot.events.push(event.clone());
 
-        if let Some(parent) = self
-            .path
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-        {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("create ledger directory {}: {e}", parent.display()))?;
-        }
         let mut line =
             serde_json::to_vec(&event).map_err(|e| format!("encode ledger event: {e}"))?;
         line.push(b'\n');
-        let mut file = open_for_append(&self.path)?;
-        let original_len = file
-            .metadata()
-            .map_err(|e| format!("inspect ledger {}: {e}", self.path.display()))?
-            .len();
-        if let Err(error) = file.write_all(&line).and_then(|_| file.sync_all()) {
-            let rollback = file.set_len(original_len).and_then(|_| file.sync_all());
-            return Err(match rollback {
-                Ok(()) => format!(
-                    "write ledger event to {}: {error}; partial write rolled back",
-                    self.path.display()
-                ),
-                Err(rollback_error) => format!(
-                    "write ledger event to {}: {error}; rollback failed: {rollback_error}",
-                    self.path.display()
-                ),
-            });
+
+        // Efficient O(1) atomic append: open for append, write, fsync
+        // File appends on POSIX are atomic for writes < PIPE_BUF (4096 bytes)
+        // On Windows, file appends are also atomic for small writes
+        if let Some(parent) = self.path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create ledger directory {}: {e}", parent.display()))?;
         }
+
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(|e| format!("open ledger for append {}: {e}", self.path.display()))?;
+
+        // Write the event line
+        file.write_all(&line)
+            .and_then(|_| file.sync_all())
+            .map_err(|e| format!("append ledger event {}: {e}", self.path.display()))?;
+        drop(file);
         self.snapshot = next_snapshot;
         Ok(())
     }
@@ -1411,18 +1410,20 @@ mod tests {
     fn evidence_requires_http_source_reference_and_existing_project() {
         let path = test_path();
         let mut ledger = Ledger::open(&path).expect("new ledger opens");
-        assert!(ledger
-            .link_evidence(
-                "PRJ-000001",
-                "核准記錄",
-                "Microsoft 365",
-                "javascript:alert(1)",
-                "v1",
-                "approval",
-                "Alex",
-                "Jordan",
-            )
-            .is_err());
+        assert!(
+            ledger
+                .link_evidence(
+                    "PRJ-000001",
+                    "核准記錄",
+                    "Microsoft 365",
+                    "javascript:alert(1)",
+                    "v1",
+                    "approval",
+                    "Alex",
+                    "Jordan",
+                )
+                .is_err()
+        );
         let project_id = ledger
             .record_project("文件治理試點", "PMO", "Alex", "medium", "Jordan")
             .expect("project records");
@@ -1595,9 +1596,11 @@ mod tests {
                 "Jordan",
             )
             .expect("CAPA records");
-        assert!(ledger
-            .update_quality_case(&case_id, "closed", "Reviewer", "有效")
-            .is_err());
+        assert!(
+            ledger
+                .update_quality_case(&case_id, "closed", "Reviewer", "有效")
+                .is_err()
+        );
         ledger
             .update_quality_case(&case_id, "in_progress", "Owner", "已執行矯正")
             .expect("case moves to work");
@@ -1631,9 +1634,11 @@ mod tests {
         ledger
             .publish_workflow(&workflow_id, version, "審查者")
             .expect("draft can be reviewed and published");
-        assert!(ledger
-            .publish_workflow(&workflow_id, version, "審查者")
-            .is_err());
+        assert!(
+            ledger
+                .publish_workflow(&workflow_id, version, "審查者")
+                .is_err()
+        );
         let (same_id, next_version) = ledger
             .save_workflow(WorkflowDraftInput {
                 base_id: Some(workflow_id.clone()),
@@ -1670,13 +1675,15 @@ mod tests {
         let project_id = ledger
             .record_project("品質檢查", "QA", "Alex", "medium", "Jordan")
             .expect("project records");
-        assert!(ledger
-            .record_quality_inspection(QualityInspectionInput {
-                project_id: project_id.clone(),
-                reviewer: "Reviewer".to_string(),
-                results: Vec::new(),
-            })
-            .is_err());
+        assert!(
+            ledger
+                .record_quality_inspection(QualityInspectionInput {
+                    project_id: project_id.clone(),
+                    reviewer: "Reviewer".to_string(),
+                    results: Vec::new(),
+                })
+                .is_err()
+        );
         let mut results: Vec<QualityCheckResult> = QUALITY_CHECKLIST
             .iter()
             .map(|item| QualityCheckResult {

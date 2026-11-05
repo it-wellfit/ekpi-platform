@@ -33,6 +33,23 @@
       "parallel_pairs": [],
       "forbidden_pairs": [],
       "repeatable": false
+    },
+    {
+      "process_id": "P-PILOT",
+      "title": "Pilot 流程 - 證據與規則與流程一致性驗證",
+      "activities": [
+        "document_created",
+        "document_reviewed", 
+        "document_approved",
+        "document_archived"
+      ],
+      "precedence": [
+        { "before": "document_reviewed", "after": "document_approved" },
+        { "before": "document_approved", "after": "document_archived" }
+      ],
+      "parallel_pairs": [["document_reviewed", "document_approved"]],
+      "forbidden_pairs": [],
+      "repeatable": false
     }
   ]
 }

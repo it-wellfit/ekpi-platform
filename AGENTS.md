@@ -2,6 +2,28 @@
 
 Read [README.md](README.md) for the system map and run commands. Start documentation work at the [documentation map](docs/README.md): it names the canonical source, owner and update trigger for each topic. For product changes, read the relevant governance requirement, data/state model and decision register before changing behavior. Use the issue/spec workflow in [docs/development/README.md](docs/development/README.md), and load [docs/development/quality-gates.md](docs/development/quality-gates.md) for the change's risk level.
 
+## Architecture and invariants (Updated 2026-11-03)
+
+### Cargo Workspace Structure
+- Root workspace: Cargo.toml with resolver 3, members: pps/web, crates/domain, crates/application, crates/adapters, eval, platform
+- Clean Architecture: Presentation (apps/web) -> Application (crates/application) -> Domain (crates/domain)
+- Infrastructure: crates/adapters implements Application ports and Domain traits
+
+### Technology Stack (Strict Zero-JS)
+- Rust 2024 Edition, Cargo Resolver 3
+- Axum 0.8.9 (web framework)
+- Askama 0.16.1 (HTML templates, server-side rendering)
+- SQLx 0.9.x (compile-time checked queries)
+- PostgreSQL 18.x (primary database)
+- Argon2id (password hashing)
+- No JavaScript in browser - only HTML, CSS, SVG, images, fonts
+
+### Zero-JS Compliance
+- No application JavaScript in browser
+- HTMX, Datastar, WASM do not count as zero-JS
+- All rendering is server-side via Askama templates
+- CSS design system with tokens, layers, container queries
+
 ## Architecture and invariants
 
 - The eval/ and platform/ directories are independent Rust crates; platform depends on eval. There is no root Cargo workspace. In each crate run cargo fmt -- --check, cargo clippy --locked --all-targets -- -D warnings, and cargo test --locked. Also run `cargo run --locked -- --selftest` in eval/ and `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` plus `--eval --test-set data/eval/search_eval.json` in platform/. See docs/development/quality-gates.md for exact working directories; preserve docs/development/regression-checklist.md.
@@ -23,6 +45,7 @@ Read [README.md](README.md) for the system map and run commands. Start documenta
 ## Checks
 
 - Fixed entry point: `scripts/check.ps1` (Windows) or `scripts/check.sh` (POSIX). It includes documentation-link and high-signal secret checks, format, Clippy, tests, self-tests and schema validation.
+- Session artifacts: use `scripts/session-start.ps1` (workspace root) to create `.kilo/sessions/<id>/` and `artifacts/<id>/`; do not scatter outputs on Desktop or repo root.
 - Stronger pre-PR/release gate: `gate.ps1`; add `-IncludeSmoke` for report, export, coverage, HTML or data changes.
 - A check is `PASS` only if the exact command ran on the named revision and exited 0. A skipped or blocked check is `Not run`/`Blocked`, never `PASS`.
 - Record release evidence, backup/restore results and review findings in [docs/reviews/](docs/reviews/README.md) and [docs/operations/backup-log.md](docs/operations/backup-log.md). Do not lower a gate to make the current state look approved.

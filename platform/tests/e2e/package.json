@@ -1,0 +1,14 @@
+﻿{
+  "name": "ekpi-governance-e2e",
+  "version": "1.0.0",
+  "description": "E2E tests for EKPI governance workbench",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

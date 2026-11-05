@@ -96,3 +96,235 @@ Named people are not recorded because no pilot owner, security owner or operatio
 - [Production readiness](../operations/production-readiness.md)
 - [Release and retro](../development/release-and-retro.md)
 - [Decision register](../governance/08-decision-register.md)
+
+---
+
+## Production-Readiness Gap Analysis (2026-10-30)
+
+> This section synchronizes all identified production-readiness gaps into the phase-gate document.
+> Each gap includes a description, priority (P0/P1/P2/P3), impact, risk, recommended solution, and implementation direction.
+> Gaps are classified into Phase A (locally executable) and Phase B (requires external decisions/resources).
+> The system is **not** production-ready. No gap is marked `Met` without linked evidence.
+
+### 1. Security
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| S-01 | No enterprise identity (IdP/SSO/MFA) | P0 | B | Cannot authenticate real users | Identity spoofing, unauthorized access | Integrate OIDC/OAuth2 (Keycloak/Azure AD), MFA via TOTP/WebAuthn, persistent identity store | `identity_provider.rs` module; `EKPI_IDP_URL` env var; OIDC redirect/callback handlers |
+| S-02 | No tenant isolation | P0 | B | Multi-tenant data leakage | Cross-tenant data exposure, compliance violation | `tenant_id` on every ledger event; tenant-scoped queries; cross-tenant denial tests | Modify `governance.rs` Ledger struct; add `tenant_id` field; tenant filter in all handlers |
+| S-03 | Ledger is not true WORM | P0 | B | Audit trail tampering possible | Regulatory non-compliance, evidence inadmissibility | OS-level append-only flag (Linux: chattr +a); external Merkle anchoring | Integrate `worm` module; `WormBackend` trait; dual-write (local + external) |
+| S-04 | Weak local auth (predictable salt/token) | P1 | A | Offline dictionary attack possible | Password cracking, session hijacking | CSPRNG per-user random salt; CSPRNG 128-bit session tokens; configurable lockout | `User::new()` uses `rand::thread_rng()`; `generate_token()` uses `uuid::Uuid::new_v4()` |
+| S-06 | No CSRF protection | P1 | A | Cross-site request forgery | Unauthorized data modification | Double-submit cookie pattern; CSRF token in every form; middleware validation | `csrf_token()` generator; hidden input in forms; `csrf_guard` middleware |
+
+### 2. Performance
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| P-01 | Lexical search has no index | P1 | A | O(n*m) per query; linear degradation | Query latency growth; cannot handle large corpora | Inverted index (term → document positions); pre-computed document vectors; BM25 index | `InvertedIndex` struct in `retrieval.rs`; build at `Platform::load()` |
+| P-02 | No JSON parsing cache | P2 | A | Repeated I/O and JSON parsing overhead | Slow startup on large datasets | Stream parsing (`serde_json::from_reader`); `mmap` + `simd-json`; `lazy_static` cache | `Platform::load()` with `Arc<DocDatabase>` shared instance |
+| P-03 | Full ledger load into memory | P2 | A | Linear memory growth with ledger size | OOM; slow startup | Seek + incremental read; load only recent N events; archive old events | `Ledger::open(max_events)`; `Ledger::load_recent(n)` |
+| P-04 | Single-threaded execution | P2 | B | Requests serialized; no multi-core utilization | High latency under load | `RwLock` for concurrent reads; `spawn_blocking` for engine; `tokio::sync::Mutex` | `SharedLedger = Arc<tokio::sync::RwLock<Ledger>>` |
+
+### 3. Scalability
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| SC-01 | No database (JSON/JSONL only) | P1 | B | No transactions, no concurrency control, no query optimization | Data corruption, concurrent write conflicts | SQLite (local) or PostgreSQL (production); `sqlx`/`diesel`; JSONL as export format | `storage` module with `StorageBackend` trait; `SqliteBackend` + `JsonlBackend` |
+| SC-02 | No horizontal scaling | P3 | B+ | Single point of failure; cannot handle high traffic | Service unavailability | Reverse proxy + multi-instance + shared database; Redis session store | Phase B+ (after PR-02 deployment target approved) |
+| SC-03 | No message queue | P3 | B+ | All operations synchronous; no retry mechanism | Request timeout; incomplete data processing | `tokio::sync::mpsc` local queue; RabbitMQ/NATS for production | Phase B+ |
+
+### 4. Observability
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| O-01 | No SLO/SLI/error budget | P1 | B | Cannot quantify service quality; no alerting | Undetected service degradation | Define SLI (availability, p99 latency, error rate); SLO (99.9% availability, p99 < 500ms); error budget calculation; Prometheus alerting rules | `docs/operations/slo.md`; Prometheus alert rules YAML |
+| O-02 | No distributed tracing | P2 | B | Cannot trace requests across services; debugging difficult | Low debugging efficiency in production | OpenTelemetry integration; propagate `traceparent` header; Jaeger/Zipkin export | `request_context` generates `trace_id`; OTLP exporter |
+| O-03 | No readiness probe | P2 | A | Kubernetes readiness probe cannot correctly determine service readiness | Traffic routed to unready instances | `/ready` endpoint checking ledger and auth store state | `governance_web.rs` `ready()` handler; returns 200/503 |
+| O-04 | No dashboard or alerting | P2 | B | No visual monitoring; no automated alerts | Service anomalies go unnoticed | Grafana dashboard JSON; Prometheus alerting rules (error rate > 1%, p99 > 1s) | `docs/operations/grafana-dashboard.json`; `docs/operations/prometheus-alerts.yml` |
+| O-05 | No fault injection or recovery drill | P2 | B | Cannot verify system behavior under failure | Unknown behavior during production failures | Chaos engineering tests (kill process, corrupt ledger, disk full); record RTO/RPO | `tests/fault_injection.rs`; `docs/operations/fault-injection-report.md` |
+
+### 5. Test Coverage
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| T-01 | No E2E tests | P2 | A | UI interaction flows unverified; CSS/HTML rendering untested | UI regressions undetected | Playwright E2E tests covering all pages and forms; HTML rendering validation | `tests/e2e/` directory; GitHub Actions CI Playwright step |
+| T-02 | No load/stress tests | P2 | B | Cannot quantify system capacity; no performance regression detection | Unknown production performance | k6 load test scripts; wrk benchmarks; CI performance regression checks | `tests/load/k6-script.js`; `docs/operations/benchmark-report.md` |
+| T-03 | No property-based tests | P3 | A | Boundary case coverage incomplete | Undiscovered boundary bugs | `proptest` property tests for `engine.decide()`, snapshot replay, ledger hash chain | `tests/property_tests.rs` with proptest strategies |
+| T-04 | No fuzz testing | P3 | B | Potential panic/crash not discovered | DoS via malformed input | cargo-fuzz targets for JSON parsing, form parsing, search query | `fuzz/` directory with fuzz targets |
+| T-05 | No web integration tests (real HTTP) | P2 | A | HTTP layer behavior unverified (headers, cookies, redirects) | Middleware configuration errors undetected | `axum::serve` + `reqwest` real HTTP tests | `tests/integration_web.rs` with real HTTP client |
+
+### 6. Deployment Process
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| D-01 | No deployment target | P1 | B | Cannot deploy to any environment | Deployment inconsistency, manual errors | Dockerfile (multi-stage build); systemd service file; deploy.sh script | `Dockerfile`, `deploy/systemd/ekpi-platform.service`, `scripts/deploy.sh` |
+| D-02 | No CI/CD pipeline | P1 | B | No automated quality checks; no automated deployment | Manual errors; quality regressions | GitHub Actions CI (fmt, clippy, test, selftest, schema, secret scan); CD pipeline (build Docker image, push, deploy) | `.github/workflows/ci.yml` + `.github/workflows/cd.yml` |
+| D-03 | No rollback mechanism | P2 | B | Cannot quickly rollback on deployment failure | Extended service unavailability | Git tag-based versions; `scripts/rollback.sh`; blue/green deployment | `scripts/rollback.sh`; `docs/operations/rollback-runbook.md` |
+| D-04 | No configuration management | P2 | A | Deployment configuration inconsistent; misconfiguration hard to debug | Service failure due to misconfiguration | `config.toml` with schema validation; `EKPI_CONFIG_PATH` env var; startup validation | `config.rs` module with `Config` struct; `config.toml` template |
+
+### 7. Error Handling
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| E-01 | No unified error type | P1 | A | Error tracking difficult; cannot programmatically handle errors | Low debugging efficiency; inconsistent error handling | `EkpiError` enum with `thiserror`; `Result<T, EkpiError>` across all modules; error codes + context + source chain | `errors.rs` with `EkpiError` enum; replace `String` errors |
+| E-02 | No panic recovery | P1 | A | Process terminates on panic; no graceful degradation | DoS via panic-inducing input | `std::panic::set_hook` logging; `catch_unwind` in handler layer; return 500 instead of crash | `main.rs` panic hook; `governance_web.rs` middleware `catch_unwind` wrapper |
+| E-03 | No retry/backoff | P2 | B | Transient failures cause request failures | Low service availability | `tokio-retry` or custom retry with exponential backoff; circuit breaker for external calls | `retry.rs` module with `RetryPolicy`; wrap ledger operations |
+| E-04 | No graceful shutdown | P2 | A | In-flight requests interrupted on shutdown | Data inconsistency | `axum::serve` with graceful shutdown; drain in-flight requests; flush ledger | `tokio::select!` with shutdown signal; `server.with_graceful_shutdown()` |
+| E-05 | No request timeout | P2 | A | Slow requests can occupy connections | DoS | `tower::timeout::TimeoutLayer` with 15s per-request timeout; per-route overrides | `.layer(TimeoutLayer::new(REQUEST_TIMEOUT))` in router |
+| E-06 | No structured error response | P2 | A | Frontend/CLI cannot programmatically handle errors | Poor UX; difficult debugging | JSON error response with `{"error": {"code": "E001", "message": "...", "request_id": "..."}}` | `ErrorResponse` struct with `Serialize`; handlers return `Json<ErrorResponse>` |
+
+### 8. Data Persistence
+
+| ID | Problem | Priority | Phase | Impact | Risk | Recommended Solution | Implementation Direction |
+|----|---------|----------|-------|--------|------|----------------------|--------------------------|
+| DP-01 | JSONL Ledger has no transactions | P1 | A | Partial writes cause data corruption | Data loss or inconsistency | Write-to-temp + rename (atomic); fsync after write; checksum verification on read | `Ledger::append_event()` uses `write_to_temp()` + `rename()`; `fsync()` |
+| DP-02 | No data migration | P2 | B | Schema changes break existing data | Upgrade failure | Schema version in JSON header; migration functions; `--migrate` CLI flag | `migrations/` directory with versioned migration functions |
+| DP-03 | No automated backup | P1 | A | Backup depends on manual execution; may be forgotten | Data loss | Windows Task Scheduler / cron scheduling; encrypted backup; off-site copy (rclone to S3/NAS) | `scripts/schedule-backup.ps1`; `docs/operations/backup-schedule.md` |
+
+---
+
+## Priority Ranking Matrix
+
+### P0 (Critical) — Immediate attention
+| ID | Problem | Impact | Difficulty | Recommended Timeline |
+|----|---------|--------|------------|----------------------|
+| S-01 | No enterprise identity | Security | High | Phase B |
+| S-02 | No tenant isolation | Security | High | Phase B |
+| S-03 | Ledger not true WORM | Security/Compliance | Medium | Phase B |
+
+### P1 (High) — Short-term
+| ID | Problem | Impact | Difficulty | Recommended Timeline |
+|----|---------|--------|------------|----------------------|
+| S-04 | Weak local auth | Security | Medium | Phase A |
+| S-06 | No CSRF protection | Security | Medium | Phase A |
+| P-01 | No search index | Performance | Medium | Phase A |
+| SC-01 | No database | Scalability | High | Phase B |
+| E-01 | No unified error type | Error handling | Medium | Phase A |
+| E-02 | No panic recovery | Reliability | Medium | Phase A |
+| DP-01 | Ledger no transactions | Data integrity | Medium | Phase A |
+| DP-03 | No automated backup | Data persistence | Low | Phase A |
+| O-01 | No SLO/SLI/error budget | Observability | Medium | Phase B |
+| D-01 | No deployment target | Deployment | High | Phase B |
+| D-02 | No CI/CD pipeline | Deployment | Medium | Phase B |
+
+### P2 (Medium) — Medium-term
+| ID | Problem | Impact | Difficulty | Recommended Timeline |
+|----|---------|--------|------------|----------------------|
+| S-05 | Form size limit & DoS | Security | Low | Phase A |
+| P-02 | No JSON parsing cache | Performance | Low | Phase A |
+| P-03 | Full ledger load | Performance | Medium | Phase A |
+| P-04 | Single-threaded | Performance | Medium | Phase B |
+| O-02 | No distributed tracing | Observability | Medium | Phase B |
+| O-03 | No readiness probe | Observability | Low | Phase A |
+| O-04 | No dashboard or alerting | Observability | Medium | Phase B |
+| O-05 | No fault injection | Reliability | Medium | Phase B |
+| T-01 | No E2E tests | Testing | Medium | Phase A |
+| T-02 | No load/stress tests | Testing | Medium | Phase B |
+| T-05 | No web integration tests | Testing | Medium | Phase A |
+| D-03 | No rollback mechanism | Deployment | Medium | Phase B |
+| D-04 | No configuration management | Deployment | Low | Phase A |
+| E-03 | No retry/backoff | Reliability | Medium | Phase B |
+| E-04 | No graceful shutdown | Reliability | Medium | Phase A |
+| E-05 | No request timeout | Reliability | Low | Phase A |
+| E-06 | No structured error response | Error handling | Medium | Phase A |
+| DP-02 | No data migration | Data persistence | Medium | Phase B |
+
+### P3 (Low) — Long-term
+| ID | Problem | Impact | Difficulty | Recommended Timeline |
+|----|---------|--------|------------|----------------------|
+| SC-02 | No horizontal scaling | Scalability | High | Phase B+ |
+| SC-03 | No message queue | Scalability | High | Phase B+ |
+| T-03 | No property-based tests | Testing | Low | Phase A |
+| T-04 | No fuzz testing | Testing | Medium | Phase B |
+
+---
+
+## Implementation Priority Recommendation
+
+### Phase A (0 → 1 MVP) — Start immediately
+1. S-04 Weak local auth (CSPRNG salt/token)
+2. S-06 CSRF protection (double-submit cookie)
+3. E-01 Unified error type (thiserror + EkpiError)
+4. E-02 Panic recovery (panic hook + catch_unwind)
+5. DP-01 Ledger atomic writes (write-to-temp + rename)
+6. O-03 Readiness probe (/ready endpoint)
+7. D-04 Configuration management (config.toml + validation)
+8. E-05 Request timeout (TimeoutLayer)
+9. E-06 Structured error response (JSON error body)
+10. P-01 Lexical search index (inverted index)
+11. P-02 JSON parsing cache
+12. P-03 Ledger incremental load
+13. T-01 E2E tests (Playwright)
+14. T-05 Web integration tests (real HTTP)
+15. T-03 Property-based tests (proptest)
+16. DP-03 Backup automation (Task Scheduler/cron)
+
+### Phase B (MVP → Production) — Awaiting decisions
+1. S-01/S-02/S-03 Enterprise identity/tenant/WORM (requires IdP + data policy)
+2. SC-01 Database (requires deployment target)
+3. D-01/D-02 Deployment target + CI/CD (requires remote + branch protection)
+4. O-01/O-04 SLO + dashboard (requires monitoring infrastructure)
+5. P-04 Multi-threading (requires load model)
+6. O-02/O-05 Tracing + fault injection (requires target environment)
+7. T-02 Load testing (requires approved workload)
+8. D-03 Rollback mechanism (requires deployment pipeline)
+9. E-03 Retry/backoff (requires external calls)
+10. E-04 Graceful shutdown (requires deployment environment)
+11. DP-02 Data migration (requires schema versioning)
+12. SC-02/SC-03 Horizontal scaling/message queue (Phase B+)
+
+---
+
+## Statistical Summary
+
+| Dimension | P0 | P1 | P2 | P3 | Total |
+|-----------|----|----|----|----|-------|
+| Security | 3 | 3 | 1 | 0 | 7 |
+| Performance | 0 | 1 | 3 | 0 | 4 |
+| Scalability | 0 | 1 | 0 | 2 | 3 |
+| Observability | 0 | 1 | 4 | 0 | 5 |
+| Test Coverage | 0 | 0 | 3 | 2 | 5 |
+| Deployment | 0 | 2 | 2 | 0 | 4 |
+| Error Handling | 0 | 2 | 4 | 0 | 6 |
+| Data Persistence | 0 | 2 | 1 | 0 | 3 |
+| **Total** | **3** | **12** | **18** | **4** | **37** |
+
+**Phase A scope (P1/P2 locally executable):** 21 items
+**Phase B scope (requires external decisions/resources):** 16 items
+
+---
+
+## Phase A vs Phase B Classification
+
+### Phase A (locally executable, no external dependencies)
+S-04, S-06, P-01, P-02, P-03, E-01, E-02, E-04, E-05, E-06, DP-01, DP-03, O-03, D-04, T-01, T-03, T-05
+(17 items, all P1/P2/P3 except P0 items which require external resources)
+
+### Phase B (requires external decisions/resources)
+S-01, S-02, S-03, SC-01, SC-02, SC-03, O-01, O-02, O-04, O-05, T-02, T-04, D-01, D-02, D-03, E-03, DP-02, P-04
+(18 items, all require external owners, IdP, deployment target, monitoring infrastructure, or approved workload)
+
+---
+
+## Constraints (non-negotiable)
+
+- `#![forbid(unsafe_code)]` on every Rust file; clippy `-D warnings` zero warnings; `cargo fmt -- --check` clean. Edition 2021.
+- PowerShell boundary: multiple commands stitched with `;`, never `&&`/`|`/`&` in a single shell line.
+- UTF-8 only for file writes; never PowerShell `Set-Content` without `-Encoding UTF8` (use Write tool / Python).
+- No secrets, credentials, tokens, or real customer/org facts in the repo. `.env.example` only.
+- No fabricated integrations, permissions, approvals, scan results, or compliance claims. Governance web prototype is local-only; no enterprise authentication.
+- Library-only modules (`tenant`, `audit`, `worm`, `agents`, `formal_verification`, `runtime_verification`) must not be described as product capabilities until wired with spec + integration tests.
+- A check result is evidence only when it names command, revision, date, and result.
+
+## Open decisions (require external input)
+
+- Product owner name (`DEC-01`); security owner (`DEC-12`); operations owner (`DEC-16`); data owner (`DEC-13`); deployment target (`PR-02`).
+- Single-tenant vs multi-tenant decision (`DEC-12`); off-host backup location/RPO/RTO (`DEC-14`); AI in-scope or out-of-scope (`DEC-15`); compliance scope (`DEC-09`).
+- Remote collaboration upgrade only when criteria in `docs/remote-collaboration-criteria.md` are all met.
+
+## Out of scope
+
+- Enterprise SSO/MFA (IdP not approved).
+- Live Microsoft 365/Google connectors; Kubernetes; message queue; relational DB; public network exposure; 24×7 support; regulatory certification.
+- AI approval or autonomous gate release.
+- Converting `local_auth` into an enterprise identity system.

@@ -110,5 +110,8 @@ fn edge_case_count_meets_fifty_plus_target() {
         .0
         .len();
     let total = seed + casebook + edge;
-    assert!(total >= 50, "eval corpus must reach 50+ cases; got {total} (seed={seed} casebook={casebook} edge={edge})");
+    assert!(
+        total >= 50,
+        "eval corpus must reach 50+ cases; got {total} (seed={seed} casebook={casebook} edge={edge})"
+    );
 }

@@ -169,13 +169,13 @@ fn replay(model: &ProcessModel, events: &[ReplayEvent]) -> ReplayFinding {
         let (Some(before_seq), Some(after_seq)) = (before, after) else {
             // After observed without before → missing evidence of the required
             // predecessor. After absent → constraint not exercised.
-            if let Some(after_seq) = after {
-                if !after_seq.is_empty() {
-                    missing.push(format!(
-                        "{}: after `{}` observed without before `{}`",
-                        model.process_id, pair.after, pair.before
-                    ));
-                }
+            if let Some(after_seq) = after
+                && !after_seq.is_empty()
+            {
+                missing.push(format!(
+                    "{}: after `{}` observed without before `{}`",
+                    model.process_id, pair.after, pair.before
+                ));
             }
             continue;
         };

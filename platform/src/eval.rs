@@ -429,13 +429,13 @@ fn validate_eval_set(path: &Path, set: &EvalSetFile) -> Result<(), String> {
     if set.cases.is_empty() {
         return Err(format!("{}: eval case set is empty", path.display()));
     }
-    if let Some(threshold) = set.threshold {
-        if !(0.0..=1.0).contains(&threshold) {
-            return Err(format!(
-                "{}: threshold {threshold} is outside [0,1]",
-                path.display()
-            ));
-        }
+    if let Some(threshold) = set.threshold
+        && !(0.0..=1.0).contains(&threshold)
+    {
+        return Err(format!(
+            "{}: threshold {threshold} is outside [0,1]",
+            path.display()
+        ));
     }
     if !set.fixtures.is_empty() {
         DocDatabase {
@@ -606,11 +606,13 @@ mod tests {
         assert_eq!(metrics.hits, 0);
         assert_eq!(metrics.passed_cases, 0);
         assert_eq!(metrics.precision_at_1, 0.0);
-        assert!(metrics.cases[0]
-            .failure
-            .as_deref()
-            .unwrap_or("")
-            .contains("expected NONEXISTENT@9.9"));
+        assert!(
+            metrics.cases[0]
+                .failure
+                .as_deref()
+                .unwrap_or("")
+                .contains("expected NONEXISTENT@9.9")
+        );
     }
 
     #[test]
@@ -658,11 +660,13 @@ mod tests {
         let metrics = run_eval(&db, &dv, &cases, 0.1);
         assert_eq!(metrics.refusal_accuracy, 0.0);
         assert_eq!(metrics.passed_cases, 0);
-        assert!(metrics.cases[0]
-            .failure
-            .as_deref()
-            .unwrap_or("")
-            .contains("expected refusal"));
+        assert!(
+            metrics.cases[0]
+                .failure
+                .as_deref()
+                .unwrap_or("")
+                .contains("expected refusal")
+        );
     }
 
     #[test]
@@ -679,11 +683,13 @@ mod tests {
         let metrics = run_eval(&db, &dv, &[candidate], 0.1);
         assert_eq!(metrics.hits, 0);
         assert_eq!(metrics.passed_cases, 0);
-        assert!(metrics.cases[0]
-            .failure
-            .as_deref()
-            .unwrap_or("")
-            .contains("below min_score"));
+        assert!(
+            metrics.cases[0]
+                .failure
+                .as_deref()
+                .unwrap_or("")
+                .contains("below min_score")
+        );
     }
 
     #[test]
@@ -874,15 +880,21 @@ mod tests {
         }
         let metrics = EvalMetrics::compute(&cases);
         let failures = metrics.gate_failures();
-        assert!(failures
-            .iter()
-            .any(|failure| failure.contains("role-restricted permission")));
-        assert!(failures
-            .iter()
-            .any(|failure| failure.contains("permitted answer")));
-        assert!(failures
-            .iter()
-            .any(|failure| failure.contains("honest refusal")));
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("role-restricted permission"))
+        );
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("permitted answer"))
+        );
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("honest refusal"))
+        );
     }
 
     #[test]
@@ -908,9 +920,11 @@ mod tests {
         let failures = metrics.gate_failures();
         assert_eq!(metrics.permission_violations, 1);
         assert_eq!(metrics.permission_isolation_rate, 0.0);
-        assert!(failures
-            .iter()
-            .any(|failure| failure.contains("permission isolation rate is 0.00")));
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("permission isolation rate is 0.00"))
+        );
     }
 
     #[test]

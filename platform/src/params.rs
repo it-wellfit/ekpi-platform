@@ -115,13 +115,13 @@ fn parse(text: &str) -> Result<Params, String> {
             None => {
                 return Err(format!(
                     "params: declared_invariants.{key} missing (every invariant must be declared explicitly)"
-                ))
+                ));
             }
             Some(actual) if actual == expected => {}
             Some(actual) => {
                 return Err(format!(
                     "params: declared_invariants.{key}={actual} contradicts locked engine semantics {expected} — refuse to run ({key} has no engine switch; tampering refused)"
-                ))
+                ));
             }
         }
     }
@@ -192,24 +192,30 @@ mod tests {
     #[test]
     fn threshold_domain_and_version_locked() {
         let out_of_range = default_text().replace("0.70", "1.5");
-        assert!(parse(&out_of_range)
-            .err()
-            .unwrap_or_default()
-            .contains("outside [0,1]"));
+        assert!(
+            parse(&out_of_range)
+                .err()
+                .unwrap_or_default()
+                .contains("outside [0,1]")
+        );
         let bad_version =
             default_text().replace("\"params_version\": \"1.0\"", "\"params_version\": \"2.0\"");
-        assert!(parse(&bad_version)
-            .err()
-            .unwrap_or_default()
-            .contains("not supported"));
+        assert!(
+            parse(&bad_version)
+                .err()
+                .unwrap_or_default()
+                .contains("not supported")
+        );
         // 頂層未知鍵。
         let extra = default_text().replace(
             "\"declared_invariants\"",
             "\"engine_overrides\": {},\n  \"declared_invariants\"",
         );
-        assert!(parse(&extra)
-            .err()
-            .unwrap_or_default()
-            .contains("unknown top-level key"));
+        assert!(
+            parse(&extra)
+                .err()
+                .unwrap_or_default()
+                .contains("unknown top-level key")
+        );
     }
 }

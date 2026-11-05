@@ -411,7 +411,7 @@ fn render_record(
         other => {
             return Err(format!(
                 "{label}: deontic.strength `{other}` has no verified LegalRuleML mapping — refuse to export (fail-closed)"
-            ))
+            ));
         }
     };
     let deontic = deontic_element(&record.deontic.modality, &label)?;
@@ -501,7 +501,7 @@ fn render_record(
             other => {
                 return Err(format!(
                     "{label}: modality `{other}` has no verified LegalRuleML mapping (fail-closed)"
-                ))
+                ));
             }
         };
         if acts.is_empty() {
@@ -720,7 +720,7 @@ fn value_lexical(value: &Value, label: &str) -> Result<String, String> {
                 }
                 match item {
                     Value::Null => {
-                        return Err(format!("{label}: null member in list value (fail-closed)"))
+                        return Err(format!("{label}: null member in list value (fail-closed)"));
                     }
                     Value::String(s) => joined.push_str(s),
                     Value::Bool(b) => joined.push_str(&b.to_string()),
@@ -728,7 +728,7 @@ fn value_lexical(value: &Value, label: &str) -> Result<String, String> {
                     _ => {
                         return Err(format!(
                             "{label}: nested composite in list value unsupported (fail-closed)"
-                        ))
+                        ));
                     }
                 }
             }
@@ -829,7 +829,7 @@ fn check_well_formed(xml: &str) -> Result<(), String> {
                 match stack.pop() {
                     Some(open) if open == name => {}
                     Some(open) => {
-                        return Err(format!("mismatched close `</{name}>` (open `<{open}>`)"))
+                        return Err(format!("mismatched close `</{name}>` (open `<{open}>`)"));
                     }
                     None => return Err(format!("stray close `</{name}>`")),
                 }
@@ -959,12 +959,12 @@ fn check_top_level_order(xml: &str) -> Result<(), String> {
         if pos == 0 {
             continue; // 缺席該類合法（* 皆可零次）
         }
-        if let Some(prev) = last {
-            if pos < prev {
-                return Err(format!(
-                    "top-level ordering violated: {name} appears before a later category (§5.16 four category order)"
-                ));
-            }
+        if let Some(prev) = last
+            && pos < prev
+        {
+            return Err(format!(
+                "top-level ordering violated: {name} appears before a later category (§5.16 four category order)"
+            ));
         }
         last = Some(pos);
     }

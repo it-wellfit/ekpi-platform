@@ -238,19 +238,19 @@ pub fn read_jsonl(path: &Path) -> Result<AuditLog, String> {
     if contents.is_empty() {
         return Ok(AuditLog::new());
     }
-    if contents.trim_start().starts_with('{') {
-        if let Ok(legacy) = serde_json::from_str::<AuditLog>(&contents) {
-            let state = if legacy.verify_chain() {
-                "valid"
-            } else {
-                "invalid"
-            };
-            return Err(format!(
-                "audit log {} uses the legacy single-object format ({state}); \
+    if contents.trim_start().starts_with('{')
+        && let Ok(legacy) = serde_json::from_str::<AuditLog>(&contents)
+    {
+        let state = if legacy.verify_chain() {
+            "valid"
+        } else {
+            "invalid"
+        };
+        return Err(format!(
+            "audit log {} uses the legacy single-object format ({state}); \
                  move it aside to start a JSONL chain",
-                path.display()
-            ));
-        }
+            path.display()
+        ));
     }
     if !contents.ends_with('\n') {
         return Err(format!(
@@ -610,8 +610,8 @@ mod tests {
         assert_eq!(log.events[0].prev_hash, "GENESIS");
     }
 
-    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
@@ -651,9 +651,11 @@ mod tests {
     #[test]
     fn jsonl_append_and_read_preserve_the_chain() {
         let file = TempAuditFile::new();
-        assert!(read_jsonl(&file.0)
-            .expect("missing log is empty")
-            .is_empty());
+        assert!(
+            read_jsonl(&file.0)
+                .expect("missing log is empty")
+                .is_empty()
+        );
 
         append_jsonl(
             &file.0,

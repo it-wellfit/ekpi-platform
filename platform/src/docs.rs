@@ -52,8 +52,11 @@ pub struct Section {
 impl DocDatabase {
     pub fn load(path: &Path) -> Result<DocDatabase, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let key = path.to_string_lossy().to_string();
+        let cached = crate::retrieval::parse_json_cached(&key, &text)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
         let db: DocDatabase =
-            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+            serde_json::from_value(cached).map_err(|e| format!("{}: {e}", path.display()))?;
         db.validate_shape()?;
         Ok(db)
     }

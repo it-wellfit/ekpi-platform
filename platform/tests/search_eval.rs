@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use ekp_platform::docs::DocDatabase;
-use ekp_platform::eval::{load_eval_set, run_eval, REQUIRED_CATEGORIES};
+use ekp_platform::eval::{REQUIRED_CATEGORIES, load_eval_set, run_eval};
 
 const THRESHOLD: f64 = 0.42;
 

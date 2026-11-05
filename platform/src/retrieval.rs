@@ -8,6 +8,42 @@
 
 use crate::docs::DocDatabase;
 use crate::tenant::TenantContext;
+use std::sync::OnceLock;
+
+/// Global cache for parsed JSON documents to improve performance.
+static JSON_CACHE: OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+> = OnceLock::new();
+
+/// Get or initialize the global JSON cache.
+fn get_json_cache()
+-> &'static std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>> {
+    JSON_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Parse JSON with caching to avoid repeated parsing overhead.
+pub fn parse_json_cached(key: &str, json_str: &str) -> Result<serde_json::Value, String> {
+    let cache = get_json_cache();
+    let mut cache_guard = cache.lock().map_err(|e| format!("cache lock error: {e}"))?;
+
+    if let Some(cached) = cache_guard.get(key) {
+        return Ok(cached.clone());
+    }
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| format!("JSON parse error for {key}: {e}"))?;
+    cache_guard.insert(key.to_string(), parsed.clone());
+    Ok(parsed)
+}
+
+/// Clear the JSON cache (useful for testing or memory management).
+pub fn clear_json_cache() {
+    if let Some(cache) = JSON_CACHE.get()
+        && let Ok(mut cache_guard) = cache.lock()
+    {
+        cache_guard.clear();
+    }
+}
 
 /// Permission context for retrieval filtering.
 /// Determines which documents a user may access.
@@ -48,6 +84,109 @@ impl From<&TenantContext> for PermissionContext {
     }
 }
 
+/// Inverted index for bigram-based lexical search.
+#[derive(Debug, Clone)]
+pub struct InvertedIndex {
+    /// Maps bigram to list of document positions (PoolSection)
+    pub bigram_index: std::collections::HashMap<String, Vec<PoolSection>>,
+    /// Set of all unique bigrams in the corpus
+    pub bigrams: std::collections::HashSet<String>,
+}
+
+impl InvertedIndex {
+    /// Build an inverted index from a pool of text sections.
+    pub fn build(pool: &[PoolSection]) -> Self {
+        let mut bigram_index: std::collections::HashMap<String, Vec<PoolSection>> =
+            std::collections::HashMap::new();
+        let mut bigrams = std::collections::HashSet::new();
+
+        for section in pool {
+            let bigrams_in_text = extract_bigrams(&section.verbatim_text);
+            for bigram in bigrams_in_text {
+                bigrams.insert(bigram.clone());
+                bigram_index
+                    .entry(bigram)
+                    .or_default()
+                    .push(section.clone());
+            }
+        }
+
+        InvertedIndex {
+            bigram_index,
+            bigrams,
+        }
+    }
+
+    /// Search for sections that match a query text using bigram cosine similarity.
+    pub fn search(&self, query: &str, threshold: f64) -> Vec<RetrievalHit> {
+        let query_bigrams = extract_bigrams(query);
+        if query_bigrams.is_empty() {
+            return Vec::new();
+        }
+
+        let mut query_bigram_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for bigram in &query_bigrams {
+            *query_bigram_counts.entry(bigram.clone()).or_insert(0) += 1;
+        }
+
+        let mut results = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for bigram in &query_bigrams {
+            if let Some(sections) = self.bigram_index.get(bigram) {
+                for section in sections {
+                    let key = (
+                        section.doc_id.clone(),
+                        section.version.clone(),
+                        section.section.clone(),
+                    );
+                    if seen.contains(&key) {
+                        continue;
+                    }
+                    seen.insert(key);
+
+                    // Use char_bigram_cosine for consistent scoring with original implementation
+                    let hit_score = char_bigram_cosine(query, &section.verbatim_text);
+
+                    if hit_score >= threshold {
+                        results.push(RetrievalHit {
+                            doc_id: section.doc_id.clone(),
+                            version: section.version.clone(),
+                            section: section.section.clone(),
+                            score: hit_score,
+                            char_range: (0, section.verbatim_text.len()),
+                        });
+                    }
+                }
+            }
+        }
+
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results
+    }
+}
+
+/// Extract all bigrams (2-character sequences) from a text string.
+/// Uses char indices for correct UTF-8 handling.
+fn extract_bigrams(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut bigrams = std::collections::HashSet::new();
+
+    for i in 0..chars.len().saturating_sub(1) {
+        let bigram: String = chars[i..i + 2].iter().collect();
+        if bigram.chars().count() == 2 {
+            bigrams.insert(bigram);
+        }
+    }
+
+    bigrams.into_iter().collect()
+}
+
 /// A citation linking a retrieval result to its exact source location.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Citation {
@@ -76,10 +215,10 @@ impl Citation {
 
     /// Verify that the citation's verbatim text matches the source document.
     pub fn verify(&self, db: &DocDatabase) -> bool {
-        if let Some(ver) = db.binding(&self.doc_id, &self.version) {
-            if let Some(sec) = ver.sections.iter().find(|s| s.section == self.section) {
-                return sec.verbatim_text == self.verbatim_text;
-            }
+        if let Some(ver) = db.binding(&self.doc_id, &self.version)
+            && let Some(sec) = ver.sections.iter().find(|s| s.section == self.section)
+        {
+            return sec.verbatim_text == self.verbatim_text;
         }
         false
     }
@@ -170,12 +309,11 @@ impl Retriever {
         let mut pool = Vec::new();
         for (doc_id, version) in doc_versions {
             // Permission check: skip documents the user cannot access.
-            if let Some(ctx) = perm {
-                if let Some(doc) = db.doc(doc_id) {
-                    if !ctx.can_access(&doc.permissions) {
-                        continue;
-                    }
-                }
+            if let Some(ctx) = perm
+                && let Some(doc) = db.doc(doc_id)
+                && !ctx.can_access(&doc.permissions)
+            {
+                continue;
             }
             if let Some(ver) = db.binding(doc_id, version) {
                 for s in &ver.sections {
@@ -193,6 +331,17 @@ impl Retriever {
 
     pub fn is_empty(&self) -> bool {
         self.pool.is_empty()
+    }
+
+    /// Build an inverted index for efficient search operations.
+    pub fn build_inverted_index(&self) -> InvertedIndex {
+        InvertedIndex::build(&self.pool)
+    }
+
+    /// Search using the inverted index for better performance.
+    pub fn search_with_index(&self, query: &str, threshold: f64) -> Vec<RetrievalHit> {
+        let inverted_index = self.build_inverted_index();
+        inverted_index.search(query, threshold)
     }
 
     /// 依字面相似度定位 `anchor` 最相似片段；低於閾值回 None。
@@ -253,12 +402,12 @@ impl Retriever {
         let citations: Vec<Citation> = hits
             .iter()
             .filter_map(|hit| {
-                if let Some(ver) = db.binding(&hit.doc_id, &hit.version) {
-                    if let Some(sec) = ver.sections.iter().find(|s| s.section == hit.section) {
-                        let c = Citation::from_hit(hit, &sec.verbatim_text);
-                        if c.verify(db) {
-                            return Some(c);
-                        }
+                if let Some(ver) = db.binding(&hit.doc_id, &hit.version)
+                    && let Some(sec) = ver.sections.iter().find(|s| s.section == hit.section)
+                {
+                    let c = Citation::from_hit(hit, &sec.verbatim_text);
+                    if c.verify(db) {
+                        return Some(c);
                     }
                 }
                 None
@@ -275,6 +424,13 @@ impl Retriever {
 
     /// Search the pool for sections matching the query, returning ranked hits.
     pub fn search(&self, query: &str, top_k: usize) -> Vec<RetrievalHit> {
+        // Use inverted index for better performance
+        if !self.pool.is_empty() {
+            let mut hits = self.search_with_index(query, self.threshold);
+            hits.truncate(top_k);
+            return hits;
+        }
+        // Fallback to linear search for empty pool
         let mut hits: Vec<RetrievalHit> = self
             .pool
             .iter()

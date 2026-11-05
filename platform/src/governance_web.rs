@@ -8,19 +8,20 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Path, Request, State};
-use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use maud::{html, Markup, DOCTYPE};
+use maud::{DOCTYPE, Markup, html};
 use serde::Deserialize;
 use serde_urlencoded;
 use tokio::sync::Semaphore;
+use getrandom::getrandom;
 
 use crate::governance::{
-    GovernanceSnapshot, Ledger, Project, QualityCheckResult, QualityInspectionInput, Workflow,
-    WorkflowDraftInput, QUALITY_CHECKLIST,
+    GovernanceSnapshot, Ledger, Project, QUALITY_CHECKLIST, QualityCheckResult,
+    QualityInspectionInput, Workflow, WorkflowDraftInput,
 };
 use crate::local_auth::{AuthStore, Role};
 
@@ -28,6 +29,40 @@ type SharedLedger = Arc<Mutex<Ledger>>;
 type SharedAuth = Arc<Mutex<AuthStore>>;
 
 const MAX_FORM_BYTES: usize = 64 * 1024;
+const MAX_UPLOAD_BYTES: usize = 1024 * 1024; // 1MB for file uploads
+const MAX_LOGIN_BYTES: usize = 4 * 1024; // 4KB for login forms
+const TOKEN_BYTES: usize = 32;
+const HEX: &[u8; 16] = b"0123456789abcdef";
+
+/// Generate a random hex string of the given length using the OS CSPRNG.
+fn random_hex(length: usize) -> Result<String, String> {
+    let mut bytes = vec![0u8; length];
+    getrandom(&mut bytes).map_err(|e| format!("random source unavailable: {e}"))?;
+    Ok(to_hex(&bytes))
+}
+
+fn to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
+/// Get the maximum form body size for a given route path.
+fn max_form_bytes_for_path(path: &str) -> usize {
+    if path.starts_with("/login") {
+        MAX_LOGIN_BYTES
+    } else if path.contains("/upload") || path.contains("/import") {
+        MAX_UPLOAD_BYTES
+    } else {
+        MAX_FORM_BYTES
+    }
+}
+const RATE_LIMIT_PER_MINUTE: u32 = 30;
+const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 
 const CSS: &str = include_str!("../assets/governance.css");
 const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -44,9 +79,44 @@ static RATE_LIMITED_TOTAL: AtomicU64 = AtomicU64::new(0);
 static REQUEST_LIMIT: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(MAX_CONCURRENT_REQUESTS));
 
+/// Simple in-memory rate limiter for IP-based request throttling.
+#[derive(Debug)]
+struct RateLimiter {
+    requests: std::sync::Mutex<std::collections::HashMap<String, (u32, std::time::Instant)>>,
+}
+
+impl RateLimiter {
+    fn new() -> Self {
+        Self {
+            requests: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    fn check_rate_limit(&self, ip: &str) -> bool {
+        let mut requests = self.requests.lock().unwrap();
+        let now = std::time::Instant::now();
+        let entry = requests.entry(ip.to_string()).or_insert((0, now));
+
+        if now.duration_since(entry.1).as_secs() >= RATE_LIMIT_WINDOW_SECS {
+            *entry = (1, now);
+            true
+        } else if entry.0 < RATE_LIMIT_PER_MINUTE {
+            entry.0 += 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+static RATE_LIMITER: LazyLock<RateLimiter> = LazyLock::new(RateLimiter::new);
+
 pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
     let auth_for_guard = auth.clone();
+    let auth_for_csrf = auth.clone();
+
     Router::new()
+        .route("/ready", get(ready_check))
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
         .route("/", get(dashboard))
@@ -71,6 +141,11 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
             auth_for_guard,
             require_session,
         ))
+        .layer(middleware::from_fn_with_state(
+            auth_for_csrf,
+            validate_csrf_token,
+        ))
+        .layer(middleware::from_fn(rate_limit_guard))
         .layer(middleware::from_fn(same_origin_guard))
         .layer(middleware::from_fn(request_context))
 }
@@ -83,6 +158,22 @@ async fn healthz() -> Json<serde_json::Value> {
         "scope": "local-only",
         "readiness": "liveness-only",
     }))
+}
+
+async fn ready_check(
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+) -> impl IntoResponse {
+    let ready_status = crate::ready::check_readiness(&ledger, &auth);
+    let status_code = match ready_status.status {
+        crate::ready::ReadyStatusType::Ready => StatusCode::OK,
+        crate::ready::ReadyStatusType::Degraded => StatusCode::OK,
+        crate::ready::ReadyStatusType::NotReady => StatusCode::SERVICE_UNAVAILABLE,
+        crate::ready::ReadyStatusType::Checking => StatusCode::OK,
+    };
+    (
+        status_code,
+        Json(serde_json::to_value(ready_status).unwrap_or_default()),
+    )
 }
 
 async fn metrics() -> impl IntoResponse {
@@ -237,26 +328,54 @@ fn unauthorized() -> Response {
 /// Validate the session cookie, require at least the given role, and return
 /// the local session username. Mutating handlers use this value as the ledger
 /// actor instead of trusting a form field.
-fn session_identity(
-    auth: &SharedAuth,
-    headers: &HeaderMap,
-    required: Role,
-) -> Result<String, Box<Response>> {
-    let token = session_token(headers).ok_or_else(|| Box::new(unauthorized()))?;
-    let store = auth.lock().map_err(|_| {
-        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
-    })?;
-    match store.validate_session(&token) {
-        Some(session) if session.role >= required => Ok(session.username.clone()),
-        Some(_) => Err(Box::new(
-            (
-                StatusCode::FORBIDDEN,
-                "insufficient role for this operation",
-            )
-                .into_response(),
-        )),
-        None => Err(Box::new(unauthorized())),
+const CSRF_TOKEN_NAME: &str = "X-CSRF-Token";
+
+async fn validate_csrf_token(
+    State(auth): State<SharedAuth>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let method = request.method();
+    if method == Method::GET || method == Method::HEAD {
+        return next.run(request).await;
     }
+    // Login endpoint is exempt from CSRF: there is no prior session to bind a
+    // CSRF token to, and the login page establishes the session.
+    if method == Method::POST && request.uri().path() == "/login" {
+        return next.run(request).await;
+    }
+
+    let headers = request.headers();
+    let session_token = match session_token(headers) {
+        Some(token) => token,
+        None => return (StatusCode::UNAUTHORIZED, "Session token required").into_response(),
+    };
+
+    let session = {
+        let auth_store = auth
+            .lock()
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Auth store locked").into_response());
+        let Some(auth_store) = auth_store.ok() else {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Auth store error").into_response();
+        };
+        match auth_store.validate_session(&session_token).cloned() {
+            Some(session) => session,
+            None => {
+                return (StatusCode::UNAUTHORIZED, "Invalid or expired session").into_response();
+            }
+        }
+    };
+
+    let csrf_header = headers
+        .get(CSRF_TOKEN_NAME)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
+    if csrf_header != session.csrf_token {
+        return (StatusCode::FORBIDDEN, "Invalid CSRF token").into_response();
+    }
+
+    next.run(request).await
 }
 
 /// Validate the session cookie and require at least the given role.
@@ -275,6 +394,31 @@ fn is_public_path(path: &str) -> bool {
     matches!(path, "/healthz" | "/metrics" | "/login") || path.starts_with("/assets/")
 }
 
+/// Validate the session cookie, require at least the given role, and return
+/// the local session username. Mutating handlers use this value as the ledger
+/// actor instead of trusting a form field.
+fn session_identity(
+    auth: &SharedAuth,
+    headers: &HeaderMap,
+    required: Role,
+) -> std::result::Result<String, Box<Response>> {
+    let token = session_token(headers).ok_or_else(|| Box::new(unauthorized()))?;
+    let store = auth.lock().map_err(|_| {
+        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())
+    })?;
+    match store.validate_session(&token) {
+        Some(session) if session.role >= required => Ok(session.username.clone()),
+        Some(_) => Err(Box::new(
+            (
+                StatusCode::FORBIDDEN,
+                "insufficient role for this operation",
+            )
+                .into_response(),
+        )),
+        None => Err(Box::new(unauthorized())),
+    }
+}
+
 /// Require a valid session for every data page. The liveness probe, aggregate
 /// metrics, login page and stylesheet remain reachable so an unauthenticated
 /// operator can log in and monitoring can run.
@@ -288,7 +432,47 @@ async fn require_session(State(auth): State<SharedAuth>, request: Request, next:
     next.run(request).await
 }
 
-async fn login_page() -> Response {
+async fn rate_limit_guard(request: Request, next: Next) -> Response {
+    // Skip rate limiting in test mode
+    if std::env::var("EKPI_TEST_MODE").is_ok() {
+        return next.run(request).await;
+    }
+    // Extract client IP from headers or use a default
+    let client_ip = request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("127.0.0.1")
+        .to_string();
+
+    if !RATE_LIMITER.check_rate_limit(&client_ip) {
+        return crate::errors::rate_limit_error_response(
+            RATE_LIMIT_PER_MINUTE,
+            0,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() + RATE_LIMIT_WINDOW_SECS)
+                .unwrap_or(0),
+            RATE_LIMIT_WINDOW_SECS,
+        )
+        .into_response();
+    }
+
+    next.run(request).await
+}
+
+async fn login_page(State(auth): State<SharedAuth>) -> Response {
+    let store = auth
+        .lock()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "auth store locked").into_response())?;
+    let session = store
+        .sessions
+        .iter()
+        .next()
+        .map(|(_, s)| s.clone());
+    let csrf_token = session
+        .map(|s| s.csrf_token.clone())
+        .unwrap_or_else(|| random_hex(TOKEN_BYTES).unwrap_or_else(|_| "".to_string()));
     let html = html! {
         (DOCTYPE)
         html lang="zh-Hant" {
@@ -303,6 +487,7 @@ async fn login_page() -> Response {
                     h2 { "本機登入" }
                     p class="form-hint" { "僅限本機試點使用；尚未連接企業身分平台。" }
                     form class="form-stack" method="post" action="/login" {
+                        input type="hidden" name="csrf_token" value={csrf_token.clone()};
                         label class="field" { span { "使用者名稱" } input type="text" name="username" required maxlength="80" placeholder="姓名"; }
                         label class="field" { span { "密碼" } input type="password" name="password" required maxlength="128" placeholder="密碼"; }
                         button class="button button-primary" type="submit" { "登入" }
@@ -311,15 +496,17 @@ async fn login_page() -> Response {
             }
         }
     };
-    Html(html.into_string()).into_response()
+    let mut response = Html(html.into_string()).into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&format!("ekpi_csrf={}; Path=/; HttpOnly; SameSite=Strict{}", csrf_token, configured_secure_cookie_suffix()))
+            .unwrap_or_else(|_| HeaderValue::from_static("ekpi_csrf=; Path=/; Max-Age=0")),
+    );
+    response
 }
 
 fn secure_cookie_suffix(value: Option<&str>) -> &'static str {
-    if value == Some("1") {
-        "; Secure"
-    } else {
-        ""
-    }
+    if value == Some("1") { "; Secure" } else { "" }
 }
 
 fn configured_secure_cookie_suffix() -> &'static str {
@@ -330,14 +517,15 @@ async fn login_post(
     State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
     request: Request,
 ) -> Response {
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(body) => body,
         Err(error) => {
             return (
                 StatusCode::BAD_REQUEST,
                 format!("cannot read login request body: {error}"),
             )
-                .into_response()
+                .into_response();
         }
     };
     let form: LoginForm = match serde_urlencoded::from_bytes(&body) {
@@ -369,6 +557,10 @@ async fn login_post(
                 "ekpi_session={}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={max_age}",
                 session.token
             );
+            let csrf_cookie = format!(
+                "ekpi_csrf={}; Path=/; SameSite=Strict{secure}; Max-Age={max_age}",
+                session.csrf_token
+            );
             let mut response = Redirect::to("/").into_response();
             response.headers_mut().insert(
                 header::SET_COOKIE,
@@ -376,9 +568,21 @@ async fn login_post(
                     HeaderValue::from_static("ekpi_session=; Path=/; Max-Age=0")
                 }),
             );
+            response.headers_mut().append(
+                header::SET_COOKIE,
+                HeaderValue::from_str(&csrf_cookie)
+                    .unwrap_or_else(|_| HeaderValue::from_static("ekpi_csrf=; Path=/; Max-Age=0")),
+            );
             response
         }
-        Ok(Err(_)) => (StatusCode::UNAUTHORIZED, "invalid username or password").into_response(),
+        Ok(Err(_)) => crate::errors::auth_error_response(
+            "invalid_credentials",
+            "invalid username or password".to_string(),
+            None,
+            0,
+            None,
+        )
+        .into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "login task failed").into_response(),
     }
 }
@@ -387,10 +591,10 @@ async fn logout_post(
     State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(token) = session_token(&headers) {
-        if let Ok(mut store) = auth.lock() {
-            store.logout(&token);
-        }
+    if let Some(token) = session_token(&headers)
+        && let Ok(mut store) = auth.lock()
+    {
+        store.logout(&token);
     }
 
     let secure = configured_secure_cookie_suffix();
@@ -499,14 +703,13 @@ fn is_loopback_host(value: &str) -> bool {
             None => (lower.as_str(), None),
         }
     };
-    if let Some(port) = port {
-        if port.is_empty()
+    if let Some(port) = port
+        && (port.is_empty()
             || port.len() > 5
             || !port.bytes().all(|byte| byte.is_ascii_digit())
-            || !matches!(port.parse::<u16>(), Ok(1..=u16::MAX))
-        {
-            return false;
-        }
+            || !matches!(port.parse::<u16>(), Ok(1..=u16::MAX)))
+    {
+        return false;
     }
     if host == "localhost" || host == "::1" {
         return true;
@@ -580,14 +783,14 @@ async fn same_origin_guard(request: Request, next: Next) -> Response {
 async fn dashboard(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("工作總覽", "overview", dashboard_content(&data)),
-        Err(error) => error_response("overview", &error),
+        Err(error) => page_error_response("overview", &error),
     }
 }
 
 async fn projects_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("專案登錄", "projects", projects_content(&data, None)),
-        Err(error) => error_response("projects", &error),
+        Err(error) => page_error_response("projects", &error),
     }
 }
 
@@ -599,10 +802,11 @@ async fn create_project(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: ProjectForm = match serde_urlencoded::from_bytes(&body) {
@@ -630,7 +834,7 @@ async fn create_project(
                 projects_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("projects", &error),
+            Err(_) => page_error_response("projects", &error),
         },
     }
 }
@@ -638,7 +842,7 @@ async fn create_project(
 async fn evidence_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("文件與證據", "evidence", evidence_content(&data, None)),
-        Err(error) => error_response("evidence", &error),
+        Err(error) => page_error_response("evidence", &error),
     }
 }
 
@@ -650,10 +854,11 @@ async fn link_evidence(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: EvidenceForm = match serde_urlencoded::from_bytes(&body) {
@@ -684,7 +889,7 @@ async fn link_evidence(
                 evidence_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("evidence", &error),
+            Err(_) => page_error_response("evidence", &error),
         },
     }
 }
@@ -698,10 +903,11 @@ async fn review_evidence(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: ReviewForm = match serde_urlencoded::from_bytes(&body) {
@@ -721,7 +927,7 @@ async fn review_evidence(
                 evidence_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("evidence", &error),
+            Err(_) => page_error_response("evidence", &error),
         },
     }
 }
@@ -729,7 +935,7 @@ async fn review_evidence(
 async fn workflows_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("流程範本", "workflows", workflows_content(&data, None)),
-        Err(error) => error_response("workflows", &error),
+        Err(error) => page_error_response("workflows", &error),
     }
 }
 
@@ -741,10 +947,11 @@ async fn save_workflow(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: WorkflowForm = match serde_urlencoded::from_bytes(&body) {
@@ -782,7 +989,7 @@ async fn save_workflow(
                 workflows_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("workflows", &error),
+            Err(_) => page_error_response("workflows", &error),
         },
     }
 }
@@ -809,7 +1016,7 @@ async fn publish_workflow(
                 workflows_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("workflows", &error),
+            Err(_) => page_error_response("workflows", &error),
         },
     }
 }
@@ -817,7 +1024,7 @@ async fn publish_workflow(
 async fn controls_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("風險與品質事件", "controls", controls_content(&data, None)),
-        Err(error) => error_response("controls", &error),
+        Err(error) => page_error_response("controls", &error),
     }
 }
 
@@ -829,10 +1036,11 @@ async fn create_quality_case(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: QualityCaseForm = match serde_urlencoded::from_bytes(&body) {
@@ -862,7 +1070,7 @@ async fn create_quality_case(
                 controls_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("controls", &error),
+            Err(_) => page_error_response("controls", &error),
         },
     }
 }
@@ -876,10 +1084,11 @@ async fn update_quality_case(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: QualityCaseUpdateForm = match serde_urlencoded::from_bytes(&body) {
@@ -899,7 +1108,7 @@ async fn update_quality_case(
                 controls_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("controls", &error),
+            Err(_) => page_error_response("controls", &error),
         },
     }
 }
@@ -907,7 +1116,7 @@ async fn update_quality_case(
 async fn inspections_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("品質檢查", "inspections", inspections_content(&data, None)),
-        Err(error) => error_response("inspections", &error),
+        Err(error) => page_error_response("inspections", &error),
     }
 }
 
@@ -919,10 +1128,11 @@ async fn record_inspection(
         Ok(reviewer) => reviewer,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let fields: HashMap<String, String> = match serde_urlencoded::from_bytes(&body) {
@@ -961,7 +1171,7 @@ async fn record_inspection(
                 inspections_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("inspections", &error),
+            Err(_) => page_error_response("inspections", &error),
         },
     }
 }
@@ -969,7 +1179,7 @@ async fn record_inspection(
 async fn lifecycle_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
         Ok(data) => page_response("階段與關卡", "lifecycle", lifecycle_content(&data, None)),
-        Err(error) => error_response("lifecycle", &error),
+        Err(error) => page_error_response("lifecycle", &error),
     }
 }
 
@@ -981,10 +1191,11 @@ async fn record_gate_decision(
         Ok(actor) => actor,
         Err(response) => return *response,
     };
-    let body = match axum::body::to_bytes(request.into_body(), MAX_FORM_BYTES).await {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    let body = match axum::body::to_bytes(request.into_body(), form_limit).await {
         Ok(b) => b,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response()
+            return (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response();
         }
     };
     let form: GateDecisionForm = match serde_urlencoded::from_bytes(&body) {
@@ -998,7 +1209,7 @@ async fn record_gate_decision(
                 "lifecycle",
                 lifecycle_content(&data, Some("請明確選擇是否涉及不可豁免要求。")),
             ),
-            Err(error) => error_response("lifecycle", &error),
+            Err(error) => page_error_response("lifecycle", &error),
         };
     }
     let result = ledger
@@ -1026,7 +1237,7 @@ async fn record_gate_decision(
                 lifecycle_content(&data, Some(&error)),
             )
             .into_response(),
-            Err(_) => error_response("lifecycle", &error),
+            Err(_) => page_error_response("lifecycle", &error),
         },
     }
 }
@@ -1037,7 +1248,7 @@ async fn audit_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -
             let integrity = ledger.lock().map(|db| db.verify().is_ok()).unwrap_or(false);
             page_response("稽核紀錄", "audit", audit_content(&data, integrity))
         }
-        Err(error) => error_response("audit", &error),
+        Err(error) => page_error_response("audit", &error),
     }
 }
 
@@ -1052,7 +1263,7 @@ fn page_response(title: &str, active: &str, content: Markup) -> Response {
     Html(layout(title, active, content).into_string()).into_response()
 }
 
-fn error_response(active: &str, message: &str) -> Response {
+fn page_error_response(active: &str, message: &str) -> Response {
     let content = html! {
         section class="page-heading" { p class="eyebrow" { "系統資料無法使用" } h1 { "需要檢查稽核資料" } }
         div class="alert alert-error" role="alert" { (message) }

@@ -174,21 +174,21 @@ impl EvidenceStore {
     }
 
     pub fn link_support(&mut self, claim_id: &str, evidence_id: &str) -> bool {
-        if let Some(claim) = self.claims.get_mut(claim_id) {
-            if self.evidence.contains_key(evidence_id) {
-                claim.add_supporting(evidence_id);
-                return true;
-            }
+        if let Some(claim) = self.claims.get_mut(claim_id)
+            && self.evidence.contains_key(evidence_id)
+        {
+            claim.add_supporting(evidence_id);
+            return true;
         }
         false
     }
 
     pub fn link_contradiction(&mut self, claim_id: &str, evidence_id: &str) -> bool {
-        if let Some(claim) = self.claims.get_mut(claim_id) {
-            if self.evidence.contains_key(evidence_id) {
-                claim.add_contradicting(evidence_id);
-                return true;
-            }
+        if let Some(claim) = self.claims.get_mut(claim_id)
+            && self.evidence.contains_key(evidence_id)
+        {
+            claim.add_contradicting(evidence_id);
+            return true;
         }
         false
     }

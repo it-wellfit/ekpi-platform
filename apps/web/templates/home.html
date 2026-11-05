@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }}</title>
+<link rel="stylesheet" href="/static/css/design-system.css">
+</head>
+<body>
+<main class="container">
+<h1>{{ title }}</h1>
+<p>Welcome to the EKPI Platform - Strict Zero-JS Enterprise Web.</p>
+<form action="/submit" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button type="submit" class="btn btn-primary">Submit</button>
+</form>
+</main>
+</body>
+</html>

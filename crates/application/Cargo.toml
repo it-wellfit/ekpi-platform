@@ -1,0 +1,12 @@
+[package]
+name = "ekp_application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "EKPI application layer: use cases and ports. Depends on the domain layer only; infrastructure is plugged in through traits."
+
+[dependencies]
+async-trait = { workspace = true }
+ekp_domain = { path = "../domain", version = "0.1.0" }
+serde = { workspace = true }

@@ -1,4 +1,4 @@
-﻿#![forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 
 //! R2-2：active 規則層。
 //!
@@ -367,9 +367,10 @@ mod tests {
         let db = fixture();
         assert!(db.rules.iter().any(|r| r.rule_id == "RULE-CAPA-012"
             && r.sequencing.loop_policy.as_ref().unwrap().failures_cap == 3));
-        assert!(db
-            .active_rules()
-            .all(|r| r.provenance.review.status == "active"));
+        assert!(
+            db.active_rules()
+                .all(|r| r.provenance.review.status == "active")
+        );
     }
 
     #[test]

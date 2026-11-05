@@ -5,11 +5,11 @@
 //! axum REST endpoints for document, rule, case, and process operations.
 
 use axum::{
+    Router,
     extract::Path,
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

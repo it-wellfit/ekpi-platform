@@ -1,0 +1,84 @@
+{
+  "name": "ai-rigorous-engineering-skill-pack",
+  "displayName": "AI 時代嚴謹軟體工程技能包",
+  "version": "1.0.0",
+  "language": "zh-TW",
+  "description": "可下載、可放進專案、可由 AI 編碼代理逐步執行的技能包，包含總控層、九個核心領域、15 個獨立技能、品質閘門與 12 個評估案例。",
+  "installPath": ".kilo/skills/rigorous-skill-pack/",
+  "files": 41,
+  "skills": 15,
+  "evalCases": 12,
+  "sha256": "4a5684d8b032a1734699fa377ab5c6fd856f9b9fa5c483ccda54dd5e665a9a4f",
+  "structure": {
+    "core": [
+      "README.md",
+      "AGENTS.md",
+      "MASTER-WORKFLOW.md",
+      "CHANGELOG.md",
+      "LICENSE",
+      "PACK-MANIFEST.json"
+    ],
+    "skills": [
+      "skills/00-orchestration/SKILL.md",
+      "skills/01-product-discovery/SKILL.md",
+      "skills/02-requirements-specification/SKILL.md",
+      "skills/03-ux-and-accessibility/SKILL.md",
+      "skills/04-architecture-and-adr/SKILL.md",
+      "skills/05-task-planning/SKILL.md",
+      "skills/06-tdd-and-implementation/SKILL.md",
+      "skills/07-systematic-debugging/SKILL.md",
+      "skills/08-code-review/SKILL.md",
+      "skills/09-testing-and-quality/SKILL.md",
+      "skills/10-security-and-privacy/SKILL.md",
+      "skills/11-ai-evaluation-and-governance/SKILL.md",
+      "skills/12-ci-cd-and-release/SKILL.md",
+      "skills/13-observability-and-reliability/SKILL.md",
+      "skills/14-retrospective-and-evolution/SKILL.md"
+    ],
+    "templates": [
+      "templates/product-brief.md",
+      "templates/prd.md",
+      "templates/adr.md",
+      "templates/implementation-plan.md",
+      "templates/test-plan.md",
+      "templates/threat-model.md",
+      "templates/release-checklist.md",
+      "templates/retrospective.md"
+    ],
+    "checklists": [
+      "checklists/definition-of-done.md",
+      "checklists/stage-quality-gates.md",
+      "checklists/security-review.md",
+      "checklists/incident-recovery.md"
+    ],
+    "docs": [
+      "docs/source-registry.md",
+      "docs/adoption-guide.md",
+      "docs/integration-decisions.md",
+      "docs/traceability-model.md"
+    ],
+    "evals": [
+      "evals/workflow-evals/cases.json"
+    ],
+    "scripts": [
+      "scripts/validate_pack.py"
+    ]
+  },
+  "principles": [
+    "一個總控層",
+    "九個核心領域",
+    "可獨立呼叫的技能",
+    "明確的品質閘門",
+    "技能自身的評估案例",
+    "AI 自稱完成 vs 實際證據嚴格區分"
+  ],
+  "references": [
+    "https://github.com/mattpocock/skills",
+    "https://github.com/obra/superpowers",
+    "https://github.com/github/spec-kit",
+    "https://github.com/bmad-code-org/BMAD-METHOD",
+    "https://csrc.nist.gov/pubs/sp/800/218/final",
+    "https://github.com/OWASP/ASVS"
+  ],
+  "notes": "上游技能內容未整包複製；來源與授權注意事項已記錄在 docs/source-registry.md。此版為 v1.0.0 基礎版，不代表 12 個評估案例已在所有 AI 模型與 IDE 上實際跑完，也不代表已通過完整安全稽核或實際產品驗收。"
+}

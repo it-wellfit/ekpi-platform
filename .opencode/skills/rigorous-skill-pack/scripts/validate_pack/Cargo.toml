@@ -1,0 +1,15 @@
+[package]
+name = "validate-pack"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "validate-pack"
+path = "src/main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

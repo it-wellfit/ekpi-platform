@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sessions\n               SET idle_deadline = $3\n               WHERE token_hash = $1 AND expires_at > $2 AND idle_deadline > $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "60f18751d115484ba86c3bfc549fd5bac1741da91e34e2b67f70de4a74168f32"
+}

@@ -1,0 +1,22 @@
+[package]
+name = "ekp_adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "EKPI infrastructure adapters: JSONL and PostgreSQL governance stores, Argon2id password hashing, session and token stores, configuration."
+
+[dependencies]
+ekp_domain = { path = "../domain", version = "0.1.0" }
+ekp_application = { path = "../application", version = "0.1.0" }
+argon2 = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+getrandom = { workspace = true }
+password-hash = "0.6"
+rand_core = "0.6"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }

@@ -1,11 +1,9 @@
-#![forbid(unsafe_code)]
-
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
-use axum::http::{header, Method, Request, StatusCode};
+use axum::http::{Method, Request, StatusCode, header};
 use ekp_platform::governance::{Ledger, QUALITY_CHECKLIST};
 use ekp_platform::governance_web;
 use ekp_platform::local_auth::{AuthStore, Role};
@@ -28,7 +26,9 @@ struct EnvGuard {
 impl EnvGuard {
     fn set(key: &'static str, value: &str) -> Self {
         let previous = std::env::var_os(key);
-        std::env::set_var(key, value);
+        unsafe {
+            std::env::set_var(key, value);
+        }
         Self { key, previous }
     }
 }
@@ -36,8 +36,8 @@ impl EnvGuard {
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         match &self.previous {
-            Some(value) => std::env::set_var(self.key, value),
-            None => std::env::remove_var(self.key),
+            Some(value) => unsafe { std::env::set_var(self.key, value) },
+            None => unsafe { std::env::remove_var(self.key) },
         }
     }
 }
@@ -51,6 +51,9 @@ fn test_path() -> PathBuf {
 }
 
 fn test_app(path: &PathBuf) -> axum::Router {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
     let ledger = Ledger::open(path).expect("test ledger opens");
     let auth = Arc::new(Mutex::new(AuthStore::with_iterations(3600, 1_000)));
     {
@@ -150,10 +153,12 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
     let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
     let response = get_with_cookie(&app, "/", Some(&cookie)).await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response
-        .headers()
-        .get(header::CONTENT_SECURITY_POLICY)
-        .is_some());
+    assert!(
+        response
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .is_some()
+    );
     let html = response_text(response).await;
     assert!(html.contains("跳至主要內容"));
     assert!(html.contains("文件與證據"));
@@ -297,9 +302,11 @@ async fn governance_flow_persists_auditable_project_evidence_workflow_and_capa()
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(response_text(response)
-        .await
-        .contains("不可豁免要求不得以一般例外放行"));
+    assert!(
+        response_text(response)
+            .await
+            .contains("不可豁免要求不得以一般例外放行")
+    );
 
     let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
     assert_eq!(response.status(), StatusCode::OK);

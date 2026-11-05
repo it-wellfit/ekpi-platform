@@ -94,7 +94,7 @@ fn replay_check_passes_for_all_cases() {
 fn forbidden_pair_is_deviation_then_violate() {
     // H-1 保護帶：注入「execute→approve」禁止對的觀測事件序列，
     // replay 必得 Deviation，引擎必出 violate（絕不放行）。
-    use ekp_platform::process::{replay_case, ReplayEvent, ReplayFinding};
+    use ekp_platform::process::{ReplayEvent, ReplayFinding, replay_case};
 
     let platform = platform_fixture();
     let cases = cases_fixture();

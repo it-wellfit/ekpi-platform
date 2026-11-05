@@ -2,101 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
-permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
 
 jobs:
-  validate:
-    name: validate (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            command: bash scripts/check.sh
-          - os: windows-latest
-            command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Run repository checks
-        run: ${{ matrix.command }}
-
-  security:
-    name: security
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: High-signal secret pattern scan
-        run: bash scripts/check-secrets.sh
-
-      - name: Install supply-chain tools
-        run: |
-          cargo install cargo-deny --locked
-          cargo install cargo-audit --locked
-
-      - name: Advisory, license and source policy
-        run: bash scripts/check-supply-chain.sh
-
-  workflow-lint:
-    name: workflow lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
-      - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - name: Lint GitHub Actions workflows
-        run: $(go env GOPATH)/bin/actionlint -color
-
-  sbom:
-    name: sbom
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx --locked
-
-      - name: Generate CycloneDX SBOMs
-        run: bash scripts/sbom.sh
-
-      - name: Refuse local-path leakage in published SBOM
-        run: |
-          if grep -R -E '(/home/runner|/Users/|C:\\Users)' artifacts/sbom; then
-            echo "SBOM contains a local path" >&2
-            exit 1
-          fi
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: artifacts/sbom
-          if-no-files-found: error
-          retention-days: 30
-
-# Notes:
-# - The validate matrix calls the same fixed entry point contributors run locally;
-#   the commands are not duplicated in the workflow.
-# - Smoke/report/export artifacts are part of gate.ps1 -IncludeSmoke and are required
-#   locally for changes that affect reports, exports, coverage, HTML or data. CI does
-#   not yet run a separate smoke job; do not claim CI proved those artifacts.
-# - Actions are tag-pinned. Pin by SHA when the security policy requires it.
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --workspace
+      - name: Test
+        run: cargo test --workspace

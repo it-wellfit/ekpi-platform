@@ -97,7 +97,7 @@ impl RagOrchestrator {
             _ => {
                 return RagResult::Refused {
                     reason: "no evidence found".to_string(),
-                }
+                };
             }
         };
 
