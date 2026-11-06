@@ -160,18 +160,8 @@ pub fn router_with_approvals(
         .route("/settings", get(settings_page))
         .route("/api-docs", get(api_docs_page))
         .route("/assets/governance.css", get(stylesheet))
-        // ── API v1：未接線，一律誠實 501 ──
-        .route(
-            "/api/v1/workflows",
-            get(api_list_workflows).post(api_create_workflow),
-        )
-        .route("/api/v1/workflows/{id}/publish", post(api_publish_workflow))
-        .route(
-            "/api/v1/approvals",
-            get(api_list_approvals).post(api_submit_task),
-        )
-        .route("/api/v1/approvals/{id}/decide", post(api_decide_task))
-        .route("/api/v1/approvals/{id}/escalate", post(api_escalate_task))
+        // ── API v1：唯讀核准端點已接線（見 docs/contracts/approval-api.md），
+        //    其餘未接線一律誠實 501 ──
         .route("/api/v1/events/replay", post(api_replay_event))
         .route("/api/v1/channels", get(api_list_channels))
         .route("/api/v1/channels/health", get(api_channel_health))
@@ -189,6 +179,18 @@ pub fn router_with_approvals(
         )
         .route("/approvals/submit", post(submit_approval_task))
         .route("/approvals/{id}/decide", post(decide_approval_task))
+        // API v1 唯讀端點（真資料；寫入仍 501）
+        .route(
+            "/api/v1/workflows",
+            get(api_workflows_list).post(api_create_workflow),
+        )
+        .route("/api/v1/workflows/{id}/publish", post(api_publish_workflow))
+        .route(
+            "/api/v1/approvals",
+            get(api_approvals_list).post(api_submit_task),
+        )
+        .route("/api/v1/approvals/{id}/decide", post(api_decide_task))
+        .route("/api/v1/approvals/{id}/escalate", post(api_escalate_task))
         .with_state((auth_for_approvals, approvals));
 
     core.merge(approval_routes)
@@ -221,8 +223,41 @@ fn api_not_implemented(endpoint: &str) -> Response {
     .into_response()
 }
 
-async fn api_list_workflows() -> Response {
-    api_not_implemented("GET /api/v1/workflows")
+async fn api_workflows_list(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+) -> Response {
+    let workflows = match approvals_view(&approvals) {
+        Ok((_, workflows, _)) => workflows,
+        Err(error) => {
+            return crate::errors::error_response(error, StatusCode::INTERNAL_SERVER_ERROR, None)
+                .into_response();
+        }
+    };
+    let entries: Vec<serde_json::Value> = workflows
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "id": d.id,
+                "version": d.version,
+                "name": d.name,
+                "active": d.active,
+                "stages": d.stages.iter().map(|s| serde_json::json!({
+                    "id": s.id,
+                    "name": s.name,
+                    "sla_seconds": s.sla_seconds,
+                    "urgency": s.urgency,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "schema": "ekpi-approval-workflows-v1",
+            "workflows": entries,
+        })),
+    )
+        .into_response()
 }
 
 async fn api_create_workflow() -> Response {
@@ -233,8 +268,44 @@ async fn api_publish_workflow() -> Response {
     api_not_implemented("POST /api/v1/workflows/{id}/publish")
 }
 
-async fn api_list_approvals() -> Response {
-    api_not_implemented("GET /api/v1/approvals")
+/// GET /api/v1/approvals：真資料（已接線；契約 CTR-API-001）。
+async fn api_approvals_list(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+) -> Response {
+    let tasks = match approvals_view(&approvals) {
+        Ok((tasks, _, _)) => tasks,
+        Err(error) => {
+            return crate::errors::error_response(error, StatusCode::INTERNAL_SERVER_ERROR, None)
+                .into_response();
+        }
+    };
+    let entries: Vec<serde_json::Value> = tasks
+        .iter()
+        .map(|t| serde_json::json!({
+            "id": t.id,
+            "workflow_id": t.workflow_id,
+            "workflow_version": t.workflow_version,
+            "stage_id": t.stage_id,
+            "state": t.state,
+            "urgency": t.urgency,
+            "amount_cents": t.amount_cents,
+            "platform": t.platform,
+            "classification": t.classification,
+            "risk_score": t.risk_score,
+            "created_at": t.created_at,
+            "due_at": t.due_at,
+            "escalated_to": t.escalated_to,
+            "escalation_count": t.escalation_count,
+        }))
+        .collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "schema": "ekpi-approval-tasks-v1",
+            "tasks": entries,
+        })),
+    )
+        .into_response()
 }
 
 async fn api_submit_task() -> Response {

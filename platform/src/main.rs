@@ -1301,6 +1301,36 @@ fn ablation(
     )
     .map_err(|e| format!("write engine_hard_gates.json: {e}"))?;
 
+    // ── engine_decisions.json（決策匯出契約 v2）───────────────────────
+    // 確定性輸出：不含時間戳、case_id 排序；同輸入重放必須逐位元組一致
+    // （與 H-6 同一紀律）。契約見 docs/contracts/data-formats.md。
+    let mut decisions: Vec<&EngineSnapshotOut> = snapshots.iter().collect();
+    decisions.sort_by(|a, b| a.case_id.cmp(&b.case_id));
+    let decisions_doc = serde_json::json!({
+        "schema": "ekpi-decisions-v2",
+        "retrieval_threshold": threshold,
+        "counts": { "cases": decisions.len() },
+        "decisions": decisions
+            .iter()
+            .map(|d| serde_json::json!({
+                "case_id": d.case_id,
+                "verdict": d.verdict,
+                "citations": d.citations,
+                "rule_ids_used": d.rule_ids_used,
+                "notes": d.notes,
+                "manifest_sha": d.manifest_sha,
+                "event_sequence_sha": d.event_sequence_sha,
+                "replay_consistent": d.replay_consistent,
+            }))
+            .collect::<Vec<_>>(),
+    });
+    std::fs::write(
+        out_dir.join("engine_decisions.json"),
+        serde_json::to_string_pretty(&decisions_doc)
+            .map_err(|e| format!("serialize decisions: {e}"))?,
+    )
+    .map_err(|e| format!("write engine_decisions.json: {e}"))?;
+
     println!(
         "ablation report written to {} (hard gates: {})",
         out_dir.display(),

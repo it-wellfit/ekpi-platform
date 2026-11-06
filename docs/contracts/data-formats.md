@@ -229,6 +229,17 @@ Structural gate (`gate.ps1 -IncludeSmoke`):
 
 The 19/19/19/16 thresholds are tied to the current 19 active rules. If the active corpus changes, update the gate threshold, the exporter tests and the fixture together; do not lower the threshold to make a broken export pass.
 
+## Decisions export (v2)
+
+`CTR-EXP-002`. `--out DIR` additionally writes `engine_decisions.json`, the deterministic machine-readable decision export (`ekpi-decisions-v2`).
+
+Contract:
+
+- Top level: `schema` (`"ekpi-decisions-v2"`, required), `retrieval_threshold` (number), `counts.cases` (integer), `decisions` (array).
+- One entry per seed case, **sorted by `case_id`**: `case_id` (string), `verdict` (string), `citations` (array of strings), `rule_ids_used` (array of strings), `notes` (array of strings), `manifest_sha` (string), `event_sequence_sha` (string), `replay_consistent` (boolean).
+- **No timestamps.** Same corpus + parameters must replay the file byte-identically (locked by `ablation_writes_deterministic_decisions_export`); any timestamp added later would violate the contract and require a schema version bump.
+- Change rules: adding an optional field is backward-compatible (bump doc + tests); removing/renaming or changing meaning requires a new schema version (`ekpi-decisions-v3`) and an ADR.
+
 ## Compatibility and change rules
 
 - Adding an optional JSON field is backward-compatible; update the schema/doc and tests.

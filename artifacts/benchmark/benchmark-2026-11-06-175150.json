@@ -1,0 +1,53 @@
+{
+    "schema":  "ekpi.benchmark.local.v1",
+    "created_at_utc":  "2026-11-06T09:51:57.4581101Z",
+    "revision":  "ae3dcee891f7b2f42022ca9ccd42e55aff1c2167",
+    "uncommitted_paths":  7,
+    "environment":  {
+                        "os":  "Microsoft Windows 11 Home",
+                        "os_version":  "10.0.26300",
+                        "cpu":  "AMD Ryzen 7 4800HS with Radeon Graphics         ",
+                        "logical_processors":  16,
+                        "memory_gib":  15.4,
+                        "rustc":  "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+                        "powershell":  "5.1.26100.9711"
+                    },
+    "evaluation":  {
+                       "profile":  "debug",
+                       "command":  "ekp_platform --eval --test-set platform/data/eval/search_eval.json",
+                       "warmup":  2,
+                       "samples":  {
+                                       "count":  7,
+                                       "min_ms":  32.546,
+                                       "mean_ms":  35.878,
+                                       "p50_ms":  36.201,
+                                       "p95_ms":  42.59,
+                                       "max_ms":  42.59
+                                   }
+                   },
+    "http":  {
+                 "status":  "pass",
+                 "url":  "http://127.0.0.1:3000/healthz",
+                 "sequential":  {
+                                    "count":  100,
+                                    "min_ms":  9.579,
+                                    "mean_ms":  10.498,
+                                    "p50_ms":  10.178,
+                                    "p95_ms":  12.299,
+                                    "max_ms":  16.253
+                                },
+                 "concurrent":  {
+                                    "requests":  400,
+                                    "concurrency":  32,
+                                    "successes":  400,
+                                    "elapsed_s":  0.084,
+                                    "requests_per_s":  4758.21
+                                }
+             },
+    "limitations":  [
+                        "Loopback single-host measurement; not a multi-user or multi-tenant load test.",
+                        "No soak test, bottleneck profile, capacity model, cost model or approved SLO.",
+                        "The evaluation command is a deterministic lexical regression, not an LLM quality benchmark.",
+                        "Debug-profile build: latency is not representative of an optimized deployment."
+                    ]
+}

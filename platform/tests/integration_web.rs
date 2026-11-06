@@ -445,15 +445,9 @@ async fn unwired_api_endpoints_return_honest_501_never_fabricated_data() {
 
     // An authenticated GET against every unwired API endpoint must answer
     // 501 NOT IMPLEMENTED with the structured error body — never 200 with
-    // placeholder data that would read as a working feature.
-    for path in [
-        "/api/v1/workflows",
-        "/api/v1/approvals",
-        "/api/v1/channels",
-        "/api/v1/users",
-        "/api/v1/settings",
-        "/api/v1/search",
-    ] {
+    // placeholder data that would read as a working feature. (The approval
+    // list endpoints are wired and covered by their own contract tests.)
+    for path in ["/api/v1/users", "/api/v1/settings", "/api/v1/search"] {
         let response = app
             .clone()
             .oneshot(
@@ -791,4 +785,73 @@ async fn editor_cannot_decide_tasks() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let after = approvals.lock().unwrap().list_tasks().len();
     assert_eq!(before, after, "no store change on role refusal");
+}
+
+
+/// S4 契約鎖（CTR-API-001）：已接線的唯讀 API 依契約回真資料；
+/// 未登入 401；未接線寫入端點仍誠實 501。
+#[tokio::test]
+async fn wired_api_list_endpoints_serve_real_contracted_data() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("s4-api");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+
+    // 未登入 → 401（結構化）。
+    let response = get_with_cookies(&app, "/api/v1/workflows", "").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // 建立並發布一個定義，經表單流程。
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-purchase&name=purchase-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
+    )
+    .await;
+    post_form(&app, "/approvals/workflows/wf-purchase/1/publish", &approver, "").await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-purchase@1&amount_cents=15000&platform=momo&classification=internal&risk_score=20&urgency=normal",
+    )
+    .await;
+
+    // GET /api/v1/workflows → 契約形狀 + active 旗標。
+    let response = get_with_cookies(&app, "/api/v1/workflows", &approver).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 256 * 1024).await.unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+    assert_eq!(parsed["schema"], "ekpi-approval-workflows-v1");
+    let workflows = parsed["workflows"].as_array().expect("workflows array");
+    assert_eq!(workflows.len(), 1);
+    assert_eq!(workflows[0]["id"], "wf-purchase");
+    assert_eq!(workflows[0]["active"], true, "publication reflected");
+    assert_eq!(
+        workflows[0]["stages"].as_array().map(|s| s.len()),
+        Some(2)
+    );
+
+    // GET /api/v1/approvals → 契約形狀 + 任務欄位。
+    let response = get_with_cookies(&app, "/api/v1/approvals", &approver).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 256 * 1024).await.unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+    assert_eq!(parsed["schema"], "ekpi-approval-tasks-v1");
+    let tasks = parsed["tasks"].as_array().expect("tasks array");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["id"], "TSK-000001");
+    assert_eq!(tasks[0]["state"], "pending");
+    assert_eq!(tasks[0]["stage_id"], "s1");
+    assert_eq!(tasks[0]["escalation_count"], 0);
+
+    // 寫入端點仍誠實 501（契約屬後續切片）。
+    let response = post_form(&app, "/api/v1/workflows", &approver, "{}").await;
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    let response = post_form(&app, "/api/v1/approvals/TSK-000001/decide", &approver, "action=approve&note=")
+        .await;
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
 }

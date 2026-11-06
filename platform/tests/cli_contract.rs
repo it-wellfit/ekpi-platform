@@ -728,3 +728,47 @@ fn import_wellfit_cannot_be_silently_combined_with_eval() {
     );
     cleanup(&dir);
 }
+
+
+/// S4 決策匯出 v2：engine_decisions.json 必須存在、形狀符合契約、
+/// case_id 排序，且同輸入重放逐位元組一致（無時間戳）。
+#[test]
+fn ablation_writes_deterministic_decisions_export() {
+    let dir = temp_dir();
+    let out = dir.join("out");
+    let output = run_in(&dir, &["--out", out.to_str().expect("utf-8 temp path")]);
+    assert_eq!(exit_code(&output), 0, "stderr: {}", stderr(&output));
+    let first =
+        std::fs::read_to_string(out.join("engine_decisions.json")).expect("decisions export");
+    let parsed: serde_json::Value = serde_json::from_str(&first).expect("valid JSON");
+    assert_eq!(parsed["schema"], "ekpi-decisions-v2");
+    assert!(parsed["retrieval_threshold"].is_number());
+    let decisions = parsed["decisions"].as_array().expect("decisions array");
+    assert!(!decisions.is_empty(), "seed corpus yields decisions");
+    let ids: Vec<&str> = decisions
+        .iter()
+        .map(|d| d["case_id"].as_str().expect("case_id is a string"))
+        .collect();
+    let mut sorted = ids.clone();
+    sorted.sort_unstable();
+    assert_eq!(ids, sorted, "decisions must be sorted by case_id");
+    for decision in decisions {
+        assert!(
+            decision["verdict"].as_str().is_some(),
+            "every decision carries a verdict"
+        );
+        assert!(decision["citations"].is_array());
+        assert!(decision["rule_ids_used"].is_array());
+        assert!(decision["replay_consistent"].is_boolean());
+    }
+    let out2 = dir.join("out2");
+    let output2 = run_in(&dir, &["--out", out2.to_str().expect("utf-8 temp path")]);
+    assert_eq!(exit_code(&output2), 0, "stderr: {}", stderr(&output2));
+    let second =
+        std::fs::read_to_string(out2.join("engine_decisions.json")).expect("second export");
+    assert_eq!(
+        first, second,
+        "same input must replay the export byte-identically"
+    );
+    cleanup(&dir);
+}
