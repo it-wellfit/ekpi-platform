@@ -119,9 +119,11 @@ For a search behavior change, also record one real `--search` command and its ci
 ### Read routes and presentation
 
 - `GET /login` renders the local login form. Every ledger-backed GET requires a Viewer session and otherwise returns `401` without ledger content. `GET /healthz`, `/metrics` and `/assets/governance.css` stay public.
-- `GET /`, `/projects`, `/evidence`, `/inspections`, `/workflows`, `/controls`, `/lifecycle`, and `/audit` render their expected headings when authenticated.
+- `GET /`, `/projects`, `/projects/{id}`, `/evidence`, `/inspections`, `/workflows`, `/controls`, `/lifecycle`, and `/audit` render their expected headings when authenticated. An unknown project workspace id returns `404`.
+- `GET /audit` accepts `project`, `actor`, `event`, `q`, `from` and `to`; invalid dates are skipped with a visible warning, `from > to` yields an empty result, and at most the newest 200 matches are displayed.
 - `GET /assets/governance.css` returns CSS with the expected content type.
 - Preserve the skip link, visible keyboard focus styling, narrow-screen media rule, Content Security Policy header, and zero-script HTML.
+- Preserve role-aware rendering: `viewer` pages show read-only panels, `editor` pages show creation but not approval/publication/status/gate forms, and the server still enforces every role on direct requests.
 
 ### Mutating flows and records
 
@@ -135,10 +137,12 @@ For a search behavior change, also record one real `--search` command and its ci
 - Mutating requests with a foreign Origin are rejected; the test confirms rejection does not append a ledger event. A missing `Origin` is accepted only with `Sec-Fetch-Site: same-origin` or `none`.
 - Unauthenticated mutations return `401`; authenticated sessions without the required role return `403`; neither appends an event.
 - Login failures do not reveal whether a username exists; five failures lock an existing account for 300 seconds; a successful login clears the failure state and prunes expired sessions.
+- Validation, authorization and server-error pages render a focusable `id="error-summary"` alert; validation preserves the entered values and returns `200`, while a ledger/read or chain-verification failure returns `500`.
+- Project workspace aggregation includes only the selected project's records and shows `尚未記錄` for a gate without a decision.
 
 Relevant routes and tests: `platform/src/governance_web.rs`, `platform/src/local_auth.rs`, `platform/src/governance.rs`, `platform/tests/governance_web.rs`. Preserve the boundary that this prototype is local-only and has **no enterprise authentication** or external-source permission enforcement; the session is a local process-memory control, not an IdP.
 
-The existing automated route test checks semantic page headings, CSP presence, skip link, zero script, CSS content type, focus-visible selector, and a narrow-screen media rule. It is not a substitute for manual keyboard, screen-reader, contrast, or browser-resize checks on UI changes.
+The 35 automated route tests check semantic page headings, CSP presence, skip link, zero script, CSS content type, focus-visible selector, a narrow-screen media rule, role-aware views, workspace scoping, audit filters, the focused error summary and the fail-closed `500` path. They are not a substitute for manual screen-reader, contrast, keyboard or full browser-matrix checks on UI changes.
 
 ## 5. Review checklist for every change
 
@@ -400,3 +404,30 @@ This section records the regression baseline added by `fix: harden eval CLI and 
 | Canonical `scripts/check.ps1` at `db7fc95` | **PASS**, exit 0 on one run on the exact code commit; docs 53/700/106, secrets 236, eval 41 + 10 + 18 checks, platform 366, self-test 49, schema 20, search 28 |
 
 Evidence: [E-039](../assurance/test-evidence.md#e-039-eval-cli-hardening-and-exact-corpus-κ-binding-db7fc95) and [phase gates](../quality/phase-gates.md). Red before the change: at `028037a`, `--selftest --bogus` exited 0, `--systems ","` exited 0 and wrote a report, and a κ study with 60 invented case ids exited 0 with `cohens_kappa = 1.0` and `PASS`. At `db7fc95` each is exit 2 with no report; the invented study is rejected before a κ value is printed. **κ is still NOT MEASURED (0/2 annotators)** and the CI workflow has **NEVER EXECUTED**. The 41 tests and 18 checks are tooling evidence, not a human agreement result or CI execution. No test was deleted, renamed to hide a failure, weakened or skipped.
+
+## 16. Revision record: `598f4c1` role-aware workspaces and audit filters (2026-11-06)
+
+This section records the regression baseline added by `feat: add role-aware governance workspaces and audit filters`. It supplements, and does not replace, the area checklists and §15. No test was deleted to hide a failure or weakened.
+
+### New behavior to preserve
+
+- The workbench renders role-aware pages. `viewer` sessions see read-only panels (no create/review/publish/status/gate forms), `editor` sessions keep creation but lose approval/publication/quality-status/gate controls, and `approver`/`admin` sessions see all allowed actions. The server remains authoritative and still returns `403` for a direct request.
+- Dashboard count cards link to their pages; overdue follow-ups, held gates, pending reviews and recent gate decisions are visible without implying approval.
+- `GET /projects/{id}` aggregates only that project's summary, G1–G5 recorded decisions, evidence, quality cases, inspections and newest 8 project events. Missing decisions show `尚未記錄`; an unknown id returns `404`.
+- `GET /lifecycle` shows a per-project G1–G5 matrix containing only recorded decisions. It must not infer a pass from an empty cell.
+- `GET /audit` filters by `project`, `actor`, `event`, `q`, `from` and `to`; invalid dates produce a visible warning and are not applied, `from > to` yields an empty result, and at most the newest 200 matches are displayed.
+- Validation failures re-render with HTTP `200`, preserved values and a focused `id="error-summary"` alert (`role="alert"`, `aria-live="assertive"`, `tabindex="-1"`, one `autofocus`). Malformed bodies remain `400`; ledger/read and chain-verification failures are `500`, never a stale `200`.
+- Scrollable table regions expose `role="region"`, an `aria-label` and `tabindex="0"`. Wide form/list pages split above 1080px and use one column at or below 1080px.
+
+### Executed results
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all` / `cargo clippy --locked --all-targets -- -D warnings` (platform) | Exit 0 |
+| `eval` `cargo test --locked` / `--selftest` / `--corpus-selftest` | 41 passed / 10 checks / 18 checks over 67 cases |
+| `platform` unit / CLI contract / edge / governance web / integration / search evaluation / web health | 294 / 31 / 2 / 35 / 8 / 7 / 4 passed (**381**) |
+| `--selftest` / `--declared-rules-schema` / search gate | 49 assertions / 20 records / 28 cases (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) |
+| Canonical `scripts/check.ps1` at `598f4c1` | **PASS**, exit 0 on the exact code commit; docs 53/703/106, secrets 236, eval 41 + 10 + 18 checks, platform 381, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
+| Scripted local UI audit | 52 screenshots for admin/viewer/editor at 1440×1100 and 390×844; zero `<script>` elements; expected role-specific form counts; workspace and audit-filter checks pass; page-level horizontal overflow 0 at 390px on dashboard, workspace and audit |
+
+Evidence: [E-040](../assurance/test-evidence.md#e-040-role-aware-governance-workspaces-and-audit-filters-598f4c1). The six new route tests are `viewer_sees_read_only_views_without_mutation_forms`, `editor_can_create_but_cannot_approve_or_publish`, `project_workspace_aggregates_only_its_own_records`, `audit_filters_narrow_by_project_actor_type_text_and_date`, `validation_errors_render_a_focusable_error_summary` and `poisoned_ledger_returns_html_500_instead_of_stale_200`. The UI audit is local scripted browser evidence, not an automated accessibility suite, screen-reader test, contrast measurement, browser matrix, user validation or CI run.

@@ -2,7 +2,7 @@
 
 - **Status:** Active; local prototype
 - **Owner:** Engineering
-- **Last reviewed:** 2026-10-29
+- **Last reviewed:** 2026-11-06
 - **Contract ID:** `CTR-WEB-001`
 - **Source:** `platform/src/governance_web.rs`
 - **Verification:** `platform/tests/governance_web.rs`, `platform/tests/web_health.rs`
@@ -37,6 +37,8 @@ Roles are ordered `viewer < editor < approver < admin`; a higher role satisfies 
 
 This matrix is an application-level local authorization check. It is not tenant isolation, delegation or an access-review control.
 
+The server-rendered HTML is role-aware. A `viewer` sees read-only panels instead of mutation forms; an `editor` sees creation forms but not review, publication, quality-status or gate-decision forms; an `approver` or `admin` sees all actions their role allows. Hiding a control is a usability aid, not the authorization boundary: the server still rejects a direct request with `403`, and every mutation handler re-checks the session role.
+
 ## Operational routes
 
 | Method | Path | Purpose | Response | Test evidence |
@@ -57,6 +59,7 @@ All routes in this table require a `viewer` session and return `401` without one
 | --- | --- | --- | --- | --- |
 | GET | `/` | Work overview/dashboard | HTML | Route test |
 | GET | `/projects` | Project list and create form | HTML | Route test |
+| GET | `/projects/{id}` | Project workspace: summary, G1–G5 recorded decisions, evidence, quality cases, inspections and the newest 8 project events | HTML; `404` HTML when the id is unknown | Route test |
 | GET | `/evidence` | Evidence references and review state | HTML | Route test |
 | GET | `/inspections` | 29-item quality inspection form | HTML | Route test |
 | GET | `/workflows` | Workflow drafts and publish actions | HTML | Route test |
@@ -64,6 +67,8 @@ All routes in this table require a `viewer` session and return `401` without one
 | GET | `/lifecycle` | Lifecycle gate decisions | HTML | Route test |
 | GET | `/audit` | Ledger events and chain verification | HTML | Route test |
 | GET | `/assets/governance.css` | Stylesheet (public) | `text/css; charset=utf-8` | Route test |
+
+`GET /audit` accepts optional query parameters `project`, `actor`, `event`, `q`, `from` and `to`. `actor` and `q` are case-insensitive substring matches over the actor and the rendered event summary/hash; `event` is one of `project`, `evidence`, `review`, `workflow`, `case`, `inspection`, `gate`; `from` and `to` are UTC `YYYY-MM-DD` dates. A repeated parameter or malformed query encoding returns `400`. An invalid date is not applied and the page renders a visible warning instead of silently ignoring it; when `from` is later than `to`, the result is empty. The page displays at most the newest 200 matching events and states when more matches exist. Filtering is read-only and never modifies or exports the ledger.
 
 ## Mutation routes
 
@@ -91,7 +96,8 @@ The field list is the current HTML form contract. Server-side validation is auth
 - Unauthenticated data-page requests return `401` and render the login form. Authenticated requests with an insufficient role return `403`. Neither response exposes ledger content.
 - The login form accepts at most 64 KiB. Oversized or malformed login bodies return `400` without setting a cookie. Failed credentials return `401` with the same `invalid username or password` message whether the username is unknown, the password is wrong, or the account is temporarily locked; there is no response difference that confirms account existence or lockout state.
 - Duplicate session-cookie headers, empty tokens or cookies that are not valid visible ASCII are treated as unauthenticated; the server never chooses one of several tokens.
-- Ledger read/validation errors render an error page; they do not expose secrets or stack traces.
+- A domain validation failure re-renders the submitted form with HTTP `200` and an `id="error-summary"` block carrying `role="alert"`, `aria-live="assertive"`, `tabindex="-1"` and `autofocus`; the entered values are preserved and no event is appended. The login error summary receives focus instead of the username field. A malformed or oversized request body returns `400`. An unknown project workspace id returns `404`.
+- Ledger read/validation errors and an audit-chain verification failure return HTTP `500` with a safe HTML error page and a focused error summary; they do not expose secrets or stack traces. A read must not return `200` with stale or unverified ledger content.
 - There is no JSON response mode for domain data, pagination, filtering API, ETag or versioned public API. `/healthz` is a liveness JSON document; `/metrics` is aggregate Prometheus text. Neither exposes ledger content or identity.
 - The concurrency bound is a local overload guard, not an identity-aware rate limit.
 - The access log and metrics are correlation/aggregate signals, not an audit of authenticated identity or an SLO.
@@ -117,7 +123,7 @@ cd platform
 cargo test --locked --test governance_web --test web_health
 ```
 
-The route tests cover authenticated reads, unauthenticated `401`, viewer/editor/approver authorization, login/logout, oversized login bodies, mutation flows, audit chain, same-origin rejection, foreign/duplicate/non-loopback Host rejection, duplicate `Origin`/`Sec-Fetch-Site` rejection, the quality-case transition graph, duplicate session cookies and presentation constraints. Unit tests additionally cover the loopback Host parser, the single-header helper and malformed-cookie fail-closed behavior. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics. Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
+The `governance_web` suite now has 35 route tests. They cover authenticated reads, unauthenticated `401`, viewer/editor/approver authorization, role-aware read-only rendering, editor-without-approval rendering, login/logout, oversized login bodies, mutation flows, the project workspace aggregation boundary, audit filtering by project/actor/type/text/date, the focusable error summary, the poisoned-ledger `500`, audit chain, same-origin rejection, foreign/duplicate/non-loopback Host rejection, duplicate `Origin`/`Sec-Fetch-Site` rejection, the quality-case transition graph, duplicate session cookies and presentation constraints. Unit tests additionally cover the loopback Host parser, the single-header helper and malformed-cookie fail-closed behavior. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics. Manual browser checks are still required for screen-reader, contrast and full browser-matrix behavior; see [quality gates](../development/quality-gates.md).
 
 ## Update triggers
 

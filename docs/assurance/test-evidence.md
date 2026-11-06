@@ -2,7 +2,7 @@
 
 - **Status:** Active; local evidence only, with named blocks
 - **Owner:** QA + Engineering
-- **Last reviewed:** 2026-11-03
+- **Last reviewed:** 2026-11-06
 - **Repository revision for the re-run:** current R2-7 eval revision `db7fc95fcdec3496c1898e43967d6faab4cf0b45`; preceding code revision `028037a630a854506edc7e057ccb2c83d9275f92`; documentation-only commit between them `db691ca8e0a56a5649f1afb76ca5bf2d4bb0b67d`; earlier hardening revision `6ae475d8cb07fdce8f5fb864df6930767c81b852`; earlier hardening revision `d502147d3db70aefb108f2245c8e3232871225fe`; earlier hardening revisions `eec11f2a9a02827e50317fbd0d146a3092f89ccf`, `279c919471940e5a0406814ba78c1600bfb3c175`, `21e23d6e5526caca5234cb651bbbad348d535996`, `b2d8afc450a2b39364efc6a54ee27cd7bce28066`, `bbe49eb2ef3bd829ab51dcb340d4184250b2f050` and `c827351bc0ecf1db589d58b1b57b068360d12195`; code baseline `6ae61348194e2daa63a6ac53a31db00771d2a5e1`; assurance-document commit `947cd27f19ba124aa0f5854a25f1e2a4a910ac97`; evidence-record commit `a2ba7de34aae351a9507a052e4f1c1280659e070`; first final bundle revision `41beaea3ab2157721f6ac60b08c097bafaedd0dd`; final bundle revision `6ed236dc4769b3d7581608df1a325b42f46f2004` (`main`)
 - **Working tree during the re-run:** code and eval files committed at `db7fc95` in an isolated git worktree on branch `audit/export-hardening` based on `c0c0e33`; the worktree was clean when the canonical run started. The separate main worktree contains unrelated uncommitted 2026-10-30 changes and was not part of the revision. `db691ca` is documentation-only and `028037a` is the preceding code revision. `947cd27`, `a2ba7de`, `41beaea` and `6ed236d` are documentation/evidence commits relative to `6ae6134`, so the code-level checks remain attributed to `6ae6134` except where a clean-clone canonical run is explicitly recorded
 - **Environment:** One managed Windows 11 host, Windows PowerShell `5.1.26100.9711`, Rust `1.99.1` (`58cf8f9c3 2026-10-13`), Cargo `1.99.1` (`5f94df478 2026-08-27`), Git `2.56.0.windows.3`; 16,556,589,056 bytes RAM; local loopback only
@@ -51,8 +51,8 @@
 | E-035 | LOCAL | LegalRuleML export and BPMN entity hardening: red/green regression, export smoke and canonical entry point | `eec11f2` | 0 | PASS. Platform **354** (282 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Nine new tests (6 export, 3 BPMN; one export test extended with a spoofed-reference negative case) cover comment escaping, XML 1.0 character validity, comment/declaration well-formedness, real calendar dates, element-only forbidden-name matching, tag-only ID/ref scanning, entity decoding and invalid numeric references. Seven of them were observed failing before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/682 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 354, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 | E-036 | LOCAL | RAG citation confidence and xs:dateTime year-zero hardening: red/green regression and canonical entry point | `d502147` | 0 | PASS. Platform **356** (284 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); eval 12 + 10 self-test checks; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Two new RAG tests and one extended date test cover cited-confidence threshold enforcement, cite-aware confidence, rejection of xs:dateTime year `0000` and acceptance of `0001`. All three observations were red before the fixes. **Canonical `scripts/check.ps1` exited 0 on the exact code commit (two same-command runs; the second captured `EXITCODE=0`):** docs 53 required/687 links in 105 files, secrets 231, eval 12 + 10 self-test checks, platform 356, self-test 49, schema 20, search 28, `ALL CHECKS PASSED` |
 | E-038 | HISTORICAL LOCAL | R2-7 eval corpus execution, κ study tooling and CI wiring | `028037a` | 0 | PASS for the executable scope. Eval **20** tests (was 12), 10 selftest checks and **16 corpus checks over 67 cases** (9 seed + 46 casebook + 12 edge); the earlier "17" count in this row was an arithmetic overcount corrected by E-039. Corpus manifest rejects duplicate ids and a sub-50 corpus; the 67-row blinded sheet is checked for label leakage; three stubs exercise the full corpus. Platform **366** (294 unit, 31 CLI contract, 2 edge, 20 governance web, 8 integration, 7 search evaluation, 4 web health); platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass in both crates. Red before the change: `--corpus-selftest`, `--kappa` and `--make-annotation-sheet` were unknown arguments (exit 2), and the default report ran only 9 cases. **Canonical `scripts/check.ps1` exited 0 on the exact code commit:** docs 53 required/695 links in 106 files, secrets 235, eval 20 + 10 + 16 checks, platform 366, self-test 49, schema 20, search 28, `ALL CHECKS PASSED`. **κ is NOT MEASURED (0/2 annotators); the CI workflow has NEVER EXECUTED.** Superseded by E-039; R2-7 remains partial |
-
 | E-039 | LOCAL | Eval CLI hardening and exact-corpus κ binding | `db7fc95` | 0 | PASS. Eval **41** tests (27 unit + 14 real-process CLI contract; was 20), 10 self-test checks and **18 corpus selftest checks** (corrected from the actual **16** on `028037a`). CLI is fail-closed: `--selftest`/`--corpus-selftest` accept no other argument, `--cases`/`--corpus` are mutually exclusive, empty or duplicate `--systems` selections and duplicate/flag-shaped values exit `2` before any report is written. `--kappa` now loads the fixed 67-case corpus and requires exact coverage; missing, extra and foreign case ids exit `2`. Annotation records reject unknown fields, so a leaked `expected_verdict` cannot enter a study. Landis–Koch bands are inclusive at the upper bound (`0.80` = `Substantial`, `0.81+` = `Almost perfect`) and non-finite κ is `Undefined`. Red evidence at `028037a`: `--selftest --bogus` exited 0, `--systems ","` exited 0 and wrote a report, and an invented 60-case study reported `cohens_kappa = 1.0`/`PASS`. **Canonical `scripts/check.ps1` exited 0 on exact `db7fc95`:** docs 53 required/700 links in 106 files, secrets 236, eval 41 tests + 10 + 18 checks, platform 366, self-test 49, schema 20, search 28, `ALL CHECKS PASSED`. **κ is NOT MEASURED (0/2 annotators); the CI workflow has NEVER EXECUTED.** R2-7 remains partial |
+| E-040 | LOCAL | Role-aware governance workspaces, project gate status, audit filters and accessible error handling | `598f4c1` | 0 | PASS. Platform **381** tests (294 unit, 31 CLI contract, 2 edge, **35 governance web**, 8 integration, 7 search evaluation, 4 web health; was 366); six new route tests cover viewer read-only rendering, editor creation without approval/publication/status/gate controls, project-workspace scoping, audit filtering by project/actor/type/text/date, focused validation errors and the poisoned-ledger `500`. Eval 41 + 10 self-test checks + 18 corpus checks over 67 cases; platform self-test 49; schema 20; search 28 (20/20, 8/8, 4 role cases, 0 violations); fmt and Clippy pass. **Canonical `scripts/check.ps1` exited 0 on exact code `598f4c1`:** docs 53 required/703 links in 106 files, secrets 236, eval 41 + 10 + 18 checks, platform 381, self-test 49, schema 20, search 28, `ALL CHECKS PASSED`. Local UI audit: 52 screenshots for admin/viewer/editor at 1440×1100 and 390×844; zero `<script>` elements, expected role-specific form counts, workspace/audit-filter checks, focused `403` and validation errors, and zero page-level overflow at 390px. This is local evidence only; no screen-reader, contrast, browser-matrix, representative-user or CI run |
 
 ## E-001: canonical check (blocked)
 
@@ -1106,6 +1106,88 @@ This is a local run in an isolated git worktree on the same managed host, not CI
 
 **Non-claims.** The hardening proves that the tooling rejects the specific fail-open paths above; it does not produce inter-annotator agreement. κ remains **NOT MEASURED**: 0 of 2 annotators are assigned, no completed annotation files exist and no κ value is reported. The CI workflow remains **NEVER EXECUTED**: there is no remote, runner, run ID or branch protection. The corpus is synthetic and the adapters are deterministic stubs, so this is not AI quality, user validation or pilot acceptance. R2-7 remains **partial**: the 50+ corpus is complete and executable, while the human κ study and CI execution are external blockers.
 
+## E-040: role-aware governance workspaces and audit filters (`598f4c1`)
+
+```powershell
+cd platform
+cargo fmt --all
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo build --locked --bin governance_web
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-11-06 at code revision `598f4c1` (`feat: add role-aware governance workspaces and audit filters`). The documentation row you are reading was added after the canonical run; the tested code is `598f4c1`, not this docs-only commit.
+
+| Target | Count | Exit |
+| --- | --- | --- |
+| Platform unit (`--lib`) | 294 | 0 |
+| Platform CLI contract | 31 | 0 |
+| Platform edge cases | 2 | 0 |
+| Platform governance web | 35 (was 20) | 0 |
+| Platform integration | 8 | 0 |
+| Platform search evaluation | 7 | 0 |
+| Platform web health | 4 | 0 |
+| **Platform total** | **381** (was 366) | 0 |
+| Eval tests | 41 (27 unit + 14 CLI contract) | 0 |
+| Eval self-test / corpus selftest | 10 checks / 18 checks over 67 cases | 0 |
+| Platform self-test assertions | 49 | 0 |
+| Declared-rules schema records | 20 | 0 |
+| Search gate cases | 28 (20/20 top-1, 8/8 refusals, 4 role cases, 0 violations) | 0 |
+
+What changed in this revision:
+
+1. **Role-aware rendering.** Dashboard, projects, project workspace, evidence, workflows, controls, inspections and lifecycle pages derive their action set from the session role. A `viewer` gets read-only panels explaining the limit; an `editor` gets creation forms but no review, publish, quality-status or gate forms; an `approver`/`admin` gets the full set. A direct request still hits `require_role` and returns `403`.
+2. **Project workspace.** `GET /projects/{id}` aggregates only the selected project's summary, evidence, quality cases, inspections, G1–G5 recorded decisions and newest 8 events. Missing gate decisions render `尚未記錄`; an unknown id returns a safe `404`.
+3. **Lifecycle matrix.** `GET /lifecycle` shows a per-project G1–G5 status matrix built from recorded decisions only. Empty cells never imply a pass.
+4. **Audit filtering.** `GET /audit` accepts `project`, `actor`, `event`, `q`, `from` and `to`; `actor`/`q` are case-insensitive substrings, dates are UTC `YYYY-MM-DD`, invalid dates are skipped with a visible warning, `from > to` returns an empty result, and display is capped at the newest 200 matches with a note when more exist.
+5. **Accessible errors.** Validation failures re-render with HTTP `200` and a focused `id="error-summary"` alert (`role="alert"`, `aria-live="assertive"`, `tabindex="-1"`, one `autofocus`) while preserving entered values. Malformed bodies stay `400`; ledger/read and audit-chain failures return HTML `500` instead of a stale `200`.
+6. **Layout and table semantics.** Wide form/list pages split above 1080px and stack at or below 1080px; scrollable table regions expose `role="region"`, an `aria-label` and `tabindex="0"`.
+
+Route-test evidence (six new tests, all observed passing at `598f4c1`):
+
+| Test | Behavior |
+| --- | --- |
+| `viewer_sees_read_only_views_without_mutation_forms` | Viewer pages render permission panels and no create/review/publish/status/gate form |
+| `editor_can_create_but_cannot_approve_or_publish` | Editor keeps creation, loses approval/publication/status/gate forms |
+| `project_workspace_aggregates_only_its_own_records` | Workspace includes only the selected project; unknown id is `404`; lifecycle links and `尚未記錄` are correct |
+| `audit_filters_narrow_by_project_actor_type_text_and_date` | Project/actor/event/text/date filters, invalid-date warning, inverted range and malformed query `400` |
+| `validation_errors_render_a_focusable_error_summary` | Validation and `403` re-render with a focused summary; login error focuses the summary, not the username |
+| `poisoned_ledger_returns_html_500_instead_of_stale_200` | `/`, `/projects` and `/audit` return HTML `500` with a safe message when the ledger lock is poisoned |
+
+### Local UI audit
+
+A scripted headless Edge/CDP audit (`%TEMP%\opencode\ekpi-ui-run.ps1`, `ekpi-ui-cdp.ps1`, `ekpi-ui-seed.ps1`) started the real binary against a throw-away ledger, seeded projects/evidence/workflows/cases/inspection/gates, and captured 52 screenshots in `%TEMP%\opencode\ekpi-ui-shots-v2`:
+
+- `admin`, `viewer` and `editor` sessions at 1440×1100 and 390×844.
+- Zero `<script>` elements on every page.
+- Admin: 1 create-project form, 1 evidence create form, 2 review forms, 1 workflow draft form, 1 publish form, 1 quality-case form, 2 status forms, 1 inspection form and 1 gate form.
+- Viewer: 0 mutation forms and 1 read-only panel on each form/list page; `403` page focuses `#error-summary`.
+- Editor: creation forms present, but 0 review/publish/status/gate forms; `403` page focuses `#error-summary`.
+- Workspace: 5 gate rows, 4 metric cards, project-scoped evidence rows and 6 activity items; audit filters render 6 fields and filter to 1 event.
+- Narrow pages: dashboard, workspace and audit each report `scrollWidth - innerWidth = 0`.
+- Validation error focuses `#error-summary`; login error does not autofocus the username field.
+
+These are local scripted observations, not an automated accessibility suite or a substitute for screen-reader, contrast, keyboard-only or browser-matrix testing.
+
+### Canonical entry-point result
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+Observed on 2026-11-06 at `598f4c1`, **exit 0**:
+
+- Documentation PASS: 53 required documents, 703 relative links in 106 files.
+- Secret patterns PASS: 236 files.
+- Eval fmt, Clippy, 41 tests, 10 self-test checks and 18 corpus selftest checks PASS.
+- Platform fmt, Clippy and **381 tests** PASS.
+- Platform self-test 49 assertions, schema 20 records, search 28 cases with gate PASS, `=== ALL CHECKS PASSED ===`.
+
+This is a local run on the same managed host, not CI, staging, production, a clean clone or an independent execution. The branch has no remote and no pull request.
+
+**Non-claims.** The increment proves local route rendering, project scoping, audit filtering and error-handling behavior. It does not prove representative-user validation, screen-reader compatibility, contrast conformance, a browser/device matrix, enterprise identity, tenant isolation, CI execution or production readiness. κ remains **NOT MEASURED (0/2 annotators)** and the CI workflow has **NEVER EXECUTED**. Phase A remains **NOT APPROVED** and Phase B remains **BLOCKED**.
+
 ## Reproduction notes
 
 1. Run commands from the repository root unless the command shows `cd`.
@@ -1121,6 +1203,6 @@ This is a local run in an isolated git worktree on the same managed host, not CI
 - It does not show a real user, pilot acceptance or independent review.
 - It does not show enterprise authentication, tenant isolation, off-host backup, RPO/RTO or disaster recovery.
 - It does not show AI/LLM quality; the only model path is a labeled mock.
-- It does not show that the canonical check is reproducible on a different host or in CI. The current `db7fc95` worktree passed once on the same host (E-039); the preceding `028037a` worktree passed once (E-038; its corpus-check count is 16, corrected from the earlier 17); the `6ae475d` worktree passed once (E-037); the `d502147` worktree passed twice (E-036); the earlier `eec11f2` worktree passed once (E-035); the earlier `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run; the defined workflow has never executed.
+- It does not show that the canonical check is reproducible on a different host or in CI. The current code revision `598f4c1` passed once on the same host (E-040); the preceding `db7fc95` worktree passed once (E-039); the earlier `028037a` worktree passed once (E-038; its corpus-check count is 16, corrected from the earlier 17); the `6ae475d` worktree passed once (E-037); the `d502147` worktree passed twice (E-036); the earlier `eec11f2` worktree passed once (E-035); the earlier `279c919` working tree passed twice (E-034). The earlier `41beaea` working-tree run was blocked, later working-tree runs at `4697aa1`, `718db57`, `32f2b36` and `604a2a5` passed, the `c827351` run was blocked at the `edge_cases` harness (`os error 4551`), `bbe49eb` at docs HEAD `17df06a` was blocked at the debug CLI binary (E-031), `b2d8afc` had 2 edge tests blocked at spawn and its canonical entry point blocked at the debug lib and `cli_contract` harnesses (E-032), and `21e23d6` had 27 tests blocked across three harnesses and its canonical entry point blocked on two same-command attempts (E-033). There is still no CI run; the defined workflow has never executed.
 - It does not show LegalRuleML 1.0 conformance beyond the repository validator and one local .NET parser smoke check; no external schema validator, conformance suite or independent review was run.
 - It does not show that the earlier `28b68cc` revision can be restored and checked; that row remains `BLOCKED`.
