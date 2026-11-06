@@ -10,6 +10,7 @@
 pub mod audit;
 pub mod configuration;
 pub mod identity;
+pub mod jsonl_approval;
 pub mod jsonl_ledger;
 pub mod local_io;
 pub mod local_lock;

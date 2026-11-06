@@ -10,6 +10,9 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 use ekp_domain::auth::{Role, Session, UserRecord};
 use ekp_domain::governance::{GovernanceSnapshot, QualityInspectionInput, WorkflowDraftInput};
+use ekp_domain::workflow::{
+    ApprovalTask, TaskAction, TaskDecision, TaskSubmission, WorkflowDefinition,
+};
 
 /// Why a use case failed. The distinction matters to callers: a validation
 /// failure is the caller's fault and can be shown in a form, a storage failure
@@ -325,20 +328,50 @@ impl AuditSink for MemoryAuditSink {
     }
 }
 
-/// Approval repository: dynamic workflow task CRUD + escalation + cleanup.
+/// Approval repository: typed contract over the approval event store.
+///
+/// Implementations must be append-only and hash-chained, fail closed on
+/// tampered or torn files, and derive their projection deterministically
+/// from the events (see `ekp_domain::workflow::apply_approval_event`).
+/// All mutations take the session-derived actor; the store never accepts an
+/// actor supplied by a form field.
 #[async_trait]
 pub trait ApprovalRepository: Send + Sync {
-    async fn create_workflow(&self, definition: &str) -> Result<String, GovernanceError>;
-    async fn publish_workflow(&self, id: &str, version: u32) -> Result<(), GovernanceError>;
-    async fn submit_task(&self, task: &str) -> Result<String, GovernanceError>;
-    async fn decide_task(
-        &self,
-        task_id: &str,
-        decision: &str,
+    /// Validate and append a `WorkflowCreated` event; returns the definition id.
+    async fn create_workflow(
+        &mut self,
+        definition: &WorkflowDefinition,
+        actor: &str,
+    ) -> Result<String, GovernanceError>;
+    /// Append a `WorkflowPublished` event, making the version referenceable.
+    async fn publish_workflow(
+        &mut self,
+        workflow_id: &str,
+        version: u32,
         actor: &str,
     ) -> Result<(), GovernanceError>;
-    async fn escalate_task(&self, task_id: &str) -> Result<(), GovernanceError>;
-    async fn cleanup_expired(&self) -> Result<u64, GovernanceError>;
+    /// Create a task on the first stage of a published definition.
+    async fn submit_task(
+        &mut self,
+        input: &TaskSubmission,
+        actor: &str,
+        now_unix: i64,
+    ) -> Result<String, GovernanceError>;
+    /// Apply a decision; returns the exact before/after transition.
+    async fn decide_task(
+        &mut self,
+        task_id: &str,
+        action: TaskAction,
+        actor: &str,
+        note: &str,
+        now_unix: i64,
+    ) -> Result<TaskDecision, GovernanceError>;
+    /// Mark overdue open tasks `Expired`; returns how many changed.
+    async fn cleanup_expired(&mut self, now_unix: i64) -> Result<u64, GovernanceError>;
+    async fn list_workflows(&self) -> Result<Vec<WorkflowDefinition>, GovernanceError>;
+    async fn list_tasks(&self) -> Result<Vec<ApprovalTask>, GovernanceError>;
+    /// Verify the event chain end-to-end.
+    fn verify(&self) -> Result<(), GovernanceError>;
 }
 
 /// Channel repository: adapter registration and health status.

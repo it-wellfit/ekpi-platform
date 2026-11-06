@@ -4,18 +4,19 @@
 //!
 //! Implements [`ekp_application::ports::ApprovalRepository`] on top of
 //! PostgreSQL 18.6, following the same advisory-lock + audit-chain pattern
-//! as `governance.rs`.
+//! as `governance.rs`. All operations are **fail-closed**: they return
+//! `Err(Storage("not yet implemented"))` until the migration
+//! (`migrations/20261106000000_approval_workflow.sql`) and the queries are
+//! wired. The local JSONL store is the working implementation.
 
 use async_trait::async_trait;
 use ekp_application::ports::{ApprovalRepository, GovernanceError};
+use ekp_domain::workflow::{
+    ApprovalTask, TaskAction, TaskDecision, TaskSubmission, WorkflowDefinition,
+};
 use sqlx::postgres::PgPool;
 
 /// PostgreSQL approval repository (skeleton).
-///
-/// All operations are fail-closed: they return `Err(Storage("not yet
-/// implemented"))` until the migration and use cases are wired. The pool
-/// accessor is the only read path, which keeps the struct live without
-/// `allow(dead_code)`.
 #[derive(Debug, Clone)]
 pub struct PgApprovalRepository {
     pool: PgPool,
@@ -33,33 +34,56 @@ impl PgApprovalRepository {
 
 #[async_trait]
 impl ApprovalRepository for PgApprovalRepository {
-    async fn create_workflow(&self, _definition: &str) -> Result<String, GovernanceError> {
-        // TODO: implement after migration lands
+    async fn create_workflow(
+        &mut self,
+        _definition: &WorkflowDefinition,
+        _actor: &str,
+    ) -> Result<String, GovernanceError> {
         Err(GovernanceError::Storage("not yet implemented".into()))
     }
 
-    async fn publish_workflow(&self, _id: &str, _version: u32) -> Result<(), GovernanceError> {
-        Err(GovernanceError::Storage("not yet implemented".into()))
-    }
-
-    async fn submit_task(&self, _task: &str) -> Result<String, GovernanceError> {
-        Err(GovernanceError::Storage("not yet implemented".into()))
-    }
-
-    async fn decide_task(
-        &self,
-        _task_id: &str,
-        _decision: &str,
+    async fn publish_workflow(
+        &mut self,
+        _workflow_id: &str,
+        _version: u32,
         _actor: &str,
     ) -> Result<(), GovernanceError> {
         Err(GovernanceError::Storage("not yet implemented".into()))
     }
 
-    async fn escalate_task(&self, _task_id: &str) -> Result<(), GovernanceError> {
+    async fn submit_task(
+        &mut self,
+        _input: &TaskSubmission,
+        _actor: &str,
+        _now_unix: i64,
+    ) -> Result<String, GovernanceError> {
         Err(GovernanceError::Storage("not yet implemented".into()))
     }
 
-    async fn cleanup_expired(&self) -> Result<u64, GovernanceError> {
-        Ok(0)
+    async fn decide_task(
+        &mut self,
+        _task_id: &str,
+        _action: TaskAction,
+        _actor: &str,
+        _note: &str,
+        _now_unix: i64,
+    ) -> Result<TaskDecision, GovernanceError> {
+        Err(GovernanceError::Storage("not yet implemented".into()))
+    }
+
+    async fn cleanup_expired(&mut self, _now_unix: i64) -> Result<u64, GovernanceError> {
+        Err(GovernanceError::Storage("not yet implemented".into()))
+    }
+
+    async fn list_workflows(&self) -> Result<Vec<WorkflowDefinition>, GovernanceError> {
+        Err(GovernanceError::Storage("not yet implemented".into()))
+    }
+
+    async fn list_tasks(&self) -> Result<Vec<ApprovalTask>, GovernanceError> {
+        Err(GovernanceError::Storage("not yet implemented".into()))
+    }
+
+    fn verify(&self) -> Result<(), GovernanceError> {
+        Err(GovernanceError::Storage("not yet implemented".into()))
     }
 }

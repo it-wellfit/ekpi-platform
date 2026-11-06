@@ -28,6 +28,10 @@ use crate::local_auth::{AuthStore, Role};
 type SharedLedger = Arc<Mutex<Ledger>>;
 type SharedAuth = Arc<Mutex<AuthStore>>;
 
+/// Shared approval store (separate bounded context from the governance
+/// ledger; own JSONL hash chain in `ekp_adapters::jsonl_approval`).
+pub type SharedApprovals = Arc<Mutex<ekp_adapters::jsonl_approval::ApprovalStore>>;
+
 const MAX_FORM_BYTES: usize = 64 * 1024;
 const MAX_UPLOAD_BYTES: usize = 1024 * 1024; // 1MB for file uploads
 const MAX_LOGIN_BYTES: usize = 4 * 1024; // 4KB for login forms
@@ -112,10 +116,28 @@ impl RateLimiter {
 static RATE_LIMITER: LazyLock<RateLimiter> = LazyLock::new(RateLimiter::new);
 
 pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
+    // Test convenience: an ephemeral (temp-file) approval store. The production
+    // binary must open the configured path and call `router_with_approvals`.
+    let approvals = std::sync::Arc::new(std::sync::Mutex::new(
+        ekp_adapters::jsonl_approval::ApprovalStore::ephemeral()
+            .expect("ephemeral approval store opens"),
+    ));
+    router_with_approvals(ledger, auth, approvals)
+}
+
+/// Full router with an explicit approval store. The approval routes form a
+/// sub-router over `(SharedAuth, SharedApprovals)` — different state from the
+/// governance core — merged before the shared middleware stack.
+pub fn router_with_approvals(
+    ledger: SharedLedger,
+    auth: SharedAuth,
+    approvals: SharedApprovals,
+) -> Router {
     let auth_for_guard = auth.clone();
     let auth_for_csrf = auth.clone();
+    let auth_for_approvals = auth.clone();
 
-    Router::new()
+    let core = Router::new()
         .route("/ready", get(ready_check))
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics))
@@ -135,11 +157,10 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .route("/controls/{id}/status", post(update_quality_case))
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
-        .route("/approvals", get(approvals_page))
         .route("/settings", get(settings_page))
         .route("/api-docs", get(api_docs_page))
         .route("/assets/governance.css", get(stylesheet))
-        // ── API v1 (Phase C11) ──
+        // ── API v1：未接線，一律誠實 501 ──
         .route(
             "/api/v1/workflows",
             get(api_list_workflows).post(api_create_workflow),
@@ -157,7 +178,20 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .route("/api/v1/users", get(api_list_users))
         .route("/api/v1/settings", get(api_get_settings))
         .route("/api/v1/search", get(api_search))
-        .with_state((ledger, auth))
+        .with_state((ledger, auth));
+
+    let approval_routes = Router::new()
+        .route("/approvals", get(approvals_page))
+        .route("/approvals/workflows", post(create_approval_workflow))
+        .route(
+            "/approvals/workflows/{id}/{version}/publish",
+            post(publish_approval_workflow),
+        )
+        .route("/approvals/submit", post(submit_approval_task))
+        .route("/approvals/{id}/decide", post(decide_approval_task))
+        .with_state((auth_for_approvals, approvals));
+
+    core.merge(approval_routes)
         .layer(middleware::from_fn_with_state(
             auth_for_guard,
             require_session,
@@ -1483,24 +1517,138 @@ async fn audit_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -
     }
 }
 
-// ── Phase C9：核准任務頁 ──────────────────────────────────────────
+// ── 核准工作流（S2：真資料渲染 + 動作接線）────────────────────────
 
-async fn approvals_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
-    match snapshot(&ledger) {
-        Ok(data) => {
-            let integrity = ledger.lock().map(|db| db.verify().is_ok()).unwrap_or(false);
-            page_response("核准任務", "approvals", approvals_content(&data, integrity))
-        }
+fn approvals_view(
+    approvals: &SharedApprovals,
+) -> Result<
+    (
+        Vec<ekp_domain::workflow::ApprovalTask>,
+        Vec<ekp_domain::workflow::WorkflowDefinition>,
+        bool,
+    ),
+    String,
+> {
+    let store = approvals
+        .lock()
+        .map_err(|_| "核准資料鎖定失敗".to_string())?;
+    let tasks = store.list_tasks();
+    let workflows = store.list_workflows();
+    let integrity = store.verify().is_ok();
+    Ok((tasks, workflows, integrity))
+}
+
+async fn approvals_page(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+) -> Response {
+    match approvals_view(&approvals) {
+        Ok((tasks, workflows, integrity)) => page_response(
+            "核准任務",
+            "approvals",
+            approvals_content(&tasks, &workflows, integrity, None),
+        ),
         Err(error) => page_error_response("approvals", &error),
     }
 }
 
-fn approvals_content(_data: &GovernanceSnapshot, _integrity: bool) -> Markup {
+fn urgency_badge(urgency: ekp_domain::workflow::Urgency) -> &'static str {
+    match urgency {
+        ekp_domain::workflow::Urgency::Critical => "badge-red",
+        ekp_domain::workflow::Urgency::High => "badge-amber",
+        ekp_domain::workflow::Urgency::Normal => "badge-blue",
+        ekp_domain::workflow::Urgency::Low => "badge-grey",
+    }
+}
+
+fn approvals_content(
+    tasks: &[ekp_domain::workflow::ApprovalTask],
+    workflows: &[ekp_domain::workflow::WorkflowDefinition],
+    integrity: bool,
+    error: Option<&str>,
+) -> Markup {
     html! {
-        section class="page-heading" { div { p class="eyebrow" { "動態簽核工作流" } h1 { "核准任務佇列" } p class="page-subtitle" { "多急分級、條件分支、超時升級與 Agent 建議（advisory-only）。" } } }
+        section class="page-heading" { div { p class="eyebrow" { "動態簽核工作流" } h1 { "核准任務佇列" } p class="page-subtitle" { "多急分級、階段推進、超時清理與 Agent 建議（advisory-only）。" } } }
+        @if let Some(error) = error {
+            div class="notice notice-red" role="alert" { strong { "操作失敗：" } span { (error) } }
+        }
         section class="panel" {
-            div class="panel-heading" { div { h2 { "待核准任務" } p { "尚無待核准任務。P0 階段完成後，此處將顯示來自 ekpi-platform 與平台適配器的簽核請求。" } } }
-            (empty_state("暫無簽核任務", "簽核任務由工作流觸發或平台適配器提交。核准決策會寫入 SHA-256 稽核鏈。", "/projects", "新增專案"))
+            div class="panel-heading" { div { h2 { "簽核任務" } p { "任務由工作流定義觸發；所有決策寫入核准事件鏈。" } }
+                span class="badge" class=(if integrity { "badge-green" } else { "badge-red" }) { (if integrity { "鏈已驗證" } else { "鏈驗證失敗" }) }
+            }
+            @if tasks.is_empty() {
+                (empty_state("暫無簽核任務", "先建立工作流定義並發布，再提交簽核任務。核准決策會寫入核准事件鏈。", "/projects", "新增專案"))
+            } @else {
+                table class="api-table" {
+                    thead { tr { th { "任務" } th { "工作流" } th { "階段" } th { "急分級" } th { "狀態" } th { "升級次數" } th { "決策" } } }
+                    tbody {
+                        @for task in tasks {
+                            tr {
+                                td { (task.id) }
+                                td { (task.workflow_id) "@" (task.workflow_version) }
+                                td { (task.stage_id) }
+                                td { span class=(format!("badge {}", urgency_badge(task.urgency))) { (format!("{:?}", task.urgency)) } }
+                                td { span class=(if task.is_open() { "badge badge-blue" } else { "badge badge-grey" }) { (format!("{:?}", task.state)) } }
+                                td { (task.escalation_count) }
+                                td {
+                                    @if task.is_open() {
+                                        form class="inline-form" method="post" action={ "/approvals/" (task.id) "/decide" } {
+                                            select name="action" required {
+                                                option value="approve" { "核准" }
+                                                option value="reject" { "駁回" }
+                                                option value="escalate" { "升級" }
+                                            }
+                                            input type="text" name="note" maxlength="300" placeholder="備註（可留空）";
+                                            button class="button button-primary" type="submit" { "送出決策" }
+                                        }
+                                    } @else {
+                                        span { "—" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "工作流定義" } p { "建立後需發布才可被任務引用。" } } }
+            @if workflows.is_empty() {
+                p { "尚無定義。" }
+            } @else {
+                table class="api-table" {
+                    thead { tr { th { "定義" } th { "名稱" } th { "階段" } th { "狀態" } } }
+                    tbody {
+                        @for definition in workflows {
+                            tr {
+                                td { (definition.id) "@" (definition.version) }
+                                td { (definition.name) }
+                                td { (definition.stages.len()) }
+                                td { span class=(if definition.active { "badge badge-green" } else { "badge badge-grey" }) { (if definition.active { "已發布" } else { "未發布" }) } }
+                            }
+                        }
+                    }
+                }
+            }
+            form class="form-stack" method="post" action="/approvals/workflows" {
+                label class="field" { span { "定義 id" } input type="text" name="id" required maxlength="60" placeholder="wf-purchase"; }
+                label class="field" { span { "名稱" } input type="text" name="name" required maxlength="80"; }
+                label class="field" { span { "階段 id（逗號分隔）" } input type="text" name="stages" required placeholder="s1,s2"; }
+                label class="field" { span { "各階段 SLA 秒數（逗號分隔，數量須一致）" } input type="text" name="slas" required placeholder="3600,86400"; }
+                label class="field" { span { "預設急分級" } select name="urgency" { option value="low" { "low" } option value="normal" selected { "normal" } option value="high" { "high" } option value="critical" { "critical" } } }
+                button class="button button-primary" type="submit" { "建立定義（Approver）" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "提交簽核任務" } p { "引用已發布的定義版本；任務落在第一階段，期限依該階段 SLA。" } } }
+            form class="form-stack" method="post" action="/approvals/submit" {
+                label class="field" { span { "工作流（id@version，須已發布）" } input type="text" name="workflow_ref" required placeholder="wf-purchase@1"; }
+                label class="field" { span { "金額（分）" } input type="number" name="amount_cents" required value="0"; }
+                label class="field" { span { "平台" } input type="text" name="platform" required maxlength="60"; }
+                label class="field" { span { "分類" } input type="text" name="classification" required maxlength="60"; }
+                label class="field" { span { "風險分數" } input type="number" name="risk_score" required value="0"; }
+                label class="field" { span { "急分級" } select name="urgency" { option value="low" { "low" } option value="normal" selected { "normal" } option value="high" { "high" } option value="critical" { "critical" } } }
+                button class="button button-primary" type="submit" { "提交任務（Editor）" }
+            }
         }
         section class="panel" {
             div class="panel-heading" { div { h2 { "Agent 建議摘要" } p { "Agent 僅提供建議，不自動核准。所有決策由人工審核。" } } }
@@ -1509,6 +1657,267 @@ fn approvals_content(_data: &GovernanceSnapshot, _integrity: bool) -> Markup {
                 span { "ekpi-platform 內 Agent 僅能 advisory（產生建議），不得自動放行。自動核准能力位於 platform-hub，須 DEC-15 決議後啟用。" }
             }
         }
+    }
+}
+
+fn parse_urgency(text: &str) -> Option<ekp_domain::workflow::Urgency> {
+    match text {
+        "low" => Some(ekp_domain::workflow::Urgency::Low),
+        "normal" => Some(ekp_domain::workflow::Urgency::Normal),
+        "high" => Some(ekp_domain::workflow::Urgency::High),
+        "critical" => Some(ekp_domain::workflow::Urgency::Critical),
+        _ => None,
+    }
+}
+
+fn now_i64() -> Result<i64, String> {
+    let now = ekp_domain::governance::now_unix()?;
+    i64::try_from(now).map_err(|_| "系統時鐘超出範圍".to_string())
+}
+
+#[derive(Deserialize)]
+struct CreateApprovalWorkflowForm {
+    id: String,
+    name: String,
+    stages: String,
+    slas: String,
+    urgency: String,
+}
+
+async fn create_approval_workflow(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    request: Request,
+) -> Response {
+    let actor = match session_identity(&_auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
+    let body = match read_limited_body(request).await {
+        Ok(body) => body,
+        Err(response) => return *response,
+    };
+    let form: CreateApprovalWorkflowForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(form) => form,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
+    let stage_ids: Vec<&str> = form
+        .stages
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let slas: Vec<&str> = form
+        .slas
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if stage_ids.is_empty() || stage_ids.len() != slas.len() {
+        return render_approval_error(&approvals, "階段與 SLA 數量須一致且不得為空").await;
+    }
+    let mut parsed_slas = Vec::with_capacity(slas.len());
+    for sla in slas {
+        match sla.parse::<u64>() {
+            Ok(value) if value > 0 => parsed_slas.push(value),
+            _ => return render_approval_error(&approvals, "SLA 必須為正整數秒").await,
+        }
+    }
+    let urgency = match parse_urgency(&form.urgency) {
+        Some(urgency) => urgency,
+        None => return render_approval_error(&approvals, "急分級不正確").await,
+    };
+    let definition = ekp_domain::workflow::WorkflowDefinition {
+        id: form.id.trim().to_string(),
+        name: form.name.trim().to_string(),
+        version: 1,
+        stages: stage_ids
+            .iter()
+            .zip(parsed_slas.iter())
+            .map(|(id, sla)| ekp_domain::workflow::Stage {
+                id: (*id).to_string(),
+                name: (*id).to_string(),
+                approver_rule: "role:approver".to_string(),
+                sla_seconds: *sla,
+                urgency,
+                conditions: vec![],
+                escalation_path: vec![],
+                on_timeout: ekp_domain::workflow::TimeoutAction::Escalate,
+            })
+            .collect(),
+        active: false,
+    };
+    let result = approvals
+        .lock()
+        .map_err(|_| "核准資料鎖定失敗".to_string())
+        .and_then(|mut store| {
+            store
+                .create_workflow(definition, &actor)
+                .map_err(|e| e.to_string())
+        });
+    match result {
+        Ok(_) => Redirect::to("/approvals").into_response(),
+        Err(error) => render_approval_error(&approvals, &error).await,
+    }
+}
+
+#[derive(Deserialize)]
+struct SubmitApprovalTaskForm {
+    workflow_ref: String,
+    amount_cents: i64,
+    platform: String,
+    classification: String,
+    risk_score: i32,
+    urgency: String,
+}
+
+async fn submit_approval_task(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    request: Request,
+) -> Response {
+    let actor = match session_identity(&_auth, request.headers(), Role::Editor) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
+    let body = match read_limited_body(request).await {
+        Ok(body) => body,
+        Err(response) => return *response,
+    };
+    let form: SubmitApprovalTaskForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(form) => form,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
+    let (workflow_id, version) = match form.workflow_ref.split_once('@') {
+        Some((id, version)) => match version.trim().parse::<u32>() {
+            Ok(version) => (id.trim().to_string(), version),
+            Err(_) => return render_approval_error(&approvals, "工作流版本必須為數字").await,
+        },
+        None => return render_approval_error(&approvals, "工作流參照格式須為 id@version").await,
+    };
+    let urgency = match parse_urgency(&form.urgency) {
+        Some(urgency) => urgency,
+        None => return render_approval_error(&approvals, "急分級不正確").await,
+    };
+    let now = match now_i64() {
+        Ok(now) => now,
+        Err(error) => return render_approval_error(&approvals, &error).await,
+    };
+    let input = ekp_domain::workflow::TaskSubmission {
+        workflow_id,
+        workflow_version: version,
+        amount_cents: form.amount_cents,
+        platform: form.platform.trim().to_string(),
+        classification: form.classification.trim().to_string(),
+        risk_score: form.risk_score,
+        urgency,
+    };
+    let result = approvals
+        .lock()
+        .map_err(|_| "核准資料鎖定失敗".to_string())
+        .and_then(|mut store| {
+            store
+                .submit_task(&input, &actor, now)
+                .map_err(|e| e.to_string())
+        });
+    match result {
+        Ok(_) => Redirect::to("/approvals").into_response(),
+        Err(error) => render_approval_error(&approvals, &error).await,
+    }
+}
+
+#[derive(Deserialize)]
+struct DecideApprovalTaskForm {
+    action: String,
+    note: String,
+}
+
+async fn decide_approval_task(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    Path(task_id): Path<String>,
+    request: Request,
+) -> Response {
+    let actor = match session_identity(&_auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
+    let body = match read_limited_body(request).await {
+        Ok(body) => body,
+        Err(response) => return *response,
+    };
+    let form: DecideApprovalTaskForm = match serde_urlencoded::from_bytes(&body) {
+        Ok(form) => form,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+    };
+    let action = match ekp_domain::workflow::TaskAction::parse(form.action.trim()) {
+        Some(
+            action @ (ekp_domain::workflow::TaskAction::Approve
+            | ekp_domain::workflow::TaskAction::Reject
+            | ekp_domain::workflow::TaskAction::Escalate),
+        ) => action,
+        _ => return render_approval_error(&approvals, "決策動作不正確").await,
+    };
+    let now = match now_i64() {
+        Ok(now) => now,
+        Err(error) => return render_approval_error(&approvals, &error).await,
+    };
+    let result = approvals
+        .lock()
+        .map_err(|_| "核准資料鎖定失敗".to_string())
+        .and_then(|mut store| {
+            store
+                .decide_task(&task_id, action, &actor, &form.note, now)
+                .map_err(|e| e.to_string())
+        });
+    match result {
+        Ok(_) => Redirect::to("/approvals").into_response(),
+        Err(error) => render_approval_error(&approvals, &error).await,
+    }
+}
+
+/// Publishes a workflow definition version (Approver). Publication is the
+/// gate between "definition exists" and "tasks may reference it" (B7).
+async fn publish_approval_workflow(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    Path((workflow_id, version)): Path<(String, u32)>,
+    request: Request,
+) -> Response {
+    let actor = match session_identity(&_auth, request.headers(), Role::Approver) {
+        Ok(actor) => actor,
+        Err(response) => return *response,
+    };
+    let result = approvals
+        .lock()
+        .map_err(|_| "核准資料鎖定失敗".to_string())
+        .and_then(|mut store| {
+            store
+                .publish_workflow(&workflow_id, version, &actor)
+                .map_err(|e| e.to_string())
+        })
+        .map_err(|e| e.to_string());
+    match result {
+        Ok(()) => Redirect::to("/approvals").into_response(),
+        Err(error) => render_approval_error(&approvals, &error).await,
+    }
+}
+
+async fn render_approval_error(approvals: &SharedApprovals, error: &str) -> Response {
+    match approvals_view(approvals) {
+        Ok((tasks, workflows, integrity)) => page_response(
+            "核准任務",
+            "approvals",
+            approvals_content(&tasks, &workflows, integrity, Some(error)),
+        )
+        .into_response(),
+        Err(view_error) => page_error_response("approvals", &view_error),
+    }
+}
+
+async fn read_limited_body(request: Request) -> Result<Vec<u8>, Box<Response>> {
+    let form_limit = max_form_bytes_for_path(request.uri().path());
+    match axum::body::to_bytes(request.into_body(), form_limit).await {
+        Ok(bytes) => Ok(bytes.to_vec()),
+        Err(e) => Err(Box::new(
+            (StatusCode::BAD_REQUEST, format!("無法讀取要求本文：{e}")).into_response(),
+        )),
     }
 }
 

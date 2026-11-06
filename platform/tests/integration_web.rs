@@ -3,6 +3,7 @@
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use ekp_adapters::jsonl_approval::ApprovalStore;
 use ekp_platform::governance::Ledger;
 use ekp_platform::governance_web;
 use ekp_platform::local_auth::AuthStore;
@@ -483,4 +484,311 @@ async fn unwired_api_endpoints_return_honest_501_never_fabricated_data() {
             "{path} must carry the structured 501 envelope"
         );
     }
+}
+
+// ── 核准工作流（S2，BDD D 組場景，見 docs/quality/bdd-scenarios-approval.md）──
+
+fn app_with_approval_users(
+    label: &str,
+) -> (
+    axum::Router,
+    std::path::PathBuf,
+    ekp_platform::governance_web::SharedApprovals,
+) {
+    let path = test_ledger_path(label);
+    let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
+    let mut store = AuthStore::default();
+    store
+        .register(
+            "approver-a",
+            "correct-horse-battery-staple",
+            ekp_platform::local_auth::Role::Approver,
+        )
+        .unwrap();
+    store
+        .register(
+            "editor-a",
+            "correct-horse-battery-staple",
+            ekp_platform::local_auth::Role::Editor,
+        )
+        .unwrap();
+    let auth = Arc::new(std::sync::Mutex::new(store));
+    let approval_path = test_ledger_path(&format!("{label}-approvals"));
+    let approvals = Arc::new(std::sync::Mutex::new(
+        ApprovalStore::open(&approval_path).unwrap(),
+    ));
+    let app = governance_web::router_with_approvals(ledger, auth, approvals.clone());
+    (app, path, approvals)
+}
+
+async fn post_form(
+    app: &axum::Router,
+    path: &str,
+    cookies: &str,
+    body: &str,
+) -> axum::response::Response {
+    app.clone()
+        .oneshot(
+            Request::post(path)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("host", "127.0.0.1:8080")
+                .header("origin", "http://127.0.0.1:8080")
+                .header("cookie", cookies)
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+async fn get_with_cookies(
+    app: &axum::Router,
+    path: &str,
+    cookies: &str,
+) -> axum::response::Response {
+    app.clone()
+        .oneshot(
+            Request::get(path)
+                .header("host", "127.0.0.1:8080")
+                .header("cookie", cookies)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+async fn response_contains(response: axum::response::Response, needle: &str) -> bool {
+    let body = axum::body::to_bytes(response.into_body(), 256 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body).to_string();
+    html.contains(needle)
+}
+
+/// D6：未登入不可讀。
+#[tokio::test]
+async fn approvals_page_requires_session() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("d6-unauth");
+    let response = get_with_cookies(&app, "/approvals", "").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// D1：頁面呈現真實任務（先空、後有）。
+#[tokio::test]
+async fn approvals_page_renders_submitted_task() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("d1-render");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+
+    let page = get_with_cookies(&app, "/approvals", &approver).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    assert!(
+        response_contains(page, "暫無簽核任務").await,
+        "empty state must show before any task exists"
+    );
+
+    let created = post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-purchase&name=purchase-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
+    )
+    .await;
+    assert_eq!(
+        created.status(),
+        StatusCode::SEE_OTHER,
+        "definition created"
+    );
+    let published = post_form(
+        &app,
+        "/approvals/workflows/wf-purchase/1/publish",
+        &approver,
+        "",
+    )
+    .await;
+    assert_eq!(
+        published.status(),
+        StatusCode::SEE_OTHER,
+        "definition published"
+    );
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    let submitted = post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-purchase@1&amount_cents=15000&platform=momo&classification=internal&risk_score=20&urgency=normal",
+    )
+    .await;
+    assert_eq!(submitted.status(), StatusCode::SEE_OTHER, "task submitted");
+
+    let page = get_with_cookies(&app, "/approvals", &approver).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    assert!(
+        response_contains(page, "TSK-000001").await,
+        "the submitted task must render"
+    );
+}
+
+/// D2+D5：工作台全生命週期（建立→發布→提交→核准推進→完成），全程 session actor。
+#[tokio::test]
+async fn approval_lifecycle_through_web() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, approvals) = app_with_approval_users("d2-lifecycle");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-purchase&name=purchase-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
+    )
+    .await;
+    post_form(
+        &app,
+        "/approvals/workflows/wf-purchase/1/publish",
+        &approver,
+        "",
+    )
+    .await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-purchase@1&amount_cents=15000&platform=momo&classification=internal&risk_score=20&urgency=normal",
+    )
+    .await;
+
+    // D2：store 的提交事件 actor 是登入者。
+    {
+        let store = approvals.lock().unwrap();
+        assert!(
+            store.event_actors().contains(&"editor-a".to_string()),
+            "submit actor must be the session user"
+        );
+    }
+
+    let decided = post_form(
+        &app,
+        "/approvals/TSK-000001/decide",
+        &approver,
+        "action=approve&note=",
+    )
+    .await;
+    assert_eq!(decided.status(), StatusCode::SEE_OTHER, "stage advance");
+
+    let page = get_with_cookies(&app, "/approvals", &approver).await;
+    assert!(
+        response_contains(page, "s2").await,
+        "task must sit on stage s2 after first approval"
+    );
+
+    let completed = post_form(
+        &app,
+        "/approvals/TSK-000001/decide",
+        &approver,
+        "action=approve&note=",
+    )
+    .await;
+    assert_eq!(completed.status(), StatusCode::SEE_OTHER, "final approval");
+
+    let page = get_with_cookies(&app, "/approvals", &approver).await;
+    assert!(
+        response_contains(page, "Approved").await,
+        "completed task must render as Approved"
+    );
+    approvals.lock().unwrap().verify().expect("chain verifies");
+}
+
+/// D3：表單 actor 不被信任。
+#[tokio::test]
+async fn form_supplied_actor_is_ignored() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, approvals) = app_with_approval_users("d3-actor");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-purchase&name=purchase-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
+    )
+    .await;
+    post_form(
+        &app,
+        "/approvals/workflows/wf-purchase/1/publish",
+        &approver,
+        "",
+    )
+    .await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-purchase@1&amount_cents=15000&platform=momo&classification=internal&risk_score=20&urgency=normal&actor=Jordan",
+    )
+    .await;
+    let actors = approvals.lock().unwrap().event_actors();
+    assert!(
+        !actors.iter().any(|actor| actor == "Jordan"),
+        "form-supplied actor must never enter the store: {actors:?}"
+    );
+    assert!(
+        actors.contains(&"editor-a".to_string()),
+        "session actor must be recorded: {actors:?}"
+    );
+}
+
+/// D4：決策需 Approver。
+#[tokio::test]
+async fn editor_cannot_decide_tasks() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, approvals) = app_with_approval_users("d4-role");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-purchase&name=purchase-flow&stages=s1&slas=3600&urgency=normal",
+    )
+    .await;
+    post_form(
+        &app,
+        "/approvals/workflows/wf-purchase/1/publish",
+        &approver,
+        "",
+    )
+    .await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-purchase@1&amount_cents=15000&platform=momo&classification=internal&risk_score=20&urgency=normal",
+    )
+    .await;
+    let before = approvals.lock().unwrap().list_tasks().len();
+
+    let response = post_form(
+        &app,
+        "/approvals/TSK-000001/decide",
+        &editor,
+        "action=approve&note=",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let after = approvals.lock().unwrap().list_tasks().len();
+    assert_eq!(before, after, "no store change on role refusal");
 }

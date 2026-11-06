@@ -56,7 +56,24 @@ async fn main() {
             );
         }
     }
-    let app = governance_web::router(ledger_state, auth_state);
+    // The approval workflow store is a separate bounded context from the
+    // governance ledger: own file, own domain-separated hash chain. Opening
+    // it must succeed before serving; a tampered file fails startup loudly.
+    let approval_path = ekp_adapters::jsonl_approval::default_approval_path();
+    let approval_store = match ekp_adapters::jsonl_approval::ApprovalStore::open(&approval_path) {
+        Ok(store) => store,
+        Err(error) => {
+            eprintln!(
+                "無法開啟核准工作流資料 {}: {error}",
+                approval_path.display()
+            );
+            std::process::exit(1);
+        }
+    };
+    println!("核准工作流資料：{}", approval_path.display());
+    let approvals_state = Arc::new(Mutex::new(approval_store));
+
+    let app = governance_web::router_with_approvals(ledger_state, auth_state, approvals_state);
     let address = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = match tokio::net::TcpListener::bind(address).await {
         Ok(listener) => listener,
