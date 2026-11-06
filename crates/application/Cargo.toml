@@ -10,3 +10,6 @@ description = "EKPI application layer: use cases and ports. Depends on the domai
 async-trait = { workspace = true }
 ekp_domain = { path = "../domain", version = "0.1.0" }
 serde = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

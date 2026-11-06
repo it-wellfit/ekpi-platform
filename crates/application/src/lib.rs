@@ -7,6 +7,7 @@
 //! use cases can run against the local JSONL pilot store and against the
 //! PostgreSQL deployment.
 
+pub mod approval;
 pub mod authentication;
 pub mod authorization;
 pub mod governance;

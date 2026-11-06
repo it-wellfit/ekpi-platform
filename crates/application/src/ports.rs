@@ -325,6 +325,52 @@ impl AuditSink for MemoryAuditSink {
     }
 }
 
+/// Approval repository: dynamic workflow task CRUD + escalation + cleanup.
+#[async_trait]
+pub trait ApprovalRepository: Send + Sync {
+    async fn create_workflow(&self, definition: &str) -> Result<String, GovernanceError>;
+    async fn publish_workflow(&self, id: &str, version: u32) -> Result<(), GovernanceError>;
+    async fn submit_task(&self, task: &str) -> Result<String, GovernanceError>;
+    async fn decide_task(
+        &self,
+        task_id: &str,
+        decision: &str,
+        actor: &str,
+    ) -> Result<(), GovernanceError>;
+    async fn escalate_task(&self, task_id: &str) -> Result<(), GovernanceError>;
+    async fn cleanup_expired(&self) -> Result<u64, GovernanceError>;
+}
+
+/// Channel repository: adapter registration and health status.
+#[async_trait]
+pub trait ChannelRepository: Send + Sync {
+    async fn register_channel(
+        &self,
+        platform_id: &str,
+        config: &str,
+    ) -> Result<(), GovernanceError>;
+    async fn channel_health(&self, platform_id: &str) -> Result<bool, GovernanceError>;
+    async fn list_channels(&self) -> Result<Vec<String>, GovernanceError>;
+}
+
+/// Event store: outbox/inbox idempotent access.
+#[async_trait]
+pub trait EventStore: Send + Sync {
+    async fn publish_outbox(&self, event: &str) -> Result<(), GovernanceError>;
+    async fn consume_inbox(
+        &self,
+        consumer_id: &str,
+        event_id: &str,
+    ) -> Result<bool, GovernanceError>;
+    async fn pending_outbox(&self, limit: i64) -> Result<Vec<String>, GovernanceError>;
+}
+
+/// Agent advisor: advisory-only (no approve()). ekpi-platform never auto-approves.
+#[async_trait]
+pub trait AgentAdvisor: Send + Sync {
+    async fn advise(&self, context: &str) -> Result<String, GovernanceError>;
+}
+
 /// Read-only view over the quality checklist, exposed for adapters that need
 /// to materialise the checklist into a database.
 pub fn quality_checklist() -> &'static [ekp_domain::governance::QualityCheckDefinition] {

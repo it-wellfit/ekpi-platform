@@ -39,7 +39,7 @@ async fn main() {
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     tracing::info!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let graceful = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
@@ -76,18 +76,17 @@ async fn handle_submit(
 }
 
 fn generate_csrf_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    format!("csrf-{}", timestamp)
+    // CSPRNG-based token (UUID v4). Session binding and single-use
+    // enforcement require session infrastructure not yet present in
+    // this skeleton app; tracked as follow-up (see plan C6-3).
+    uuid::Uuid::new_v4().to_string()
 }
 
 fn validate_csrf_token(token: &str) -> bool {
-    // In production, this would verify against a stored session token
-    // For now, accept any non-empty token starting with "csrf-"
-    !token.is_empty() && token.starts_with("csrf-")
+    // Accept only well-formed UUID v4 tokens (unpredictable, CSPRNG).
+    uuid::Uuid::parse_str(token)
+        .map(|u| u.get_version_num() == 4)
+        .unwrap_or(false)
 }
 
 async fn security_headers(
@@ -111,4 +110,33 @@ async fn security_headers(
         "camera=(), microphone=(), geolocation=()".parse().unwrap(),
     );
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_token_is_uuid_v4_and_validates() {
+        let token = generate_csrf_token();
+        assert!(
+            validate_csrf_token(&token),
+            "a freshly generated token must validate: {token}"
+        );
+    }
+
+    #[test]
+    fn csrf_validation_rejects_legacy_and_malformed_tokens() {
+        assert!(!validate_csrf_token(""), "empty token refused");
+        assert!(
+            !validate_csrf_token("csrf-12345"),
+            "legacy time-based prefix must be refused"
+        );
+        assert!(!validate_csrf_token("not-a-uuid"));
+        // A UUID v1/v3/v5 shape must also be refused; only v4 passes.
+        assert!(
+            !validate_csrf_token("00000000-0000-1000-8000-000000000000"),
+            "non-v4 UUID versions must be refused"
+        );
+    }
 }

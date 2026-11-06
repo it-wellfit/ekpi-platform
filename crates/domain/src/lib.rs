@@ -8,6 +8,8 @@
 //! workspace is Presentation -> Application -> Domain.
 
 pub mod auth;
+pub mod channels;
 pub mod governance;
 pub mod hashing;
 pub mod tenant;
+pub mod workflow;

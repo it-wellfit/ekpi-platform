@@ -37,14 +37,14 @@ mod tests {
     }
 
     #[test]
-    fn test_csrf_token_generation() {
-        // Verify CSRF token format
-        let token = format!("csrf-{}", 12345u64);
+    fn test_login_form_carries_csrf_field() {
+        // The template must carry the double-submit CSRF hidden field; token
+        // generation/validation semantics are unit-tested in main.rs.
+        let html = include_str!("../templates/home.html");
         assert!(
-            token.starts_with("csrf-"),
-            "CSRF token must have correct prefix"
+            html.contains("name=\"csrf_token\""),
+            "the form must include the csrf_token hidden field"
         );
-        assert!(!token.is_empty(), "CSRF token must not be empty");
     }
 
     #[test]

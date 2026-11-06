@@ -432,3 +432,55 @@ async fn csrf_accepts_valid_token() {
     assert_ne!(response.status(), StatusCode::FORBIDDEN);
     assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn unwired_api_endpoints_return_honest_501_never_fabricated_data() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _path) = app_with_user("testuser", "password123", "api-honest");
+
+    let cookies = login(&app, "testuser", "password123").await;
+
+    // An authenticated GET against every unwired API endpoint must answer
+    // 501 NOT IMPLEMENTED with the structured error body — never 200 with
+    // placeholder data that would read as a working feature.
+    for path in [
+        "/api/v1/workflows",
+        "/api/v1/approvals",
+        "/api/v1/channels",
+        "/api/v1/users",
+        "/api/v1/settings",
+        "/api/v1/search",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header("host", "127.0.0.1:8080")
+                    .header("cookie", cookies.as_str())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_IMPLEMENTED,
+            "{path} must fail honestly"
+        );
+        let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&body).expect("error body must be structured JSON");
+        assert_eq!(
+            parsed
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_str()),
+            Some("501"),
+            "{path} must carry the structured 501 envelope"
+        );
+    }
+}

@@ -135,7 +135,28 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .route("/controls/{id}/status", post(update_quality_case))
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
+        .route("/approvals", get(approvals_page))
+        .route("/settings", get(settings_page))
+        .route("/api-docs", get(api_docs_page))
         .route("/assets/governance.css", get(stylesheet))
+        // ── API v1 (Phase C11) ──
+        .route(
+            "/api/v1/workflows",
+            get(api_list_workflows).post(api_create_workflow),
+        )
+        .route("/api/v1/workflows/{id}/publish", post(api_publish_workflow))
+        .route(
+            "/api/v1/approvals",
+            get(api_list_approvals).post(api_submit_task),
+        )
+        .route("/api/v1/approvals/{id}/decide", post(api_decide_task))
+        .route("/api/v1/approvals/{id}/escalate", post(api_escalate_task))
+        .route("/api/v1/events/replay", post(api_replay_event))
+        .route("/api/v1/channels", get(api_list_channels))
+        .route("/api/v1/channels/health", get(api_channel_health))
+        .route("/api/v1/users", get(api_list_users))
+        .route("/api/v1/settings", get(api_get_settings))
+        .route("/api/v1/search", get(api_search))
         .with_state((ledger, auth))
         .layer(middleware::from_fn_with_state(
             auth_for_guard,
@@ -148,6 +169,74 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .layer(middleware::from_fn(rate_limit_guard))
         .layer(middleware::from_fn(same_origin_guard))
         .layer(middleware::from_fn(request_context))
+}
+
+// ── API v1 handlers ──────────────────────────────────────────────────
+//
+// 誠實性原則：本組端點均未接線（無 use case、無儲存後端），因此一律回
+// 501 NOT_IMPLEMENTED 與結構化錯誤，絕不回傳佔位假資料（空陣列/常數）。
+// 真實契約（含認證機制）將於再設計總計畫 S4 定義後實作；在此之前，
+// HTML 工作台是唯一已接線的變更介面。
+
+fn api_not_implemented(endpoint: &str) -> Response {
+    crate::errors::error_response(
+        format!("endpoint not implemented: {endpoint}"),
+        StatusCode::NOT_IMPLEMENTED,
+        None,
+    )
+    .into_response()
+}
+
+async fn api_list_workflows() -> Response {
+    api_not_implemented("GET /api/v1/workflows")
+}
+
+async fn api_create_workflow() -> Response {
+    api_not_implemented("POST /api/v1/workflows")
+}
+
+async fn api_publish_workflow() -> Response {
+    api_not_implemented("POST /api/v1/workflows/{id}/publish")
+}
+
+async fn api_list_approvals() -> Response {
+    api_not_implemented("GET /api/v1/approvals")
+}
+
+async fn api_submit_task() -> Response {
+    api_not_implemented("POST /api/v1/approvals")
+}
+
+async fn api_decide_task() -> Response {
+    api_not_implemented("POST /api/v1/approvals/{id}/decide")
+}
+
+async fn api_escalate_task() -> Response {
+    api_not_implemented("POST /api/v1/approvals/{id}/escalate")
+}
+
+async fn api_replay_event() -> Response {
+    api_not_implemented("POST /api/v1/events/replay")
+}
+
+async fn api_list_channels() -> Response {
+    api_not_implemented("GET /api/v1/channels")
+}
+
+async fn api_channel_health() -> Response {
+    api_not_implemented("GET /api/v1/channels/health")
+}
+
+async fn api_list_users() -> Response {
+    api_not_implemented("GET /api/v1/users")
+}
+
+async fn api_get_settings() -> Response {
+    api_not_implemented("GET /api/v1/settings")
+}
+
+async fn api_search() -> Response {
+    api_not_implemented("GET /api/v1/search")
 }
 
 async fn healthz() -> Json<serde_json::Value> {
@@ -1391,6 +1480,97 @@ async fn audit_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -
             page_response("稽核紀錄", "audit", audit_content(&data, integrity))
         }
         Err(error) => page_error_response("audit", &error),
+    }
+}
+
+// ── Phase C9：核准任務頁 ──────────────────────────────────────────
+
+async fn approvals_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+    match snapshot(&ledger) {
+        Ok(data) => {
+            let integrity = ledger.lock().map(|db| db.verify().is_ok()).unwrap_or(false);
+            page_response("核准任務", "approvals", approvals_content(&data, integrity))
+        }
+        Err(error) => page_error_response("approvals", &error),
+    }
+}
+
+fn approvals_content(_data: &GovernanceSnapshot, _integrity: bool) -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "動態簽核工作流" } h1 { "核准任務佇列" } p class="page-subtitle" { "多急分級、條件分支、超時升級與 Agent 建議（advisory-only）。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "待核准任務" } p { "尚無待核准任務。P0 階段完成後，此處將顯示來自 ekpi-platform 與平台適配器的簽核請求。" } } }
+            (empty_state("暫無簽核任務", "簽核任務由工作流觸發或平台適配器提交。核准決策會寫入 SHA-256 稽核鏈。", "/projects", "新增專案"))
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "Agent 建議摘要" } p { "Agent 僅提供建議，不自動核准。所有決策由人工審核。" } } }
+            div class="notice notice-blue" role="info" {
+                strong { "範圍管制：" }
+                span { "ekpi-platform 內 Agent 僅能 advisory（產生建議），不得自動放行。自動核准能力位於 platform-hub，須 DEC-15 決議後啟用。" }
+            }
+        }
+    }
+}
+
+// ── Phase C9：系統設定頁 ──────────────────────────────────────────
+
+async fn settings_page(State((_ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+    page_response("系統設定", "settings", settings_content())
+}
+
+fn settings_content() -> Markup {
+    let version = env!("CARGO_PKG_VERSION");
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "營運設定" } h1 { "系統設定" } p class="page-subtitle" { "儲存模式、版本與健康檢查。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "儲存模式" } p { "JSONL（預設，本機 pilot）或 PostgreSQL 18.6（部署目標）。" } } }
+            div class="setting-row" { label { "目前模式：" } span class="badge badge-blue" { "JSONL（本機）" } }
+            div class="setting-row" { label { "PostgreSQL：" } span { "僅在 EKPI_STORAGE=postgres + DATABASE_URL 啟用" } }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "系統資訊" } } }
+            div class="setting-row" { label { "版本：" } span { (version) } }
+            div class="setting-row" { label { "部署目標：" } span { "本機 / loopback（跨機部署須擁有者核准）" } }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "健康檢查" } } }
+            div class="setting-row" { label { "稽核鏈：" } span class="badge badge-green" { "本機可用" } }
+            div class="setting-row" { label { "JSONL ledger：" } span { "append-only hash chain" } }
+        }
+    }
+}
+
+// ── Phase C9：API 文件頁 ──────────────────────────────────────────
+
+async fn api_docs_page(State((_ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
+    page_response("API 文件", "api-docs", api_docs_content())
+}
+
+fn api_docs_content() -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "程式化存取" } h1 { "API 文件" } p class="page-subtitle" { "工作台為主介面；API 端點已註冊路由但尚未接線。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "端點狀態" } } }
+            table class="api-table" {
+                thead {
+                    tr { th { "方法" } th { "端點" } th { "狀態" } }
+                }
+                tbody {
+                    tr { td { "GET" } td { "/api/v1/workflows" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "POST" } td { "/api/v1/workflows" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "GET" } td { "/api/v1/approvals" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "POST" } td { "/api/v1/approvals/{id}/decide" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "POST" } td { "/api/v1/events/replay" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "GET" } td { "/api/v1/channels" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "GET" } td { "/api/v1/users" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "GET" } td { "/api/v1/settings" } td class="status-planned" { "未實作（一律 501）" } }
+                }
+            }
+            div class="notice notice-blue" role="info" {
+                strong { "誠實聲明：" }
+                span { "所有 API 端點目前一律回 501，不提供任何資料；本頁不宣稱任何認證機制。契約與認證設計將於再設計總計畫 S4 完成後實作，屆時本頁才會更新為可用狀態。目前唯一的變更介面是 HTML 工作台。" }
+            }
+        }
     }
 }
 

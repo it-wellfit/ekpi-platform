@@ -7,6 +7,8 @@ publish = false
 description = "EKPI domain model and business rules: governance records, quality checklist, identity and tenant concepts. No I/O and no framework dependencies."
 
 [dependencies]
+async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+thiserror = { workspace = true }

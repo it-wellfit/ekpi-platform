@@ -595,15 +595,18 @@ dependencies = [
  "async-trait",
  "ekp_domain",
  "serde",
+ "tokio",
 ]
 
 [[package]]
 name = "ekp_domain"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "thiserror",
 ]
 
 [[package]]
