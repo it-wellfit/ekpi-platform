@@ -7,6 +7,23 @@
 
 本文件將「精緻…精選」十二維度轉為**可量測、可否決**的驗收準則。任何一項 FAIL 即整批退回，不以個別項目通過冒充整體通過。
 
+## 0. 維度 → 準則映射（2026-11-06 修訂版）
+
+| 維度 | 對應準則 | 量測本質 |
+|---|---|---|
+| 精緻 | Q-21、Q-22、Q-26 | 互動細節完備（七狀態、焦點、動效節制） |
+| 精美 | Q-23 | **視覺系統一致**：Design Token 唯一來源（本儲存庫為 `apps/web/static/css/design-system.css` 與 `platform/assets/governance.css`）、零裸寫色碼、九頁面同視覺語言。**不含** WCAG（屬 Q-22 無障礙）與零 JS（屬憲章鐵律 Q-20） |
+| 精密 | Q-11、Q-14、Q-15 與匯出 schema | 契約與 schema 精確、重放逐位元組一致 |
+| 精良 | Q-01…Q-05、Q-08 | 零警告、零 unsafe、fmt、測試全綠 |
+| 精巧 | Q-20＋e2e 無 JS 主流程 | 以零 JS 技術達成全部互動 |
+| 精雕 | Q-06 與 IMP-* 登錄 | 追加式文件、重複碼消除、缺陷閉環 |
+| 精準 | Q-10、Q-13 與推導審計 | 數字可推導、決定論、證據綁修訂 |
+| 精湛 | Q-15、錯誤全路徑結構化（Q-* 於切片驗收勾稽） | 完整設計一次做對、無半套 |
+| 精品 | Q-10、Q-12、還原演練 | 發布門檻全過才發布 |
+| 精益 | 缺陷閉環與門檻只升不降 | 紅→綠→證據→回顧循環 |
+| 精研 | Q-30…Q-32 | 先量測後優化、ADR 含備選 |
+| 精選 | Q-40 供應鏈 | 依賴審查、audit/deny、SBOM |
+
 ## 1. 工程底線（每提交必過，電腦可判）
 
 | ID | 標準 | 量測指令 | 門檻 |
@@ -35,13 +52,13 @@
 
 | ID | 標準 | 驗收方法 | 門檻 |
 |---|---|---|---|
-| Q-20 | 零 JS | 掃描 `<script` 於模板/資產/report.html | 計數 = 0 |
-| Q-21 | 七狀態 | 逐頁審計表（Default/Hover/Focus/Disabled/Loading/Empty/Error） | 每互動元件齊備；缺者記 IMP-* |
-| Q-22 | 焦點可見/鍵盤可達 | 手動走查 + `:focus-visible` 存在 | 每頁通過 |
-| Q-23 | 設計 Token | 掃描模板/資產內聯色碼/間距 | 僅 design-system.css 變數 |
+| Q-20 | 零 JS（憲章 §2.3 鐵律，非美學項） | 掃描 `<script` 於模板/資產/report.html | 計數 = 0 |
+| Q-21 | 七狀態（精緻） | 逐頁審計表（Default/Hover/Focus/Disabled/Loading/Empty/Error） | 每互動元件齊備；缺者記 IMP-* |
+| Q-22 | 焦點可見/鍵盤可達（無障礙，WCAG 2.2 AA） | 手動走查 + `:focus-visible` 存在 + 鍵盤完成主流程 | 每頁通過 |
+| Q-23 | Design Token 唯一來源（精美） | 掃描 `apps/web/templates/**`、`apps/web/static/**`、`platform/assets/**` 的內聯色碼/間距/字級 | token 僅定義於 `apps/web/static/css/design-system.css` 與 `platform/assets/governance.css`；其他檔案 0 內聯值 |
 | Q-24 | 錯誤訊息三段式 | 抽查所有錯誤文案 | 含「問題＋原因＋處理」 |
 | Q-25 | 語言 | 介面文字 | 繁體中文（台灣情境） |
-| Q-26 | 動效節制 | `prefers-reduced-motion` 規則存在且生效 | CSS 覆蓋 |
+| Q-26 | 動效節制（精緻） | `prefers-reduced-motion` 規則存在且生效；過渡僅 transform/opacity | CSS 覆蓋 |
 
 ## 4. 效能預算（量測制，先基線後優化）
 

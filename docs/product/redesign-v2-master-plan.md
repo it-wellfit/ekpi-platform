@@ -28,20 +28,20 @@
 
 | 維度 | 落地標準（可驗收） |
 |---|---|
-| 精準 | 每個對外數字可從 `engine_snapshots.json`/測試輸出推導；證據列綁指令+修訂+結果；UNKNOWN ≠ PASS ≠ FAIL |
-| 精密 | 資料/契約變更：schema → 紅測試 → 實作 → gate，四步缺一不收 |
-| 精良 | `#![forbid(unsafe_code)]`、clippy `-D warnings` 零警告、fmt 乾淨——每切片結束全綠 |
-| 精湛 | 修復以完整正確設計為單位（如 CSRF 一次做對）；半套補丁不允收 |
-| 精雕 | 文件僅追加；重複碼消除；每切片一條回顧筆記 |
-| 精巧 | 零 JS 下以 cookie+隱藏欄位達成 CSRF；以 `:target`/`:has()` 達成導航高亮 |
-| 精緻 | 七種互動狀態（Default/Hover/Focus/Disabled/Loading/Empty/Error）逐頁審計通過 |
-| 精美 | 僅 Design Token（`web/assets/design-system.css`）；CSS layers + container queries；WCAG 2.2 AA |
-| 精品 | 28-case 檢索 gate、67-case 語料、H-1…H-6 硬門檻全 OK 才可發布 |
-| 精選 | 依賴新增需審查（crates.io 評估 + cargo-audit/deny）；skill/工具僅取已驗證者 |
-| 精研 | 效能先量測後優化；研究筆記先於技術選型 |
-| 精益 | 每切片：紅→綠→證據→回顧；缺陷登錄 IMP-*；門檻只升不降 |
+| 精緻 | 每個互動元件七狀態齊備（Default/Hover/Focus/Disabled/Loading/Empty/Error）並逐頁審計；`:focus-visible` 焦點環、過渡僅 transform/opacity、`prefers-reduced-motion` 生效 |
+| 精美 | 樣式僅來自 Design Token——**本儲存庫**的 token 源為 `apps/web/static/css/design-system.css` 與 `platform/assets/governance.css`（根工作區的 `web/assets/design-system.css` 不屬於本儲存庫，先前誤引已更正）；字級/間距/色彩皆取 scale 變數，模板與資產**零裸寫色碼**（掃描 0 內聯值）；九頁面共用同一視覺語言（字階、間距節奏、元件外觀） |
+| 精密 | 契約先行：規則庫 schema、評測集、匯出格式（LegalRuleML/JSON）皆 schema 校驗；對外行為以版本化契約（CTR-*）鎖定；快照重放逐位元組一致 |
+| 精良 | `#![forbid(unsafe_code)]`、clippy `-D warnings` 零警告、fmt 乾淨、測試 100% 通過且總數不退步；canonical gate exit 0 |
+| 精巧 | 零 JS 達成全部互動：CSRF＝cookie＋隱藏欄位 double-submit、導航＝`:target`/`:has()`、回饋＝`:hover/:focus-visible/:user-invalid`、表單＝POST+PRG；以 e2e 證明「無 JS 仍可用」（零 JS 是憲章鐵律，不屬美學維度） |
+| 精雕 | 文件僅追加式修改（歷史證據不可刪）；重複實作消除（單一隨機源、單一 cookie 解析器）；每切片留回顧筆記；缺陷逐條登錄 IMP-* 追蹤至閉環 |
+| 精準 | 每個對外數字可從具名工件推導（`engine_snapshots.json`/`engine_hard_gates.json`/測試輸出）；引擎決定論（同輸入同輸出）；證據列綁「指令＋修訂＋結果」；UNKNOWN ≠ PASS ≠ FAIL |
+| 精湛 | 修復以完整正確設計為單位（不做半套補丁）；已完成切片無遺留 TODO/FIXME；錯誤處理全路徑結構化；狀態機以型別表達而非散落的字串比對 |
+| 精品 | 發布門檻：H-1…H-6 全 OK、28-case 檢索 gate 全過、67-case 語料回歸、bundle 還原演練 PASS；僅發布已驗證宣稱 |
+| 精益 | 每切片「紅→綠→證據→回顧」；缺陷 IMP-* 閉環率追蹤；門檻只升不降（放寬需 ADR＋贊助人核准） |
+| 精研 | 效能先量測後優化（基線 JSON 與優化後並列）；技術選型先有研究筆記與 ADR（含備選方案與後果） |
+| 精選 | 新依賴需審查（crates.io 健康/授權/維護紀錄）＋`cargo audit`/`cargo deny` 乾淨；SBOM 每次發布重產生；工具/技能僅用已驗證者 |
 
-完整可量測指標見[品質標準](../quality/quality-standards-v2.md)。
+> 可否決的 Q-* 指標見[品質標準](../quality/quality-standards-v2.md)（本表為維度→標準映射；Q 表為執行門檻）。
 
 ---
 
@@ -62,7 +62,7 @@ platform crate（確定性核心，已精工）      ← 引擎/規則/流程/�
 eval crate（消融與指標）                  ← 已精工
 ```
 
-依賴方向強制：Presentation → Application → Domain；Adapters 實作 ports。違反方向者 clippy 契約測試拒收。
+依賴方向：Presentation → Application → Domain；Adapters 僅實作 ports。目前以模組邊界人工審查把關；自動化依賴方向檢查尚未存在，列為後續切片候選——**不得宣稱已有自動化強制**。
 
 **架構決策（依 ADR-0002/0003 方向收斂）：**
 - AD-1 整合邊界單一化：所有外部系統（電商、ERP、文件庫）經 `application/ports.rs` 定義的單一 trait 面，adapter 只做轉換與重試；ADR-0002/0003 為準（peer 進行中，收斂後落地）。
