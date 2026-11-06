@@ -225,4 +225,24 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  a:hover, .nav-link:hover, .button:hover { transform: none; }
 }
+
+/* ── S3 狀態完備性補齊（七狀態審計）──────────────────────────── */
+
+.badge-grey { background: #eef1f6; color: var(--ink-soft); }
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled { opacity: .55; cursor: not-allowed; }
+
+button:disabled:hover { transform: none; }
+
+input:user-invalid,
+select:user-invalid,
+textarea:user-invalid { border-color: #a23b44; }
+
+.inline-form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.inline-form select, .inline-form input { margin: 0; min-width: 120px; }
+.inline-form button { margin: 0; white-space: nowrap; }

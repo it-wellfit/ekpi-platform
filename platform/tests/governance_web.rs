@@ -232,6 +232,15 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
     let css = response_text(response).await;
     assert!(css.contains(":focus-visible"));
     assert!(css.contains("@media (max-width: 760px)"));
+    // S3 七狀態基元（Q-21/Q-26 鎖定）：缺一即退回。
+    assert!(css.contains(":user-invalid"), "form validation styling");
+    assert!(css.contains("button:disabled"), "disabled state styling");
+    assert!(css.contains(".badge-grey"), "grey badge for terminal states");
+    assert!(css.contains(".inline-form"), "inline decision form layout");
+    assert!(
+        css.contains("prefers-reduced-motion"),
+        "reduced-motion must be honored"
+    );
 
     for (route, expected_heading) in [
         ("/projects", "專案登錄"),
