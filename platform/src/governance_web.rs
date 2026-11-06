@@ -281,22 +281,24 @@ async fn api_approvals_list(
     };
     let entries: Vec<serde_json::Value> = tasks
         .iter()
-        .map(|t| serde_json::json!({
-            "id": t.id,
-            "workflow_id": t.workflow_id,
-            "workflow_version": t.workflow_version,
-            "stage_id": t.stage_id,
-            "state": t.state,
-            "urgency": t.urgency,
-            "amount_cents": t.amount_cents,
-            "platform": t.platform,
-            "classification": t.classification,
-            "risk_score": t.risk_score,
-            "created_at": t.created_at,
-            "due_at": t.due_at,
-            "escalated_to": t.escalated_to,
-            "escalation_count": t.escalation_count,
-        }))
+        .map(|t| {
+            serde_json::json!({
+                "id": t.id,
+                "workflow_id": t.workflow_id,
+                "workflow_version": t.workflow_version,
+                "stage_id": t.stage_id,
+                "state": t.state,
+                "urgency": t.urgency,
+                "amount_cents": t.amount_cents,
+                "platform": t.platform,
+                "classification": t.classification,
+                "risk_score": t.risk_score,
+                "created_at": t.created_at,
+                "due_at": t.due_at,
+                "escalated_to": t.escalated_to,
+                "escalation_count": t.escalation_count,
+            })
+        })
         .collect();
     (
         StatusCode::OK,

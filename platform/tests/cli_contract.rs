@@ -729,7 +729,6 @@ fn import_wellfit_cannot_be_silently_combined_with_eval() {
     cleanup(&dir);
 }
 
-
 /// S4 決策匯出 v2：engine_decisions.json 必須存在、形狀符合契約、
 /// case_id 排序，且同輸入重放逐位元組一致（無時間戳）。
 #[test]

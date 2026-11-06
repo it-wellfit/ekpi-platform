@@ -787,7 +787,6 @@ async fn editor_cannot_decide_tasks() {
     assert_eq!(before, after, "no store change on role refusal");
 }
 
-
 /// S4 契約鎖（CTR-API-001）：已接線的唯讀 API 依契約回真資料；
 /// 未登入 401；未接線寫入端點仍誠實 501。
 #[tokio::test]
@@ -810,7 +809,13 @@ async fn wired_api_list_endpoints_serve_real_contracted_data() {
         "id=wf-purchase&name=purchase-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
     )
     .await;
-    post_form(&app, "/approvals/workflows/wf-purchase/1/publish", &approver, "").await;
+    post_form(
+        &app,
+        "/approvals/workflows/wf-purchase/1/publish",
+        &approver,
+        "",
+    )
+    .await;
     let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
     post_form(
         &app,
@@ -823,22 +828,23 @@ async fn wired_api_list_endpoints_serve_real_contracted_data() {
     // GET /api/v1/workflows → 契約形狀 + active 旗標。
     let response = get_with_cookies(&app, "/api/v1/workflows", &approver).await;
     assert_eq!(response.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(response.into_body(), 256 * 1024).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), 256 * 1024)
+        .await
+        .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
     assert_eq!(parsed["schema"], "ekpi-approval-workflows-v1");
     let workflows = parsed["workflows"].as_array().expect("workflows array");
     assert_eq!(workflows.len(), 1);
     assert_eq!(workflows[0]["id"], "wf-purchase");
     assert_eq!(workflows[0]["active"], true, "publication reflected");
-    assert_eq!(
-        workflows[0]["stages"].as_array().map(|s| s.len()),
-        Some(2)
-    );
+    assert_eq!(workflows[0]["stages"].as_array().map(|s| s.len()), Some(2));
 
     // GET /api/v1/approvals → 契約形狀 + 任務欄位。
     let response = get_with_cookies(&app, "/api/v1/approvals", &approver).await;
     assert_eq!(response.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(response.into_body(), 256 * 1024).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), 256 * 1024)
+        .await
+        .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
     assert_eq!(parsed["schema"], "ekpi-approval-tasks-v1");
     let tasks = parsed["tasks"].as_array().expect("tasks array");
@@ -851,7 +857,12 @@ async fn wired_api_list_endpoints_serve_real_contracted_data() {
     // 寫入端點仍誠實 501（契約屬後續切片）。
     let response = post_form(&app, "/api/v1/workflows", &approver, "{}").await;
     assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-    let response = post_form(&app, "/api/v1/approvals/TSK-000001/decide", &approver, "action=approve&note=")
-        .await;
+    let response = post_form(
+        &app,
+        "/api/v1/approvals/TSK-000001/decide",
+        &approver,
+        "action=approve&note=",
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
 }
