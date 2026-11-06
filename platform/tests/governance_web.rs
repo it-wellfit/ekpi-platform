@@ -19,6 +19,7 @@ static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 const ADMIN_PASSWORD: &str = "correct-horse-battery-staple";
 const VIEWER_PASSWORD: &str = "viewer-password";
+const EDITOR_PASSWORD: &str = "editor-password";
 
 struct EnvGuard {
     key: &'static str,
@@ -61,6 +62,9 @@ fn test_app(path: &PathBuf) -> axum::Router {
         store
             .register("viewer", VIEWER_PASSWORD, Role::Viewer)
             .expect("test viewer registers");
+        store
+            .register("editor", EDITOR_PASSWORD, Role::Editor)
+            .expect("test editor registers");
     }
     governance_web::router(Arc::new(Mutex::new(ledger)), auth)
 }
@@ -141,6 +145,61 @@ async fn response_text(response: axum::response::Response) -> String {
         .expect("response body collects")
         .to_bytes();
     String::from_utf8(bytes.to_vec()).expect("HTML is UTF-8")
+}
+
+async fn seed_records(app: &axum::Router, cookie: &str) {
+    for (uri, body) in [
+        (
+            "/projects",
+            "name=Alpha+project&department=PMO&owner=Alex&risk_tier=medium",
+        ),
+        (
+            "/projects",
+            "name=Beta+project&department=QA&owner=Blair&risk_tier=high",
+        ),
+        (
+            "/evidence",
+            "project_id=PRJ-000001&title=Alpha+approval&source_system=Other&source_url=https%3A%2F%2Fexample.test%2Falpha&source_version=v1&evidence_type=approval&owner=Alex",
+        ),
+        (
+            "/evidence",
+            "project_id=PRJ-000002&title=Beta+report&source_system=Other&source_url=https%3A%2F%2Fexample.test%2Fbeta&source_version=v2&evidence_type=test&owner=Blair",
+        ),
+        (
+            "/evidence/EVD-000003/review",
+            "result=accepted&note=Alpha+reviewed",
+        ),
+        (
+            "/workflows",
+            "base_id=&title=Alpha+workflow&department=PMO&owner=Alex&description=Flow&stages=Intake%0AReview",
+        ),
+        (
+            "/controls",
+            "project_id=PRJ-000001&kind=risk&title=Alpha+risk&description=Impact&owner=Alex&due_date=2026-12-31",
+        ),
+    ] {
+        let response = post_authed(app, cookie, uri, body).await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER, "seed {uri}");
+    }
+
+    let mut inspection = "project_id=PRJ-000001".to_string();
+    for item in QUALITY_CHECKLIST {
+        inspection.push_str(&format!(
+            "&result_{}=pass&evidence_{}=REF-{}",
+            item.id, item.id, item.id
+        ));
+    }
+    let response = post_authed(app, cookie, "/inspections", &inspection).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = post_authed(
+        app,
+        cookie,
+        "/lifecycle",
+        "project_id=PRJ-000002&gate_id=G1&decision=go&non_waivable=no&reason=Beta+ready",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
 }
 
 #[tokio::test]
@@ -1131,6 +1190,324 @@ async fn malformed_data_form_renders_html_400_without_appending() {
     assert!(html.contains("action=\"/logout\""));
     let response = get_with_cookie(&app, "/audit", Some(&cookie)).await;
     assert!(response_text(response).await.contains("0 筆事件"));
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn viewer_sees_read_only_views_without_mutation_forms() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "viewer", VIEWER_PASSWORD).await;
+
+    let response = get_with_cookie(&app, "/", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("唯讀檢視"));
+    assert!(html.contains("建立、審查與放行由編輯者或核准者執行"));
+    assert!(html.contains("class=\"metric-card metric-link\""));
+
+    for (route, permission_text) in [
+        ("/projects", "檢視者可查看所有專案"),
+        ("/evidence", "檢視者可查看證據索引"),
+        ("/workflows", "檢視者可查看範本版本"),
+        ("/controls", "檢視者可查看風險"),
+    ] {
+        let response = get_with_cookie(&app, route, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::OK, "route {route}");
+        let html = response_text(response).await;
+        assert!(
+            html.contains("read-only-panel"),
+            "route {route} must render a read-only panel"
+        );
+        assert!(
+            html.contains(permission_text),
+            "route {route} must explain viewer limits"
+        );
+    }
+
+    for (route, action) in [
+        ("/projects", "/projects"),
+        ("/evidence", "/evidence"),
+        ("/workflows", "/workflows"),
+        ("/controls", "/controls"),
+    ] {
+        let html = response_text(get_with_cookie(&app, route, Some(&cookie)).await).await;
+        assert!(
+            !html.contains(&format!("method=\"post\" action=\"{action}\"")),
+            "route {route} must not render a mutation form for viewers"
+        );
+    }
+
+    let html = response_text(get_with_cookie(&app, "/inspections", Some(&cookie)).await).await;
+    assert!(html.contains("建立完整 29 項檢查需編輯者權限"));
+    assert!(!html.contains("method=\"post\" action=\"/inspections\""));
+
+    let html = response_text(get_with_cookie(&app, "/lifecycle", Some(&cookie)).await).await;
+    assert!(html.contains("關卡決議需核准者權限"));
+    assert!(!html.contains("method=\"post\" action=\"/lifecycle\""));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn editor_can_create_but_cannot_approve_or_publish() {
+    let path = test_path();
+    let app = test_app(&path);
+    let admin = login(&app, "tester", ADMIN_PASSWORD).await;
+    seed_records(&app, &admin).await;
+    let cookie = login(&app, "editor", EDITOR_PASSWORD).await;
+
+    for (route, action) in [
+        ("/projects", "/projects"),
+        ("/evidence", "/evidence"),
+        ("/workflows", "/workflows"),
+        ("/controls", "/controls"),
+        ("/inspections", "/inspections"),
+    ] {
+        let response = get_with_cookie(&app, route, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::OK, "route {route}");
+        let html = response_text(response).await;
+        assert!(
+            html.contains(&format!("method=\"post\" action=\"{action}\"")),
+            "route {route} must let editors create records"
+        );
+        assert!(
+            !html.contains("read-only-panel"),
+            "route {route} must not hide creation from editors"
+        );
+    }
+
+    let html = response_text(get_with_cookie(&app, "/evidence", Some(&cookie)).await).await;
+    assert!(!html.contains("action=\"/evidence/EVD-000003/review\""));
+    assert!(html.contains("等待核准者審查"));
+
+    let html = response_text(get_with_cookie(&app, "/workflows", Some(&cookie)).await).await;
+    assert!(!html.contains("/publish\""));
+    assert!(html.contains("草稿等待核准者發布"));
+
+    let html = response_text(get_with_cookie(&app, "/controls", Some(&cookie)).await).await;
+    assert!(!html.contains("/controls/QMS-000007/status"));
+    assert!(html.contains("狀態更新需核准者權限"));
+
+    let html = response_text(get_with_cookie(&app, "/lifecycle", Some(&cookie)).await).await;
+    assert!(!html.contains("method=\"post\" action=\"/lifecycle\""));
+    assert!(html.contains("關卡決議需核准者權限"));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn project_workspace_aggregates_only_its_own_records() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    seed_records(&app, &cookie).await;
+
+    let response = get_with_cookie(&app, "/projects/PRJ-000001", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("Alpha project"));
+    assert!(html.contains("PRJ-000001"));
+    assert!(html.contains("Alpha approval"));
+    assert!(html.contains("EVD-000003"));
+    assert!(html.contains("Alpha risk"));
+    assert!(html.contains("QMS-000007"));
+    assert!(html.contains("INSP-000008"));
+    assert!(html.contains("G1–G5 關卡狀態"));
+    assert!(html.contains("尚未記錄"));
+    assert!(!html.contains("Beta report"));
+    assert!(!html.contains("Beta risk"));
+    assert!(html.contains("href=\"/audit?project=PRJ-000001\""));
+
+    let response = get_with_cookie(&app, "/projects/PRJ-000002", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("Beta project"));
+    assert!(html.contains("Beta ready"));
+    assert!(html.contains("放行"));
+    assert!(!html.contains("Alpha approval"));
+
+    let response = get_with_cookie(&app, "/projects/PRJ-999999", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let html = response_text(response).await;
+    assert!(html.contains("此專案識別碼不存在"));
+    assert!(html.contains("PRJ-999999"));
+    assert!(html.contains("回到專案清單"));
+    assert!(!html.contains("Alpha project"));
+
+    let html = response_text(get_with_cookie(&app, "/lifecycle", Some(&cookie)).await).await;
+    assert!(html.contains("href=\"/projects/PRJ-000001\""));
+    assert!(html.contains("href=\"/projects/PRJ-000002\""));
+    assert!(html.contains("Beta ready"));
+    assert!(html.contains("尚未記錄"));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn audit_filters_narrow_by_project_actor_type_text_and_date() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    seed_records(&app, &cookie).await;
+
+    let html =
+        response_text(get_with_cookie(&app, "/audit?project=PRJ-000001", Some(&cookie)).await)
+            .await;
+    assert!(html.contains("已套用篩選"));
+    assert!(html.contains("建立專案：Alpha project"));
+    assert!(html.contains("連結證據：Alpha approval"));
+    assert!(!html.contains("建立專案：Beta project"));
+    assert!(!html.contains("連結證據：Beta report"));
+
+    let html = response_text(get_with_cookie(&app, "/audit?event=gate", Some(&cookie)).await).await;
+    assert!(html.contains("G1 決議：放行 · Beta ready"));
+    assert!(!html.contains("建立專案：Alpha project"));
+
+    let html =
+        response_text(get_with_cookie(&app, "/audit?q=Beta+report", Some(&cookie)).await).await;
+    assert!(html.contains("連結證據：Beta report"));
+    assert!(!html.contains("連結證據：Alpha approval"));
+
+    let html = response_text(
+        get_with_cookie(&app, "/audit?actor=tester&event=project", Some(&cookie)).await,
+    )
+    .await;
+    assert_eq!(html.matches("建立專案：").count(), 2);
+    assert!(!html.contains("連結證據："));
+
+    let html = response_text(
+        get_with_cookie(&app, "/audit?from=2000-01-01&to=2100-12-31", Some(&cookie)).await,
+    )
+    .await;
+    assert!(html.contains("建立專案：Alpha project"));
+    assert!(html.contains("G1 決議：放行 · Beta ready"));
+    assert!(!html.contains("部分篩選未套用"));
+
+    let html =
+        response_text(get_with_cookie(&app, "/audit?from=2026-02-30", Some(&cookie)).await).await;
+    assert!(html.contains("起始日期不是有效的 YYYY-MM-DD"));
+    assert!(html.contains("部分篩選未套用"));
+    assert!(html.contains("建立專案：Alpha project"));
+
+    let html = response_text(
+        get_with_cookie(&app, "/audit?from=2100-01-01&to=2000-01-01", Some(&cookie)).await,
+    )
+    .await;
+    assert!(html.contains("起始日期晚於結束日期"));
+    assert!(html.contains("沒有符合條件的事件"));
+    assert!(!html.contains("建立專案：Alpha project"));
+
+    let response = get_with_cookie(&app, "/audit?project=a&project=b", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let html = response_text(response).await;
+    assert!(html.contains("篩選條件格式不正確"));
+    assert!(html.contains("action=\"/logout\""));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn validation_errors_render_a_focusable_error_summary() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    let response = post_authed(
+        &app,
+        &cookie,
+        "/projects",
+        "name=&department=PMO&owner=Alex&risk_tier=low",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response_text(response).await;
+    assert!(html.contains("id=\"error-summary\""));
+    assert!(html.contains("role=\"alert\""));
+    assert!(html.contains("aria-live=\"assertive\""));
+    assert!(html.contains("tabindex=\"-1\""));
+    assert_eq!(html.matches("autofocus").count(), 1);
+    assert!(html.contains("不可空白"));
+
+    let viewer = login(&app, "viewer", VIEWER_PASSWORD).await;
+    let response = post_authed(
+        &app,
+        &viewer,
+        "/projects",
+        "name=Blocked&department=PMO&owner=Alex&risk_tier=low",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let html = response_text(response).await;
+    assert!(html.contains("id=\"error-summary\""));
+    assert!(html.contains("此操作需要「編輯者」以上權限"));
+    assert_eq!(html.matches("autofocus").count(), 1);
+
+    let response = post_form(&app, "/login", "username=tester&password=definitely-wrong").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let html = response_text(response).await;
+    assert!(html.contains("id=\"error-summary\""));
+    assert!(html.contains("tabindex=\"-1\""));
+    assert_eq!(html.matches("autofocus").count(), 1);
+    assert!(!html.contains("value=\"tester\" autofocus"));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+#[tokio::test]
+async fn poisoned_ledger_returns_html_500_instead_of_stale_200() {
+    let path = test_path();
+    let ledger = Arc::new(Mutex::new(Ledger::open(&path).expect("test ledger opens")));
+    let auth = Arc::new(Mutex::new(AuthStore::with_iterations(3600, 1_000)));
+    auth.lock()
+        .expect("auth store lock")
+        .register("tester", ADMIN_PASSWORD, Role::Admin)
+        .expect("test admin registers");
+    let app = governance_web::router(Arc::clone(&ledger), auth);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    let poisoned = Arc::clone(&ledger);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _guard = poisoned.lock().expect("lock before poisoning");
+        panic!("intentional ledger lock poisoning");
+    }));
+
+    for route in ["/", "/projects", "/audit"] {
+        let response = get_with_cookie(&app, route, Some(&cookie)).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "route {route} must fail closed"
+        );
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/html; charset=utf-8"
+        );
+        let html = response_text(response).await;
+        assert!(html.contains("伺服器無法讀取治理資料"));
+        assert!(html.contains("id=\"error-summary\""));
+        assert!(html.contains("保留資料檔並聯絡管理者"));
+        assert!(!html.contains("工作總覽"));
+    }
+
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");

@@ -2,12 +2,12 @@
 
 //! CSS-first, server-rendered local pilot workbench.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Extension, Path, Request, State};
+use axum::extract::{Extension, Path, RawQuery, Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -19,8 +19,8 @@ use serde_urlencoded;
 use tokio::sync::Semaphore;
 
 use crate::governance::{
-    GovernanceSnapshot, Ledger, Project, QualityCheckResult, QualityInspectionInput, Workflow,
-    WorkflowDraftInput, QUALITY_CHECKLIST,
+    GateDecision, GovernanceSnapshot, Ledger, LedgerEvent, Project, QualityCheckResult,
+    QualityInspectionInput, Workflow, WorkflowDraftInput, QUALITY_CHECKLIST,
 };
 use crate::local_auth::{AuthStore, Role};
 
@@ -28,6 +28,30 @@ type SharedLedger = Arc<Mutex<Ledger>>;
 type SharedAuth = Arc<Mutex<AuthStore>>;
 
 const MAX_FORM_BYTES: usize = 64 * 1024;
+const AUDIT_EVENT_LIMIT: usize = 200;
+
+const STAGES: [&str; 12] = [
+    "專案立案與分類",
+    "需求與合規分析",
+    "計畫與基準建立",
+    "文件與系統設定",
+    "執行與過程管制",
+    "品質檢查與驗證",
+    "變更與影響分析",
+    "缺失與風險閉環",
+    "階段審查與放行",
+    "最終驗收與移交",
+    "結案與封存",
+    "效益追蹤與改善",
+];
+
+const GATES: [(&str, &str, &str); 5] = [
+    ("G1", "立案", "目的、贊助人、範圍與風險分級已確認。"),
+    ("G2", "基準", "需求、驗收標準、計畫及責任已確認。"),
+    ("G3", "執行", "關鍵品質檢查通過，或缺失已正式登錄。"),
+    ("G4", "交付", "必要證據、適用要求與驗收條件已滿足。"),
+    ("G5", "結案", "移交、未結責任、封存及改善計畫已完成。"),
+];
 
 const CSS: &str = include_str!("../assets/governance.css");
 const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -53,6 +77,7 @@ pub fn router(ledger: SharedLedger, auth: SharedAuth) -> Router {
         .route("/login", get(login_page).post(login_post))
         .route("/logout", post(logout_post))
         .route("/projects", get(projects_page).post(create_project))
+        .route("/projects/{id}", get(project_workspace))
         .route("/evidence", get(evidence_page).post(link_evidence))
         .route("/evidence/{id}/review", post(review_evidence))
         .route(
@@ -356,12 +381,15 @@ fn login_response(status: StatusCode, error: Option<&str>, username: &str) -> Re
                         h1 id="login-title" { "登入治理工作台" }
                         p class="auth-intro" { "使用本機帳號檢視專案、證據、品質檢查與治理紀錄。" }
                         @if let Some(error) = error {
-                            div class="alert alert-error" role="alert" { (error) }
+                            div class="alert alert-error" id="error-summary" role="alert" aria-live="assertive" tabindex="-1" autofocus {
+                                strong { "無法登入" }
+                                p { (error) }
+                            }
                         }
                         form class="form-stack" method="post" action="/login" {
                             label class="field" {
                                 span { "使用者名稱" }
-                                input type="text" name="username" value=(username) required maxlength="80" placeholder="輸入使用者名稱" autocomplete="username" autofocus;
+                                input type="text" name="username" value=(username) required maxlength="80" placeholder="輸入使用者名稱" autocomplete="username" autofocus[error.is_none()];
                             }
                             label class="field" {
                                 span { "密碼" }
@@ -696,7 +724,12 @@ async fn dashboard(
     Extension(user): Extension<CurrentUser>,
 ) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response(&user, "工作總覽", "overview", dashboard_content(&data)),
+        Ok(data) => page_response(
+            &user,
+            "工作總覽",
+            "overview",
+            dashboard_content(&data, &user),
+        ),
         Err(error) => error_response(&user, "overview", &error),
     }
 }
@@ -710,8 +743,27 @@ async fn projects_page(
             &user,
             "專案登錄",
             "projects",
-            projects_content(&data, None, None),
+            projects_content(&data, &user, None, None),
         ),
+        Err(error) => error_response(&user, "projects", &error),
+    }
+}
+
+async fn project_workspace(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Extension(user): Extension<CurrentUser>,
+    Path(id): Path<String>,
+) -> Response {
+    match snapshot(&ledger) {
+        Ok(data) => match data.projects.iter().find(|project| project.id == id) {
+            Some(project) => page_response(
+                &user,
+                "專案工作區",
+                "projects",
+                project_workspace_content(&data, project, &user),
+            ),
+            None => project_not_found(&user, &id),
+        },
         Err(error) => error_response(&user, "projects", &error),
     }
 }
@@ -763,7 +815,7 @@ async fn create_project(
                 &user,
                 "專案登錄",
                 "projects",
-                projects_content(&data, Some(&error), Some(&form)),
+                projects_content(&data, &user, Some(&error), Some(&form)),
             )
             .into_response(),
             Err(_) => error_response(&user, "projects", &error),
@@ -780,7 +832,7 @@ async fn evidence_page(
             &user,
             "文件與證據",
             "evidence",
-            evidence_content(&data, None, None, None),
+            evidence_content(&data, &user, None, None, None),
         ),
         Err(error) => error_response(&user, "evidence", &error),
     }
@@ -836,7 +888,7 @@ async fn link_evidence(
                 &user,
                 "文件與證據",
                 "evidence",
-                evidence_content(&data, Some(&error), Some(&form), None),
+                evidence_content(&data, &user, Some(&error), Some(&form), None),
             )
             .into_response(),
             Err(_) => error_response(&user, "evidence", &error),
@@ -884,7 +936,7 @@ async fn review_evidence(
                 &user,
                 "文件與證據",
                 "evidence",
-                evidence_content(&data, Some(&error), None, Some((&id, &form))),
+                evidence_content(&data, &user, Some(&error), None, Some((&id, &form))),
             )
             .into_response(),
             Err(_) => error_response(&user, "evidence", &error),
@@ -901,7 +953,7 @@ async fn workflows_page(
             &user,
             "流程範本",
             "workflows",
-            workflows_content(&data, None, None),
+            workflows_content(&data, &user, None, None),
         ),
         Err(error) => error_response(&user, "workflows", &error),
     }
@@ -964,7 +1016,7 @@ async fn save_workflow(
                 &user,
                 "流程範本",
                 "workflows",
-                workflows_content(&data, Some(&error), Some(&form)),
+                workflows_content(&data, &user, Some(&error), Some(&form)),
             )
             .into_response(),
             Err(_) => error_response(&user, "workflows", &error),
@@ -991,7 +1043,7 @@ async fn publish_workflow(
                 &user,
                 "流程範本",
                 "workflows",
-                workflows_content(&data, Some(&error), None),
+                workflows_content(&data, &user, Some(&error), None),
             )
             .into_response(),
             Err(_) => error_response(&user, "workflows", &error),
@@ -1008,7 +1060,7 @@ async fn controls_page(
             &user,
             "風險與品質事件",
             "controls",
-            controls_content(&data, None, None, None),
+            controls_content(&data, &user, None, None, None),
         ),
         Err(error) => error_response(&user, "controls", &error),
     }
@@ -1063,7 +1115,7 @@ async fn create_quality_case(
                 &user,
                 "風險與品質事件",
                 "controls",
-                controls_content(&data, Some(&error), Some(&form), None),
+                controls_content(&data, &user, Some(&error), Some(&form), None),
             )
             .into_response(),
             Err(_) => error_response(&user, "controls", &error),
@@ -1111,7 +1163,7 @@ async fn update_quality_case(
                 &user,
                 "風險與品質事件",
                 "controls",
-                controls_content(&data, Some(&error), None, Some((&id, &form))),
+                controls_content(&data, &user, Some(&error), None, Some((&id, &form))),
             )
             .into_response(),
             Err(_) => error_response(&user, "controls", &error),
@@ -1128,7 +1180,7 @@ async fn inspections_page(
             &user,
             "品質檢查",
             "inspections",
-            inspections_content(&data, None, None),
+            inspections_content(&data, &user, None, None),
         ),
         Err(error) => error_response(&user, "inspections", &error),
     }
@@ -1192,7 +1244,7 @@ async fn record_inspection(
                 &user,
                 "品質檢查",
                 "inspections",
-                inspections_content(&data, Some(&error), Some(&fields)),
+                inspections_content(&data, &user, Some(&error), Some(&fields)),
             )
             .into_response(),
             Err(_) => error_response(&user, "inspections", &error),
@@ -1209,7 +1261,7 @@ async fn lifecycle_page(
             &user,
             "階段與關卡",
             "lifecycle",
-            lifecycle_content(&data, None, None),
+            lifecycle_content(&data, &user, None, None),
         ),
         Err(error) => error_response(&user, "lifecycle", &error),
     }
@@ -1249,7 +1301,12 @@ async fn record_gate_decision(
                 &user,
                 "階段與關卡",
                 "lifecycle",
-                lifecycle_content(&data, Some("請明確選擇是否涉及不可豁免要求。"), Some(&form)),
+                lifecycle_content(
+                    &data,
+                    &user,
+                    Some("請明確選擇是否涉及不可豁免要求。"),
+                    Some(&form),
+                ),
             ),
             Err(error) => error_response(&user, "lifecycle", &error),
         };
@@ -1277,7 +1334,7 @@ async fn record_gate_decision(
                 &user,
                 "階段與關卡",
                 "lifecycle",
-                lifecycle_content(&data, Some(&error), Some(&form)),
+                lifecycle_content(&data, &user, Some(&error), Some(&form)),
             )
             .into_response(),
             Err(_) => error_response(&user, "lifecycle", &error),
@@ -1288,11 +1345,35 @@ async fn record_gate_decision(
 async fn audit_page(
     State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
     Extension(user): Extension<CurrentUser>,
+    RawQuery(query): RawQuery,
 ) -> Response {
+    let filter =
+        match query
+            .as_deref()
+            .map(serde_urlencoded::from_str::<AuditFilter>)
+        {
+            None => AuditFilter::default(),
+            Some(Ok(filter)) => filter,
+            Some(Err(_)) => return request_error_response(
+                &user,
+                "audit",
+                "篩選條件格式不正確，沒有套用任何篩選。請清除瀏覽器網址中的查詢參數後重新整理。",
+            ),
+        };
     match snapshot(&ledger) {
         Ok(data) => {
             let integrity = ledger.lock().map(|db| db.verify().is_ok()).unwrap_or(false);
-            page_response(&user, "稽核紀錄", "audit", audit_content(&data, integrity))
+            let content = audit_content(&data, &user, &filter, integrity);
+            let status = if integrity {
+                StatusCode::OK
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            (
+                status,
+                Html(layout(Some(&user), "稽核紀錄", "audit", content).into_string()),
+            )
+                .into_response()
         }
         Err(error) => error_response(&user, "audit", &error),
     }
@@ -1318,14 +1399,22 @@ fn error_response(user: &CurrentUser, active: &str, message: &str) -> Response {
                 p class="page-subtitle" { "工作台沒有顯示任何治理內容，也沒有寫入新的資料。" }
             }
         }
-        div class="alert alert-error" role="alert" { (message) }
+        div class="alert alert-error" id="error-summary" role="alert" aria-live="assertive" tabindex="-1" autofocus {
+            strong { "伺服器無法讀取治理資料" }
+            p { (message) }
+            span class="alert-hint" { "這是伺服器端失敗，不是表單輸入錯誤。請保留資料檔並聯絡管理者。" }
+        }
         div class="panel error-panel" {
             h2 { "處理方式" }
             p { "請停止寫入，保留資料檔並聯絡管理者。原型不會自動修補不完整的稽核鏈。" }
             div class="button-row" { a class="button button-secondary" href=(active_href(active)) { "返回目前頁面" } }
         }
     };
-    page_response(user, "資料錯誤", active, content)
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Html(layout(Some(user), "資料錯誤", active, content).into_string()),
+    )
+        .into_response()
 }
 
 /// A 400 response for an oversized or unparsable request body. It keeps the
@@ -1340,7 +1429,7 @@ fn request_error_response(user: &CurrentUser, active: &str, message: &str) -> Re
                 p class="page-subtitle" { "沒有寫入任何資料；請返回表單修正後再送出。" }
             }
         }
-        div class="alert alert-error" role="alert" { (message) }
+        div class="alert alert-error" id="error-summary" role="alert" aria-live="assertive" tabindex="-1" autofocus { (message) }
         div class="panel error-panel" {
             h2 { "下一步" }
             p { "若表單內容很長，請先縮短或分批處理。重新整理頁面不會遺失已儲存的治理紀錄。" }
@@ -1366,7 +1455,7 @@ fn forbidden_page(user: &CurrentUser, required: Role) -> Response {
                 p class="page-subtitle" { "此操作需要較高的本機角色；沒有寫入任何資料。" }
             }
         }
-        div class="alert alert-error" role="alert" {
+        div class="alert alert-error" id="error-summary" role="alert" aria-live="assertive" tabindex="-1" autofocus {
             "目前角色為「" (role_label(user.role)) "」，此操作需要「" (role_label(required)) "」以上權限。"
         }
         div class="panel error-panel" {
@@ -1403,6 +1492,33 @@ async fn not_found(Extension(user): Extension<CurrentUser>) -> Response {
     (
         StatusCode::NOT_FOUND,
         Html(layout(Some(&user), "找不到頁面", "", content).into_string()),
+    )
+        .into_response()
+}
+
+fn project_not_found(user: &CurrentUser, id: &str) -> Response {
+    let display: String = id.chars().take(80).collect();
+    let content = html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "找不到專案" }
+                h1 { "此專案識別碼不存在" }
+                p class="page-subtitle" { "沒有顯示任何專案內容；請確認識別碼或回到專案清單重新選擇。" }
+            }
+        }
+        div class="panel error-panel" {
+            h2 { "查詢的識別碼" }
+            p class="row-id" { (display) }
+            p { "識別碼可能已變更，或連結來自其他本機資料檔。工作台不會以相似名稱推測你要查看的專案。" }
+            div class="button-row" {
+                a class="button button-secondary" href="/projects" { "回到專案清單" }
+                a class="button button-quiet" href="/" { "回到工作總覽" }
+            }
+        }
+    };
+    (
+        StatusCode::NOT_FOUND,
+        Html(layout(Some(user), "找不到專案", "projects", content).into_string()),
     )
         .into_response()
 }
@@ -1500,7 +1616,7 @@ fn nav_link(href: &str, key: &str, active: &str, label: &str, icon: &str) -> Mar
     }
 }
 
-fn dashboard_content(data: &GovernanceSnapshot) -> Markup {
+fn dashboard_content(data: &GovernanceSnapshot, user: &CurrentUser) -> Markup {
     let reviewed = data.reviews.len();
     let waiting_review = data.evidence.len().saturating_sub(reviewed);
     let open_cases = data
@@ -1513,16 +1629,48 @@ fn dashboard_content(data: &GovernanceSnapshot) -> Markup {
         .iter()
         .filter(|workflow| workflow.status == "draft")
         .count();
+    let today = utc_today();
+    let overdue_cases = data
+        .cases
+        .iter()
+        .filter(|case| {
+            case.status != "closed" && !case.due_date.is_empty() && case.due_date < today
+        })
+        .count();
+    let latest_decisions = latest_decisions_by_project(data);
+    let held_projects = latest_decisions
+        .values()
+        .filter(|decision| decision.decision == "hold")
+        .count();
+    let can_edit = user.role >= Role::Editor;
+    let can_approve = user.role >= Role::Approver;
+    let role_brief = match user.role {
+        Role::Viewer => "你的角色可檢視全部治理內容；建立、審查與放行由編輯者或核准者執行。",
+        Role::Editor => {
+            "你的角色可建立專案、證據、流程草稿與品質事件；證據審查、流程發布與關卡決議需核准者。"
+        }
+        Role::Approver => "你的角色可審查證據、發布流程、更新品質狀態與記錄關卡決議。",
+        Role::Admin => "你的角色具備完整本機權限；所有變更仍會寫入追加式稽核鏈。",
+    };
     html! {
         section class="page-heading" {
-            div { p class="eyebrow" { "治理概況" } h1 { "工作總覽" } p class="page-subtitle" { "集中查看專案進度、文件追溯與需要人工確認的工作。" } }
-            a class="button button-primary" href="/projects" { "＋ 新增專案" }
+            div {
+                p class="eyebrow" { "治理概況" }
+                h1 { "工作總覽" }
+                p class="page-subtitle" { "集中查看專案進度、文件追溯與需要人工確認的工作。" }
+            }
+            @if can_edit { a class="button button-primary" href="/projects" { "＋ 新增專案" } }
+            @else { span class="role-chip" { "唯讀檢視" } }
+        }
+        div class="notice notice-blue" {
+            strong { (role_label(user.role)) }
+            span { (role_brief) }
         }
         div class="metric-grid" {
-            (metric("專案", data.projects.len(), "已登錄專案"))
-            (metric("待審證據", waiting_review, "尚未留下人工審查紀錄"))
-            (metric("開放事項", open_cases, "風險、變更、缺失與 CAPA"))
-            (metric("流程草稿", draft_workflows, "等待負責人審查發布"))
+            (metric("專案", data.projects.len(), "已登錄專案", "/projects"))
+            (metric("待審證據", waiting_review, "尚未留下人工審查紀錄", "/evidence"))
+            (metric("逾期事項", overdue_cases, "未結案且已超過到期日", "/controls"))
+            (metric("流程草稿", draft_workflows, "等待負責人審查發布", "/workflows"))
         }
         section class="content-grid" {
             div class="panel panel-wide" {
@@ -1530,11 +1678,24 @@ fn dashboard_content(data: &GovernanceSnapshot) -> Markup {
                 (project_table(&data.projects, 5))
             }
             div class="panel" {
-                div class="panel-heading" { div { h2 { "待辦焦點" } p { "需要負責人確認的項目" } } }
+                div class="panel-heading" { div { h2 { "待辦焦點" } p { "依目前角色顯示可採取的下一步" } } }
                 ul class="focus-list" {
-                    li { span class="focus-icon focus-amber" { "▤" } div { strong { (waiting_review) " 筆證據待審查" } small { "核對來源版本與證據目的" } } }
-                    li { span class="focus-icon focus-blue" { "◇" } div { strong { (open_cases) " 項風險或品質事項開啟" } small { "追蹤負責人、期限與結案證據" } } }
-                    li { span class="focus-icon focus-green" { "⌘" } div { strong { (draft_workflows) " 份流程草稿" } small { "發布前需由流程負責人核准" } } }
+                    li { a class="focus-link" href="/evidence" {
+                        span class="focus-icon focus-amber" aria-hidden="true" { "▤" }
+                        div { strong { (waiting_review) " 筆證據待審查" } small { @if can_approve { "核對來源版本後記錄審查結果" } @else { "審查需核准者權限" } } }
+                    } }
+                    li { a class="focus-link" href="/controls" {
+                        span class="focus-icon focus-blue" aria-hidden="true" { "◇" }
+                        div { strong { (open_cases) " 項風險或品質事項開啟" } small { (overdue_cases) " 項已逾期；追蹤負責人與結案證據" } }
+                    } }
+                    li { a class="focus-link" href="/workflows" {
+                        span class="focus-icon focus-green" aria-hidden="true" { "⌘" }
+                        div { strong { (draft_workflows) " 份流程草稿" } small { @if can_approve { "發布前確認流程負責人與階段" } @else { "發布需核准者權限" } } }
+                    } }
+                    li { a class="focus-link" href="/lifecycle" {
+                        span class="focus-icon focus-amber" aria-hidden="true" { "▥" }
+                        div { strong { (held_projects) " 個專案最近關卡為暫緩" } small { "檢視關卡狀態與待補條件" } }
+                    } }
                 }
             }
             div class="panel panel-wide" {
@@ -1542,16 +1703,44 @@ fn dashboard_content(data: &GovernanceSnapshot) -> Markup {
                 (recent_events(&data.events, 5))
             }
         }
+        section class="panel dashboard-decisions" {
+            div class="panel-heading" { div { h2 { "最近關卡決議" } p { "只顯示已記錄的人工決議，不自動推定通過。" } } a href="/lifecycle" class="text-link" { "查看全部關卡 →" } }
+            (recent_gate_decisions(data, 3))
+        }
         p class="data-note" { "試點指標尚未建立基線；此處只顯示登錄筆數，不代表證據完整度或流程改善成效。" }
     }
 }
 
-fn metric(label: &str, value: usize, note: &str) -> Markup {
-    html! { article class="metric-card" { p { (label) } strong class="metric-value" { (value) } small { (note) } } }
+fn metric(label: &str, value: usize, note: &str, href: &str) -> Markup {
+    html! {
+        a class="metric-card metric-link" href=(href) {
+            p { (label) }
+            strong class="metric-value" { (value) }
+            small { (note) " →" }
+        }
+    }
+}
+
+fn recent_gate_decisions(data: &GovernanceSnapshot, limit: usize) -> Markup {
+    html! {
+        @if data.gate_decisions.is_empty() {
+            (empty_state("尚無關卡決議", "建立專案後，由授權人員記錄 G1–G5 的人工決議。", "/lifecycle", "前往關卡"))
+        } @else {
+            ul class="decision-list" {
+                @for decision in data.gate_decisions.iter().rev().take(limit) {
+                    li {
+                        div { strong { (decision.project_id) " · " (decision.gate_id) } small { (decision.actor) " · " (format_timestamp(decision.created_at)) } }
+                        (gate_badge(&decision.decision))
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn projects_content(
     data: &GovernanceSnapshot,
+    user: &CurrentUser,
     error: Option<&str>,
     draft: Option<&ProjectForm>,
 ) -> Markup {
@@ -1561,25 +1750,225 @@ fn projects_content(
     let risk_tier = draft
         .map(|form| form.risk_tier.as_str())
         .unwrap_or("medium");
+    let can_edit = user.role >= Role::Editor;
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 專案" } h1 { "專案登錄" } p class="page-subtitle" { "使用共同識別碼串連流程、證據、決策與改善事項。" } } }
         (alert(error))
         section class="content-grid split-grid" {
-            div class="panel" {
-                div class="panel-heading" { div { h2 { "建立專案" } p { "第一版先記錄責任、部門與風險層級。" } } }
-                form class="form-stack" method="post" action="/projects" {
-                    (text_field("name", "專案名稱", "例如：跨部門文件治理試點", true, name))
-                    (text_field("department", "主要部門", "", true, department))
-                    (text_field("owner", "專案負責人", "", true, owner))
-                    label class="field" { span { "初始風險等級" } select name="risk_tier" required { option value="medium" selected[risk_tier == "medium"] { "中" } option value="low" selected[risk_tier == "low"] { "低" } option value="high" selected[risk_tier == "high"] { "高" } option value="critical" selected[risk_tier == "critical"] { "重大" } } }
-                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
-                    button class="button button-primary" type="submit" { "建立專案" }
-                    p class="form-hint" { "請勿在本機原型輸入機密或受管制資訊。" }
+            @if can_edit {
+                div class="panel" {
+                    div class="panel-heading" { div { h2 { "建立專案" } p { "第一版先記錄責任、部門與風險層級。" } } }
+                    form class="form-stack" method="post" action="/projects" {
+                        (text_field("name", "專案名稱", "例如：跨部門文件治理試點", true, name))
+                        (text_field("department", "主要部門", "", true, department))
+                        (text_field("owner", "專案負責人", "", true, owner))
+                        label class="field" { span { "初始風險等級" } select name="risk_tier" required { option value="medium" selected[risk_tier == "medium"] { "中" } option value="low" selected[risk_tier == "low"] { "低" } option value="high" selected[risk_tier == "high"] { "高" } option value="critical" selected[risk_tier == "critical"] { "重大" } } }
+                        p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
+                        button class="button button-primary" type="submit" { "建立專案" }
+                        p class="form-hint" { "請勿在本機原型輸入機密或受管制資訊。" }
+                    }
                 }
+            } @else {
+                (read_only_panel(user, "專案登錄", "檢視者可查看所有專案與其工作區，但不能建立或修改專案。"))
             }
             div class="panel panel-wide" {
                 div class="panel-heading" { div { h2 { "已登錄專案" } p { (data.projects.len()) " 個專案" } } }
                 (project_table(&data.projects, usize::MAX))
+            }
+        }
+    }
+}
+
+fn project_workspace_content(
+    data: &GovernanceSnapshot,
+    project: &Project,
+    user: &CurrentUser,
+) -> Markup {
+    let evidence: Vec<_> = data
+        .evidence
+        .iter()
+        .filter(|item| item.project_id == project.id)
+        .collect();
+    let accepted = evidence
+        .iter()
+        .filter(|item| {
+            data.reviews
+                .get(&item.id)
+                .is_some_and(|review| review.result == "accepted")
+        })
+        .count();
+    let waiting = evidence.len().saturating_sub(accepted);
+    let cases: Vec<_> = data
+        .cases
+        .iter()
+        .filter(|case| case.project_id == project.id)
+        .collect();
+    let open_cases = cases.iter().filter(|case| case.status != "closed").count();
+    let inspections: Vec<_> = data
+        .inspections
+        .iter()
+        .filter(|inspection| inspection.project_id == project.id)
+        .collect();
+    let decisions: Vec<_> = data
+        .gate_decisions
+        .iter()
+        .filter(|decision| decision.project_id == project.id)
+        .collect();
+    let mut events: Vec<LedgerEvent> = data
+        .events
+        .iter()
+        .filter(|event| event_project_id(event, data) == Some(project.id.as_str()))
+        .rev()
+        .take(8)
+        .cloned()
+        .collect();
+    events.reverse();
+    let can_edit = user.role >= Role::Editor;
+    let can_approve = user.role >= Role::Approver;
+    html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "專案工作區 / " (project.id) }
+                h1 { (project.name) }
+                p class="page-subtitle" { (project.department) " · 負責人 " (project.owner) " · 建立於 " (format_timestamp(project.created_at)) }
+            }
+            div class="heading-actions" {
+                (risk_badge(&project.risk_tier))
+                a class="button button-secondary" href="/projects" { "返回專案清單" }
+            }
+        }
+        div class="metric-grid" {
+            (metric("證據參照", evidence.len(), "已連結的來源文件", "/evidence"))
+            (metric("待確認證據", waiting, "尚無人工接受紀錄", "/evidence"))
+            (metric("開放事項", open_cases, "風險、變更、缺失與 CAPA", "/controls"))
+            (metric("品質檢查", inspections.len(), "完整 29 項檢查紀錄", "/inspections"))
+        }
+        section class="content-grid" {
+            div class="panel panel-wide" {
+                div class="panel-heading" { div { h2 { "G1–G5 關卡狀態" } p { "只顯示已記錄的人工決議；空白不代表通過。" } } a class="text-link" href="/lifecycle#gate-status" { "全部專案 →" } }
+                (project_gate_timeline(data, &project.id))
+            }
+            div class="panel" {
+                div class="panel-heading" { div { h2 { "下一步" } p { "依目前角色顯示可執行的入口" } } }
+                p class="muted" { "目前角色：" (role_label(user.role)) "；共 " (decisions.len()) " 筆關卡決議。" }
+                div class="button-row" {
+                    a class="button button-secondary" href="/evidence" { @if can_edit { "登錄證據" } @else { "檢視證據" } }
+                    a class="button button-secondary" href="/controls" { @if can_edit { "新增品質事件" } @else { "檢視品質事件" } }
+                    @if can_approve { a class="button button-primary" href="/lifecycle" { "記錄關卡決議" } }
+                }
+                p class="form-hint" { "專案工作區不會代替你核准；所有狀態變更仍由對應表單與權限檢查執行。" }
+            }
+            div class="panel panel-wide" {
+                div class="panel-heading" { div { h2 { "專案證據" } p { (evidence.len()) " 筆來源參照 · " (accepted) " 筆已確認" } } a class="text-link" href="/evidence" { "前往證據頁 →" } }
+                (project_evidence_table(data, &evidence))
+            }
+            div class="panel panel-wide" {
+                div class="panel-heading" { div { h2 { "風險與品質事件" } p { (cases.len()) " 項 · " (open_cases) " 項未結案" } } a class="text-link" href="/controls" { "前往事件頁 →" } }
+                (project_case_list(&cases, can_approve))
+            }
+            div class="panel panel-wide" {
+                div class="panel-heading" { div { h2 { "品質檢查" } p { (inspections.len()) " 份完整檢查" } } a class="text-link" href="/inspections" { "前往檢查頁 →" } }
+                (project_inspection_list(&inspections))
+            }
+            div class="panel panel-wide" {
+                div class="panel-heading" { div { h2 { "專案活動" } p { "由此專案相關事件彙整；最新 8 筆。" } } a class="text-link" href=(format!("/audit?project={}", project.id)) { "在稽核頁篩選 →" } }
+                (recent_events(&events, 8))
+            }
+        }
+    }
+}
+
+fn project_gate_timeline(data: &GovernanceSnapshot, project_id: &str) -> Markup {
+    html! {
+        div class="gate-status-list" {
+            @for (gate_id, name, condition) in GATES {
+                @let latest = latest_gate_decision(data, project_id, gate_id);
+                article class="gate-status-item" {
+                    span class="gate-id" { (gate_id) }
+                    div class="gate-status-copy" {
+                        strong { (name) }
+                        p { (condition) }
+                        @if let Some(decision) = latest {
+                            small class="row-id" { "最新：" (decision.actor) " · " (format_timestamp(decision.created_at)) @if !decision.reason.is_empty() { " · " (decision.reason) } }
+                        }
+                    }
+                    div { @if let Some(decision) = latest { (gate_badge(&decision.decision)) } @else { span class="muted" { "尚未記錄" } } }
+                }
+            }
+        }
+    }
+}
+
+fn project_evidence_table(
+    data: &GovernanceSnapshot,
+    evidence: &[&crate::governance::Evidence],
+) -> Markup {
+    html! {
+        @if evidence.is_empty() { p class="empty-inline" { "此專案尚無證據參照。可由編輯者前往證據頁登錄來源。" } }
+        @else {
+            div class="table-wrap" role="region" aria-label="專案證據" tabindex="0" {
+                table {
+                    caption class="visually-hidden" { "專案證據來源" }
+                    thead { tr { th scope="col" { "文件與來源" } th scope="col" { "版本" } th scope="col" { "負責人" } th scope="col" { "審查狀態" } } }
+                    tbody {
+                        @for item in evidence {
+                            @let review = data.reviews.get(&item.id);
+                            tr {
+                                th scope="row" { strong { (item.title) } small class="row-id" { (item.id) " · " (item.source_system) } a class="source-link" href=(item.source_url) target="_blank" rel="noopener noreferrer" { "開啟來源連結 ↗" } }
+                                td { (item.source_version) }
+                                td { (item.owner) }
+                                td { @if let Some(review) = review { (review_badge(&review.result)) } @else { (status_badge("pending", "待審查")) } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn project_case_list(cases: &[&crate::governance::QualityCase], can_approve: bool) -> Markup {
+    html! {
+        @if cases.is_empty() { p class="empty-inline" { "此專案尚無風險、變更、缺失或 CAPA 事件。" } }
+        @else {
+            div class="case-list" {
+                @for case in cases.iter().rev() {
+                    article class="case-card" {
+                        div class="workflow-title-row" { div { p class="row-id" { (case.id) " · " (kind_label(&case.kind)) } h3 { (case.title) } } (case_status_badge(&case.status)) }
+                        p class="multiline" { (case.description) }
+                        p class="muted" { "負責人 " (case.owner) " · 到期 " (case.due_date) }
+                        @if case.status != "closed" && !can_approve { p class="permission-note" { "狀態更新需核准者權限。" } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn project_inspection_list(inspections: &[&crate::governance::QualityInspection]) -> Markup {
+    html! {
+        @if inspections.is_empty() { p class="empty-inline" { "此專案尚無完整品質檢查紀錄。" } }
+        @else {
+            div class="table-wrap" role="region" aria-label="專案品質檢查" tabindex="0" {
+                table {
+                    caption class="visually-hidden" { "專案品質檢查紀錄" }
+                    thead { tr { th scope="col" { "識別碼" } th scope="col" { "檢查人" } th scope="col" { "符合" } th scope="col" { "不符合" } th scope="col" { "不適用" } th scope="col" { "日期" } } }
+                    tbody {
+                        @for inspection in inspections.iter().rev() {
+                            @let passed = inspection.results.iter().filter(|item| item.result == "pass").count();
+                            @let failed = inspection.results.iter().filter(|item| item.result == "fail").count();
+                            @let not_applicable = inspection.results.iter().filter(|item| item.result == "not_applicable").count();
+                            tr {
+                                th scope="row" { span class="nowrap" { (inspection.id) } }
+                                td { (inspection.reviewer) }
+                                td { (passed) }
+                                td { (failed) }
+                                td { (not_applicable) }
+                                td { (format_timestamp(inspection.created_at)) }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1590,13 +1979,13 @@ fn project_table(projects: &[Project], limit: usize) -> Markup {
         @if projects.is_empty() {
             (empty_state("尚無專案資料", "建立一筆專案記錄後，才能串連文件證據與治理事件。", "/projects", "建立專案"))
         } @else {
-            div class="table-wrap" {
+            div class="table-wrap" role="region" aria-label="已登錄專案清單" tabindex="0" {
                 table {
                     caption class="visually-hidden" { "已登錄專案清單" }
                     thead { tr { th scope="col" { "專案" } th scope="col" { "部門" } th scope="col" { "負責人" } th scope="col" { "風險" } } }
                     tbody {
                         @for project in projects.iter().rev().take(limit) {
-                            tr { th scope="row" { strong { (project.name) } small class="row-id" { (project.id) } } td { (project.department) } td { (project.owner) } td { (risk_badge(&project.risk_tier)) } }
+                            tr { th scope="row" { a class="row-link" href=(format!("/projects/{}", project.id)) { strong { (project.name) } } small class="row-id" { (project.id) } } td { (project.department) } td { (project.owner) } td { (risk_badge(&project.risk_tier)) } }
                         }
                     }
                 }
@@ -1607,6 +1996,7 @@ fn project_table(projects: &[Project], limit: usize) -> Markup {
 
 fn evidence_content(
     data: &GovernanceSnapshot,
+    user: &CurrentUser,
     error: Option<&str>,
     draft: Option<&EvidenceForm>,
     review: Option<(&str, &ReviewForm)>,
@@ -1620,40 +2010,50 @@ fn evidence_content(
     let source_version = draft.map(|form| form.source_version.as_str()).unwrap_or("");
     let evidence_type = draft.map(|form| form.evidence_type.as_str()).unwrap_or("");
     let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
+    let can_edit = user.role >= Role::Editor;
+    let can_approve = user.role >= Role::Approver;
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 文件與證據" } h1 { "文件與證據追溯" } p class="page-subtitle" { "記錄權威來源、版本與審查結果；文件本體保留在原平台。" } } }
         (alert(error))
-        @if data.projects.is_empty() { (alert(Some("請先建立專案，再登錄其文件與證據來源。"))) }
+        @if data.projects.is_empty() && can_edit { (alert(Some("請先建立專案，再登錄其文件與證據來源。"))) }
         section class="content-grid split-grid" {
-            div class="panel" {
-                div class="panel-heading" { div { h2 { "連結證據" } p { "這是來源參照，不會複製或同步雲端文件。" } } }
-                form class="form-stack" method="post" action="/evidence" {
-                    label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
-                    (text_field("title", "文件／證據標題", "", true, title))
-                    label class="field" { span { "來源平台" } select name="source_system" required { option value="Microsoft 365" selected[source_system == "Microsoft 365"] { "Microsoft 365" } option value="Google Workspace" selected[source_system == "Google Workspace"] { "Google Workspace" } option value="Other" selected[source_system == "Other"] { "其他／混合工具" } } }
-                    (text_field("source_url", "來源連結", "https://…", true, source_url))
-                    (text_field("source_version", "來源版本／修訂", "例如：v3.2 或平台版本 ID", true, source_version))
-                    (text_field("evidence_type", "證據類型", "例如：核准紀錄、測試報告", true, evidence_type))
-                    (text_field("owner", "文件負責人", "", true, owner))
-                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
-                    button class="button button-primary" type="submit" { "登錄來源參照" }
+            @if can_edit {
+                div class="panel" {
+                    div class="panel-heading" { div { h2 { "連結證據" } p { "這是來源參照，不會複製或同步雲端文件。" } } }
+                    form class="form-stack" method="post" action="/evidence" {
+                        label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
+                        (text_field("title", "文件／證據標題", "", true, title))
+                        label class="field" { span { "來源平台" } select name="source_system" required { option value="Microsoft 365" selected[source_system == "Microsoft 365"] { "Microsoft 365" } option value="Google Workspace" selected[source_system == "Google Workspace"] { "Google Workspace" } option value="Other" selected[source_system == "Other"] { "其他／混合工具" } } }
+                        (text_field("source_url", "來源連結", "https://…", true, source_url))
+                        (text_field("source_version", "來源版本／修訂", "例如：v3.2 或平台版本 ID", true, source_version))
+                        (text_field("evidence_type", "證據類型", "例如：核准紀錄、測試報告", true, evidence_type))
+                        (text_field("owner", "文件負責人", "", true, owner))
+                        p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
+                        button class="button button-primary" type="submit" { "登錄來源參照" }
+                    }
                 }
+            } @else {
+                (read_only_panel(user, "證據來源", "檢視者可查看證據索引與審查狀態，但不能新增來源參照。"))
             }
             div class="panel panel-wide" {
-                div class="panel-heading" { div { h2 { "證據索引" } p { (data.evidence.len()) " 筆來源參照" } } }
-                (evidence_table(data, review))
+                div class="panel-heading" { div { h2 { "證據索引" } p { (data.evidence.len()) " 筆來源參照 · " (if can_approve { "你可記錄審查結果" } else { "審查需核准者權限" }) } } }
+                (evidence_table(data, can_approve, review))
             }
         }
     }
 }
 
-fn evidence_table(data: &GovernanceSnapshot, review_draft: Option<(&str, &ReviewForm)>) -> Markup {
+fn evidence_table(
+    data: &GovernanceSnapshot,
+    can_approve: bool,
+    review_draft: Option<(&str, &ReviewForm)>,
+) -> Markup {
     html! {
         @if data.evidence.is_empty() {
             (empty_state("尚無證據參照", "先新增專案，再從來源平台登錄連結和文件版本。", "/projects", "建立專案"))
         } @else {
-            div class="table-wrap" {
-                table {
+            div class="table-wrap" role="region" aria-label="文件與證據來源索引" tabindex="0" {
+                table class="evidence-table" {
                     caption class="visually-hidden" { "文件與證據來源索引" }
                     thead { tr { th scope="col" { "文件與來源" } th scope="col" { "專案" } th scope="col" { "負責人" } th scope="col" { "審查狀態" } th scope="col" { "人工審查" } } }
                     tbody {
@@ -1669,15 +2069,22 @@ fn evidence_table(data: &GovernanceSnapshot, review_draft: Option<(&str, &Review
                                     small class="row-id" { (item.id) " · " (item.source_system) " · " (item.source_version) }
                                     a class="source-link" href=(item.source_url) target="_blank" rel="noopener noreferrer" { "開啟來源連結 ↗" }
                                 }
-                                td { @if let Some(project) = project { (project.id) } @else { "專案缺失" } }
+                                td { @if let Some(project) = project { a class="text-link" href=(format!("/projects/{}", project.id)) { (project.id) } } @else { "專案缺失" } }
                                 td { (item.owner) }
                                 td { @if let Some(review) = review { (review_badge(&review.result)) } @else { (status_badge("pending", "待審查")) } }
                                 td {
-                                    @if let Some(review) = review { small { (review.reviewer) " · " (format_timestamp(review.reviewed_at)) } }
-                                    form class="inline-review" method="post" action=(format!("/evidence/{}/review", item.id)) {
-                                        select name="result" aria-label="審查結果" { option value="accepted" selected[draft_result == "accepted"] { "確認有效" } option value="changes_requested" selected[draft_result == "changes_requested"] { "退回補充" } }
-                                        input type="text" name="note" value=(draft_note) aria-label="審查備註或退回說明" placeholder="備註；退回必填" maxlength="1000";
-                                        button class="button button-small" type="submit" { "記錄" }
+                                    @if let Some(review) = review {
+                                        small class="review-meta" { (review.reviewer) " · " (format_timestamp(review.reviewed_at)) }
+                                        @if !review.note.is_empty() { small class="review-note" { (review.note) } }
+                                    }
+                                    @if can_approve {
+                                        form class="inline-review" method="post" action=(format!("/evidence/{}/review", item.id)) {
+                                            select name="result" aria-label="審查結果" { option value="accepted" selected[draft_result == "accepted"] { "確認有效" } option value="changes_requested" selected[draft_result == "changes_requested"] { "退回補充" } }
+                                            input type="text" name="note" value=(draft_note) aria-label="審查備註或退回說明" placeholder="備註；退回必填" maxlength="1000";
+                                            button class="button button-small" type="submit" { "記錄" }
+                                        }
+                                    } @else if review.is_none() {
+                                        p class="permission-note" { "等待核准者審查；你的角色為唯讀或編輯者。" }
                                     }
                                 }
                             }
@@ -1691,6 +2098,7 @@ fn evidence_table(data: &GovernanceSnapshot, review_draft: Option<(&str, &Review
 
 fn workflows_content(
     data: &GovernanceSnapshot,
+    user: &CurrentUser,
     error: Option<&str>,
     draft: Option<&WorkflowForm>,
 ) -> Markup {
@@ -1700,34 +2108,40 @@ fn workflows_content(
     let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
     let description = draft.map(|form| form.description.as_str()).unwrap_or("");
     let stages = draft.map(|form| form.stages.as_str()).unwrap_or("");
+    let can_edit = user.role >= Role::Editor;
+    let can_approve = user.role >= Role::Approver;
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 流程範本" } h1 { "可配置流程範本" } p class="page-subtitle" { "以步驟清單快速建立部門流程；每個草稿必須經流程負責人審查才可發布。" } } }
         (alert(error))
         div class="notice notice-blue" { strong { "AI 連線尚未配置" } span { "本原型不會把需求傳給外部模型。請以人工整理的草稿建立範本；AI 服務需經資料與供應者審查後再接入。" } }
         section class="content-grid split-grid" {
-            div class="panel" {
-                div class="panel-heading" { div { h2 { "建立流程草稿" } p { "先定義流程目的、負責人與可驗證階段。" } } }
-                form class="form-stack" method="post" action="/workflows" {
-                    label class="field" { span { "基於既有範本（選填）" } select name="base_id" { option value="" selected[base_id.is_empty()] { "建立新範本" } @for workflow in latest_workflows(&data.workflows) { option value=(workflow.id) selected[base_id == workflow.id] { (workflow.id) " · " (workflow.title) " v" (workflow.version) } } } }
-                    (text_field("title", "流程名稱", "", true, title))
-                    (text_field("department", "適用部門／跨部門範圍", "", true, department))
-                    (text_field("owner", "流程負責人", "", true, owner))
-                    label class="field" { span { "流程目的" } textarea name="description" required maxlength="1500" rows="3" placeholder="這條流程要解決的業務問題與完成條件" { (description) } }
-                    label class="field" { span { "流程階段" } textarea name="stages" required rows="7" placeholder="每行一個階段，例如：\n提出需求\n風險評估\n審查核准\n執行與驗證\n結案封存" { (stages) } }
-                    small class="field-help" { "每行一個階段，最多 30 階段。五個強制關卡在生命週期頁面管理。" }
-                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
-                    button class="button button-primary" type="submit" { "儲存為草稿" }
+            @if can_edit {
+                div class="panel" {
+                    div class="panel-heading" { div { h2 { "建立流程草稿" } p { "先定義流程目的、負責人與可驗證階段。" } } }
+                    form class="form-stack" method="post" action="/workflows" {
+                        label class="field" { span { "基於既有範本（選填）" } select name="base_id" { option value="" selected[base_id.is_empty()] { "建立新範本" } @for workflow in latest_workflows(&data.workflows) { option value=(workflow.id) selected[base_id == workflow.id] { (workflow.id) " · " (workflow.title) " v" (workflow.version) } } } }
+                        (text_field("title", "流程名稱", "", true, title))
+                        (text_field("department", "適用部門／跨部門範圍", "", true, department))
+                        (text_field("owner", "流程負責人", "", true, owner))
+                        label class="field" { span { "流程目的" } textarea name="description" required maxlength="1500" rows="3" placeholder="這條流程要解決的業務問題與完成條件" { (description) } }
+                        label class="field" { span { "流程階段" } textarea name="stages" required rows="7" placeholder="每行一個階段，例如：\n提出需求\n風險評估\n審查核准\n執行與驗證\n結案封存" { (stages) } }
+                        small class="field-help" { "每行一個階段，最多 30 階段。五個強制關卡在生命週期頁面管理。" }
+                        p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
+                        button class="button button-primary" type="submit" { "儲存為草稿" }
+                    }
                 }
+            } @else {
+                (read_only_panel(user, "流程草稿", "檢視者可查看範本版本與發布狀態，但不能建立或發布流程。"))
             }
             div class="panel panel-wide" {
-                div class="panel-heading" { div { h2 { "已登錄範本" } p { (data.workflows.len()) " 個版本" } } }
-                (workflow_list(data))
+                div class="panel-heading" { div { h2 { "已登錄範本" } p { (data.workflows.len()) " 個版本 · " (if can_approve { "你可核准發布" } else { "發布需核准者權限" }) } } }
+                (workflow_list(data, can_approve))
             }
         }
     }
 }
 
-fn workflow_list(data: &GovernanceSnapshot) -> Markup {
+fn workflow_list(data: &GovernanceSnapshot, can_approve: bool) -> Markup {
     html! {
         @if data.workflows.is_empty() { (empty_state("尚無流程範本", "建立一份草稿並由流程負責人審查發布。", "/workflows", "建立流程草稿")) }
         @else {
@@ -1739,9 +2153,13 @@ fn workflow_list(data: &GovernanceSnapshot) -> Markup {
                         p class="multiline" { (workflow.description) }
                         ol class="stage-chips" { @for stage in &workflow.stages { li { (stage) } } }
                         @if workflow.status == "draft" {
-                            form class="publish-form" method="post" action=(format!("/workflows/{}/{}/publish", workflow.id, workflow.version)) {
-                                p class="form-hint" { "發布人由目前登入的本機帳號自動記錄。" }
-                                button class="button button-small button-secondary" type="submit" { "核准並發布此版本" }
+                            @if can_approve {
+                                form class="publish-form" method="post" action=(format!("/workflows/{}/{}/publish", workflow.id, workflow.version)) {
+                                    p class="form-hint" { "發布人由目前登入的本機帳號自動記錄。" }
+                                    button class="button button-small button-secondary" type="submit" { "核准並發布此版本" }
+                                }
+                            } @else {
+                                p class="permission-note" { "草稿等待核准者發布；目前角色不能改變已建立的版本。" }
                             }
                         } @else {
                             p class="success-line" { "已由 " (workflow.published_by.as_deref().unwrap_or("未記錄")) " 於 " (format_timestamp(workflow.published_at.unwrap_or(workflow.created_at))) " 發布" }
@@ -1768,6 +2186,7 @@ fn latest_workflows(workflows: &[Workflow]) -> Vec<&Workflow> {
 
 fn controls_content(
     data: &GovernanceSnapshot,
+    user: &CurrentUser,
     error: Option<&str>,
     draft: Option<&QualityCaseForm>,
     update: Option<(&str, &QualityCaseUpdateForm)>,
@@ -1778,27 +2197,33 @@ fn controls_content(
     let description = draft.map(|form| form.description.as_str()).unwrap_or("");
     let owner = draft.map(|form| form.owner.as_str()).unwrap_or("");
     let due_date = draft.map(|form| form.due_date.as_str()).unwrap_or("");
+    let can_edit = user.role >= Role::Editor;
+    let can_approve = user.role >= Role::Approver;
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 品質閉環" } h1 { "風險與品質事件" } p class="page-subtitle" { "集中追蹤風險、變更、缺失及矯正措施，保留責任人、期限和處理紀錄。" } } }
         (alert(error))
-        @if data.projects.is_empty() { (alert(Some("請先建立專案，再登錄品質事件。"))) }
+        @if data.projects.is_empty() && can_edit { (alert(Some("請先建立專案，再登錄品質事件。"))) }
         section class="content-grid split-grid" {
-            div class="panel" {
-                div class="panel-heading" { div { h2 { "新增事件" } p { "CAPA 關閉時須附複驗或有效性紀錄。" } } }
-                form class="form-stack" method="post" action="/controls" {
-                    label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
-                    label class="field" { span { "事件類型" } select name="kind" required { option value="risk" selected[kind == "risk"] { "風險" } option value="change" selected[kind == "change"] { "變更" } option value="finding" selected[kind == "finding"] { "缺失／問題" } option value="capa" selected[kind == "capa"] { "CAPA 矯正預防" } } }
-                    (text_field("title", "標題", "", true, title))
-                    label class="field" { span { "內容與影響" } textarea name="description" required maxlength="2000" rows="4" { (description) } }
-                    (text_field("owner", "負責人", "", true, owner))
-                    label class="field" { span { "到期日" } input type="date" name="due_date" value=(due_date) required; }
-                    p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
-                    button class="button button-primary" type="submit" { "新增追蹤事項" }
+            @if can_edit {
+                div class="panel" {
+                    div class="panel-heading" { div { h2 { "新增事件" } p { "CAPA 關閉時須附複驗或有效性紀錄。" } } }
+                    form class="form-stack" method="post" action="/controls" {
+                        label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
+                        label class="field" { span { "事件類型" } select name="kind" required { option value="risk" selected[kind == "risk"] { "風險" } option value="change" selected[kind == "change"] { "變更" } option value="finding" selected[kind == "finding"] { "缺失／問題" } option value="capa" selected[kind == "capa"] { "CAPA 矯正預防" } } }
+                        (text_field("title", "標題", "", true, title))
+                        label class="field" { span { "內容與影響" } textarea name="description" required maxlength="2000" rows="4" { (description) } }
+                        (text_field("owner", "負責人", "", true, owner))
+                        label class="field" { span { "到期日" } input type="date" name="due_date" value=(due_date) required; }
+                        p class="form-hint" { "操作人由目前登入的本機帳號自動記錄，不採信表單輸入。" }
+                        button class="button button-primary" type="submit" { "新增追蹤事項" }
+                    }
                 }
+            } @else {
+                (read_only_panel(user, "品質事件", "檢視者可查看風險、變更、缺失與 CAPA 狀態，但不能新增或更新事件。"))
             }
             div class="panel panel-wide" {
-                div class="panel-heading" { div { h2 { "追蹤清單" } p { (data.cases.len()) " 項風險與品質事件" } } }
-                (quality_case_list(data, update))
+                div class="panel-heading" { div { h2 { "追蹤清單" } p { (data.cases.len()) " 項風險與品質事件 · " (if can_approve { "你可更新狀態" } else { "狀態更新需核准者權限" }) } } }
+                (quality_case_list(data, can_approve, update))
             }
         }
     }
@@ -1806,6 +2231,7 @@ fn controls_content(
 
 fn inspections_content(
     data: &GovernanceSnapshot,
+    user: &CurrentUser,
     error: Option<&str>,
     draft: Option<&HashMap<String, String>>,
 ) -> Markup {
@@ -1813,20 +2239,23 @@ fn inspections_content(
         .and_then(|fields| fields.get("project_id"))
         .map(String::as_str)
         .unwrap_or("");
+    let can_edit = user.role >= Role::Editor;
     html! {
         section class="page-heading" { div { p class="eyebrow" { "工作區 / 品質保證" } h1 { "29 項品質檢查" } p class="page-subtitle" { "逐項記錄判定與可追溯依據；不適用項目需說明，不符合項目需連到缺失。" } } }
         (alert(error))
-        @if data.projects.is_empty() { (alert(Some("請先建立專案，再記錄品質檢查。"))) }
+        @if data.projects.is_empty() && can_edit { (alert(Some("請先建立專案，再記錄品質檢查。"))) }
         section class="panel" {
-            div class="panel-heading" { div { h2 { "建立檢查紀錄" } p { "符合須填證據參照；不符合須填說明及缺失編號；不適用須填理由。" } } }
-            @if data.projects.is_empty() { p class="empty-inline" { "目前沒有可選專案。" } }
+            div class="panel-heading" { div { h2 { @if can_edit { "建立檢查紀錄" } @else { "檢查紀錄" } } p { "符合須填證據參照；不符合須填說明及缺失編號；不適用須填理由。" } } }
+            @if !can_edit {
+                p class="permission-note" { "檢視者可查看已保存的檢查紀錄與逐項結果；建立完整 29 項檢查需編輯者權限。" }
+            } @else if data.projects.is_empty() { p class="empty-inline" { "目前沒有可選專案。" } }
             @else {
                 form class="form-stack" method="post" action="/inspections" {
                     div class="inspection-meta" {
                         label class="field" { span { "關聯專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
                     }
                     div class="notice notice-blue" { strong { "判定規則" } span { "符合：填可查證的證據 ID／連結；不符合：填說明及缺失編號；不適用：填理由。檢查人由目前登入的本機帳號自動記錄。" } }
-                    div class="table-wrap" {
+                    div class="table-wrap" role="region" aria-label="29 項專案品質檢查表" tabindex="0" {
                         table class="inspection-table" {
                             caption class="visually-hidden" { "29 項專案品質檢查表" }
                             thead { tr { th scope="col" { "檢查項目" } th scope="col" { "判定" } th scope="col" { "證據參照" } th scope="col" { "說明／不適用理由" } th scope="col" { "缺失編號" } } }
@@ -1856,7 +2285,7 @@ fn inspections_content(
         section class="panel inspection-history" {
             div class="panel-heading" { div { h2 { "已保存檢查" } p { (data.inspections.len()) " 份完整檢查紀錄" } } }
             @if data.inspections.is_empty() { p class="empty-inline" { "尚無檢查紀錄；每份紀錄都必須包含全部 29 個項目。" } }
-            @else { div class="table-wrap" { table {
+            @else { div class="table-wrap" role="region" aria-label="已保存品質檢查紀錄" tabindex="0" { table {
                 caption class="visually-hidden" { "已保存品質檢查紀錄" }
                 thead { tr { th scope="col" { "檢查識別碼" } th scope="col" { "專案" } th scope="col" { "檢查人" } th scope="col" { "符合" } th scope="col" { "不符合" } th scope="col" { "不適用" } th scope="col" { "日期" } th scope="col" { "逐項結果" } } }
                 tbody { @for inspection in data.inspections.iter().rev() {
@@ -1864,7 +2293,7 @@ fn inspections_content(
                     @let failed = inspection.results.iter().filter(|item| item.result == "fail").count();
                     @let not_applicable = inspection.results.iter().filter(|item| item.result == "not_applicable").count();
                     tr {
-                        th scope="row" { (inspection.id) }
+                        th scope="row" { span class="nowrap" { (inspection.id) } }
                         td { (inspection.project_id) }
                         td { (inspection.reviewer) }
                         td { (passed) }
@@ -1897,8 +2326,10 @@ fn inspections_content(
 
 fn quality_case_list(
     data: &GovernanceSnapshot,
+    can_approve: bool,
     update: Option<(&str, &QualityCaseUpdateForm)>,
 ) -> Markup {
+    let today = utc_today();
     html! {
         @if data.cases.is_empty() { (empty_state("尚無追蹤事項", "新增風險、變更、缺失或 CAPA，並指定負責人與期限。", "/controls", "新增事項")) }
         @else {
@@ -1907,16 +2338,21 @@ fn quality_case_list(
                     @let draft = update.and_then(|(update_id, form)| (update_id == case.id).then_some(form));
                     @let draft_status = draft.map(|form| form.status.as_str()).unwrap_or(case.status.as_str());
                     @let draft_note = draft.map(|form| form.note.as_str()).unwrap_or("");
+                    @let overdue = case.status != "closed" && !case.due_date.is_empty() && case.due_date < today;
                     article class="case-card" {
                         div class="workflow-title-row" { div { p class="row-id" { (case.id) " · " (kind_label(&case.kind)) " · " (case.project_id) } h3 { (case.title) } } (case_status_badge(&case.status)) }
                         p class="multiline" { (case.description) }
-                        p class="muted" { "負責人 " (case.owner) " · 到期 " (case.due_date) }
+                        p class="muted" { "負責人 " (case.owner) " · 到期 " (case.due_date) " " @if overdue { span class="badge badge-red" { "已逾期" } } }
                         @if case.status != "closed" {
-                            form class="publish-form" method="post" action=(format!("/controls/{}/status", case.id)) {
-                                label class="compact-field" { span { "更新狀態" } select name="status" { option value="open" selected[draft_status == "open"] { "待處理" } option value="in_progress" selected[draft_status == "in_progress"] { "處理中" } option value="verification" selected[draft_status == "verification"] { "待複驗" } option value="closed" selected[draft_status == "closed"] { "結案" } } }
-                                label class="compact-field" { span { "處理／結案紀錄" } input type="text" name="note" value=(draft_note) maxlength="1200" required placeholder="複驗結果或更新說明"; }
-                                p class="form-hint" { "更新人由目前登入的本機帳號自動記錄。" }
-                                button class="button button-small button-secondary" type="submit" { "記錄更新" }
+                            @if can_approve {
+                                form class="publish-form" method="post" action=(format!("/controls/{}/status", case.id)) {
+                                    label class="compact-field" { span { "更新狀態" } select name="status" { option value="open" selected[draft_status == "open"] { "待處理" } option value="in_progress" selected[draft_status == "in_progress"] { "處理中" } option value="verification" selected[draft_status == "verification"] { "待複驗" } option value="closed" selected[draft_status == "closed"] { "結案" } } }
+                                    label class="compact-field" { span { "處理／結案紀錄" } input type="text" name="note" value=(draft_note) maxlength="1200" required placeholder="複驗結果或更新說明"; }
+                                    p class="form-hint" { "更新人由目前登入的本機帳號自動記錄。" }
+                                    button class="button button-small button-secondary" type="submit" { "記錄更新" }
+                                }
+                            } @else {
+                                p class="permission-note" { "狀態更新需核准者權限；目前只能檢視事件內容與期限。" }
                             }
                         } @else if let Some(note) = &case.closure_note { p class="success-line" { "結案紀錄：" (note) } }
                     }
@@ -1928,6 +2364,7 @@ fn quality_case_list(
 
 fn lifecycle_content(
     data: &GovernanceSnapshot,
+    user: &CurrentUser,
     error: Option<&str>,
     draft: Option<&GateDecisionForm>,
 ) -> Markup {
@@ -1945,48 +2382,37 @@ fn lifecycle_content(
     let remediation_due = draft
         .map(|form| form.remediation_due.as_str())
         .unwrap_or("");
+    let can_approve = user.role >= Role::Approver;
 
-    let stages = [
-        "專案立案與分類",
-        "需求與合規分析",
-        "計畫與基準建立",
-        "文件與系統設定",
-        "執行與過程管制",
-        "品質檢查與驗證",
-        "變更與影響分析",
-        "缺失與風險閉環",
-        "階段審查與放行",
-        "最終驗收與移交",
-        "結案與封存",
-        "效益追蹤與改善",
-    ];
-    let gates = [
-        ("G1", "立案", "目的、贊助人、範圍與風險分級已確認。"),
-        ("G2", "基準", "需求、驗收標準、計畫及責任已確認。"),
-        ("G3", "執行", "關鍵品質檢查通過，或缺失已正式登錄。"),
-        ("G4", "交付", "必要證據、適用要求與驗收條件已滿足。"),
-        ("G5", "結案", "移交、未結責任、封存及改善計畫已完成。"),
-    ];
     html! {
         section class="page-heading" { div { p class="eyebrow" { "治理模型" } h1 { "生命週期與強制關卡" } p class="page-subtitle" { "每階段定義責任與放行條件；關卡決定由授權人員記錄。" } } }
         (alert(error))
         section class="panel" {
             div class="panel-heading" { div { h2 { "12 個專案階段" } p { "來源：使用者提供的治理藍圖；試點時由流程擁有者確認適用性。" } } }
-            ol class="lifecycle-grid" { @for (index, stage) in stages.iter().enumerate() { li { span class="stage-number" { (format!("{:02}", index + 1)) } strong { (stage) } } } }
+            ol class="lifecycle-grid" { @for (index, stage) in STAGES.iter().enumerate() { li { span class="stage-number" { (format!("{:02}", index + 1)) } strong { (stage) } } } }
+        }
+        section class="panel" id="gate-status" {
+            div class="panel-heading" {
+                div { h2 { "各專案關卡狀態" } p { "顯示每個專案在 G1–G5 的最新人工決議；空白代表尚未記錄，不代表通過。" } }
+                a href="/projects" class="text-link" { "專案清單 →" }
+            }
+            (project_gate_matrix(data))
         }
         section class="gate-layout" {
             div class="panel" {
                 div class="panel-heading" { div { h2 { "五個強制關卡" } p { "例外需有風險接受者、補救措施和期限。" } } }
-                div class="gate-list" { @for (id, name, condition) in gates { article class="gate-item" { span class="gate-id" { (id) } div { strong { (name) } p { (condition) } } } } }
+                div class="gate-list" { @for (id, name, condition) in GATES { article class="gate-item" { span class="gate-id" { (id) } div { strong { (name) } p { (condition) } } } } }
                 p class="form-hint" { "法律、安全及其他不可豁免要求不可一般例外放行。原型要求登記人明確聲明是否涉及不可豁免事項。" }
             }
             div class="panel" {
                 div class="panel-heading" { div { h2 { "記錄人工關卡決議" } p { "僅記錄人工決定，不自動推定通過。" } } }
-                @if data.projects.is_empty() { p class="empty-inline" { "先建立專案後才能記錄決議。" } }
+                @if !can_approve {
+                    p class="permission-note" { "關卡決議需核准者權限；目前角色只能檢視狀態與歷程。" }
+                } @else if data.projects.is_empty() { p class="empty-inline" { "先建立專案後才能記錄決議。" } }
                 @else {
                     form class="form-stack" method="post" action="/lifecycle" {
                         label class="field" { span { "專案" } select name="project_id" required { option value="" selected[project_id.is_empty()] disabled { "選擇專案" } @for project in &data.projects { option value=(project.id) selected[project_id == project.id] { (project.id) " · " (project.name) } } } }
-                        label class="field" { span { "關卡" } select name="gate_id" required { @for (id, name, _) in gates { option value=(id) selected[gate_id == id] { (id) " · " (name) } } } }
+                        label class="field" { span { "關卡" } select name="gate_id" required { @for (id, name, _) in GATES { option value=(id) selected[gate_id == id] { (id) " · " (name) } } } }
                         label class="field" { span { "人工決議" } select name="decision" required { option value="hold" selected[decision == "hold"] { "暫緩" } option value="go" selected[decision == "go"] { "放行" } option value="exception" selected[decision == "exception"] { "一般例外" } } }
                         label class="field" { span { "是否涉及不可豁免要求" } select name="non_waivable" required { option value="yes" selected[non_waivable == "yes"] { "是" } option value="no" selected[non_waivable == "no"] { "否" } } }
                         label class="field" { span { "原因／例外依據" } textarea name="reason" rows="2" maxlength="1200" placeholder="暫緩或例外時必填" { (reason) } }
@@ -2006,18 +2432,80 @@ fn lifecycle_content(
     }
 }
 
+fn project_gate_matrix(data: &GovernanceSnapshot) -> Markup {
+    html! {
+        @if data.projects.is_empty() {
+            (empty_state("尚無專案", "建立專案後，這裡會顯示每個專案的 G1–G5 最新人工決議。", "/projects", "建立專案"))
+        } @else {
+            div class="table-wrap gate-matrix" role="region" aria-label="各專案關卡狀態" tabindex="0" {
+                table {
+                    caption class="visually-hidden" { "各專案 G1 至 G5 最新人工關卡決議" }
+                    thead {
+                        tr {
+                            th scope="col" { "專案" }
+                            @for (id, name, _) in GATES { th scope="col" { (id) " " (name) } }
+                        }
+                    }
+                    tbody {
+                        @for project in data.projects.iter().rev() {
+                            tr {
+                                th scope="row" {
+                                    a class="row-link" href=(format!("/projects/{}", project.id)) { (project.name) }
+                                    small class="row-id" { (project.id) }
+                                }
+                                @for (gate_id, _, _) in GATES {
+                                    td { (gate_status_cell(data, &project.id, gate_id)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn gate_status_cell(data: &GovernanceSnapshot, project_id: &str, gate_id: &str) -> Markup {
+    match latest_gate_decision(data, project_id, gate_id) {
+        Some(decision) => html! {
+            (gate_badge(&decision.decision))
+            small class="row-id" { (decision.actor) " · " (format_timestamp(decision.created_at)) }
+        },
+        None => html! { span class="muted" { "尚未記錄" } },
+    }
+}
+
+fn latest_gate_decision<'a>(
+    data: &'a GovernanceSnapshot,
+    project_id: &str,
+    gate_id: &str,
+) -> Option<&'a GateDecision> {
+    data.gate_decisions
+        .iter()
+        .rev()
+        .find(|decision| decision.project_id == project_id && decision.gate_id == gate_id)
+}
+
+fn latest_decisions_by_project(data: &GovernanceSnapshot) -> BTreeMap<&str, &GateDecision> {
+    let mut latest = BTreeMap::new();
+    for decision in &data.gate_decisions {
+        latest.insert(decision.project_id.as_str(), decision);
+    }
+    latest
+}
+
 fn gate_decision_list(data: &GovernanceSnapshot) -> Markup {
     html! {
         @if data.gate_decisions.is_empty() { p class="empty-inline" { "尚無關卡決議。建立專案後，保存實際人工決策。" } }
         @else {
-            div class="table-wrap" { table {
+            div class="table-wrap" role="region" aria-label="關卡決議歷程" tabindex="0" { table {
                 caption class="visually-hidden" { "關卡決議歷程" }
                 thead { tr { th scope="col" { "專案／關卡" } th scope="col" { "決議" } th scope="col" { "記錄人" } th scope="col" { "理由／補救" } th scope="col" { "時間" } } }
                 tbody { @for decision in data.gate_decisions.iter().rev() { tr {
-                    th scope="row" { (decision.project_id) " · " (decision.gate_id) }
+                    th scope="row" { a class="text-link" href=(format!("/projects/{}", decision.project_id)) { (decision.project_id) } " · " (decision.gate_id) }
                     td { (gate_badge(&decision.decision)) }
                     td { (decision.actor) }
-                    td class="multiline" { (decision.reason) @if decision.decision == "exception" { small class="row-id" { "風險接受者：" (decision.risk_acceptor) "；期限：" (decision.remediation_due) } } }
+                    td class="multiline" { (decision.reason) @if decision.decision == "exception" { small class="row-id" { "風險接受者：" (decision.risk_acceptor) "；期限：" (decision.remediation_due) } } @if decision.non_waivable { small class="row-id" { "登錄時標示涉及不可豁免要求" } } }
                     td { (format_timestamp(decision.created_at)) }
                 } } }
             } }
@@ -2025,23 +2513,69 @@ fn gate_decision_list(data: &GovernanceSnapshot) -> Markup {
     }
 }
 
-fn audit_content(data: &GovernanceSnapshot, integrity: bool) -> Markup {
+fn audit_content(
+    data: &GovernanceSnapshot,
+    user: &CurrentUser,
+    filter: &AuditFilter,
+    integrity: bool,
+) -> Markup {
+    let selection = select_audit_events(data, filter);
     html! {
-        section class="page-heading" { div { p class="eyebrow" { "治理控制" } h1 { "追加式稽核紀錄" } p class="page-subtitle" { "每次新增、審查、發布與決議都新增事件，不覆寫先前事件。" } } }
-        div class={(if integrity { "notice notice-green" } else { "notice notice-red" })} role="status" {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "治理控制" }
+                h1 { "追加式稽核紀錄" }
+                p class="page-subtitle" { "每次新增、審查、發布與決議都新增事件，不覆寫先前事件。可依專案、操作者、事件類型與日期查詢。" }
+            }
+            span class="role-chip" { (role_label(user.role)) }
+        }
+        div class={(if integrity { "notice notice-green" } else { "notice notice-red" })} role=(if integrity { "status" } else { "alert" }) {
             strong { @if integrity { "本機雜湊鏈驗證通過" } @else { "稽核鏈驗證失敗" } }
             span { "雜湊鏈能偵測部分竄改；它不等同不可變 WORM 儲存或防竄改企業稽核服務。" }
         }
+        section class="panel audit-filters" {
+            div class="panel-heading" { div { h2 { "篩選事件" } p { "篩選只影響畫面；不會修改或匯出稽核資料。" } } @if !filter.is_empty() { a href="/audit" class="text-link" { "清除全部篩選 ×" } } }
+            form class="filter-grid" method="get" action="/audit" {
+                label class="field" { span { "專案" } select name="project" { option value="" selected[filter.project.trim().is_empty()] { "全部專案" } @for project in data.projects.iter().rev() { option value=(project.id) selected[filter.project.trim() == project.id] { (project.id) " · " (project.name) } } } }
+                label class="field" { span { "事件類型" } select name="event" { option value="" selected[filter.event.trim().is_empty()] { "全部事件" } @for (value, label) in AUDIT_EVENT_TYPES { option value=(value) selected[filter.event.trim() == value] { (label) } } } }
+                label class="field" { span { "操作者（部分比對）" } input type="text" name="actor" value=(filter.actor.trim()) maxlength="80" placeholder="例如：tester"; }
+                label class="field" { span { "關鍵字" } input type="search" name="q" value=(filter.q.trim()) maxlength="120" placeholder="事件摘要、操作者或雜湊"; }
+                label class="field" { span { "起始日期（UTC）" } input type="date" name="from" value=(filter.from.trim()); }
+                label class="field" { span { "結束日期（UTC）" } input type="date" name="to" value=(filter.to.trim()); }
+                div class="filter-actions" {
+                    button class="button button-primary" type="submit" { "套用篩選" }
+                    a class="button button-quiet" href="/audit" { "清除" }
+                }
+            }
+            @if !selection.warnings.is_empty() {
+                div class="notice notice-red" role="status" {
+                    strong { "部分篩選未套用" }
+                    ul class="compact-list" { @for warning in &selection.warnings { li { (warning) } } }
+                }
+            }
+        }
         section class="panel" {
-            div class="panel-heading" { div { h2 { "事件明細" } p { (data.events.len()) " 筆事件 · 由新至舊" } } }
+            div class="panel-heading" {
+                div {
+                    h2 { "事件明細" }
+                    p { "共 " (data.events.len()) " 筆事件；符合 " (selection.matched) " 筆，顯示最近 " (selection.events.len()) " 筆。" }
+                }
+                @if !filter.is_empty() { span class="badge badge-blue" { "已套用篩選" } }
+            }
             @if data.events.is_empty() { (empty_state("尚無稽核事件", "新增專案或治理記錄後，事件會出現在此處。", "/projects", "新增專案")) }
-            @else {
+            @else if selection.events.is_empty() {
+                (empty_state("沒有符合條件的事件", "請放寬專案、操作者、事件類型或日期條件；清除篩選可回到完整清單。", "/audit", "清除篩選"))
+            } @else {
+                @if selection.matched > selection.events.len() {
+                    p class="data-note" { "符合條件的事件超過 " (AUDIT_EVENT_LIMIT) " 筆，僅顯示最新 " (AUDIT_EVENT_LIMIT) " 筆；請縮小日期或專案範圍。" }
+                }
                 div class="audit-timeline" {
-                    @for event in data.events.iter().rev() {
+                    @for event in &selection.events {
                         article class="audit-event" {
                             span class="audit-sequence" { (format!("{:04}", event.sequence)) }
                             div class="audit-event-body" {
                                 div class="workflow-title-row" { strong { (event_label(&event.payload)) } small { (event.actor) " · " (format_timestamp(event.timestamp_unix)) } }
+                                p class="row-id" { "事件類型 " (audit_event_label(event_kind(&event.payload))) @if let Some(project_id) = event_project_id(event, data) { " · 專案 " (project_id) } }
                                 p class="row-id" { "前序雜湊 " (event.previous_sha256) }
                                 p class="hash-value" { "SHA-256 " (event.sha256) }
                             }
@@ -2051,6 +2585,181 @@ fn audit_content(data: &GovernanceSnapshot, integrity: bool) -> Markup {
             }
         }
     }
+}
+
+const AUDIT_EVENT_TYPES: [(&str, &str); 7] = [
+    ("project", "專案建立"),
+    ("evidence", "證據連結"),
+    ("review", "證據審查"),
+    ("workflow", "流程草稿／發布"),
+    ("case", "風險與品質事件"),
+    ("inspection", "品質檢查"),
+    ("gate", "關卡決議"),
+];
+
+struct AuditSelection<'a> {
+    events: Vec<&'a LedgerEvent>,
+    warnings: Vec<String>,
+    matched: usize,
+}
+
+fn select_audit_events<'a>(
+    data: &'a GovernanceSnapshot,
+    filter: &AuditFilter,
+) -> AuditSelection<'a> {
+    let project = filter.project.trim();
+    let actor = filter.actor.trim().to_lowercase();
+    let event_type = filter.event.trim();
+    let query = filter.q.trim().to_lowercase();
+    let from = filter.from.trim();
+    let to = filter.to.trim();
+    let mut warnings = Vec::new();
+
+    let from_valid = from.is_empty() || valid_iso_date(from);
+    let to_valid = to.is_empty() || valid_iso_date(to);
+    if !from_valid {
+        warnings.push("起始日期不是有效的 YYYY-MM-DD；未套用起始日期。".to_string());
+    }
+    if !to_valid {
+        warnings.push("結束日期不是有效的 YYYY-MM-DD；未套用結束日期。".to_string());
+    }
+    if from_valid && to_valid && !from.is_empty() && !to.is_empty() && from > to {
+        warnings.push("起始日期晚於結束日期，因此沒有符合的事件。".to_string());
+        return AuditSelection {
+            events: Vec::new(),
+            warnings,
+            matched: 0,
+        };
+    }
+
+    let mut matched = 0;
+    let mut events = Vec::new();
+    for event in data.events.iter().rev() {
+        if !project.is_empty()
+            && event_project_id(event, data).is_none_or(|event_project| event_project != project)
+        {
+            continue;
+        }
+        if !actor.is_empty() && !event.actor.to_lowercase().contains(&actor) {
+            continue;
+        }
+        if !event_type.is_empty() && event_kind(&event.payload) != event_type {
+            continue;
+        }
+        if !query.is_empty() {
+            let haystack = format!(
+                "{} {} {}",
+                event_label(&event.payload),
+                event.actor,
+                event.sha256
+            )
+            .to_lowercase();
+            if !haystack.contains(&query) {
+                continue;
+            }
+        }
+        let timestamp = format_timestamp(event.timestamp_unix);
+        let date = timestamp.split(' ').next().unwrap_or("");
+        if from_valid && !from.is_empty() && date < from {
+            continue;
+        }
+        if to_valid && !to.is_empty() && date > to {
+            continue;
+        }
+        matched += 1;
+        if events.len() < AUDIT_EVENT_LIMIT {
+            events.push(event);
+        }
+    }
+    AuditSelection {
+        events,
+        warnings,
+        matched,
+    }
+}
+
+fn event_kind(payload: &crate::governance::EventPayload) -> &'static str {
+    use crate::governance::EventPayload;
+    match payload {
+        EventPayload::ProjectCreated(_) => "project",
+        EventPayload::EvidenceLinked(_) => "evidence",
+        EventPayload::EvidenceReviewed(_) => "review",
+        EventPayload::WorkflowSaved(_) | EventPayload::WorkflowPublished(_) => "workflow",
+        EventPayload::QualityCaseCreated(_) | EventPayload::QualityCaseUpdated(_) => "case",
+        EventPayload::QualityInspectionRecorded(_) => "inspection",
+        EventPayload::GateDecisionRecorded(_) => "gate",
+    }
+}
+
+fn audit_event_label(value: &str) -> &'static str {
+    AUDIT_EVENT_TYPES
+        .iter()
+        .find(|(key, _)| *key == value)
+        .map(|(_, label)| *label)
+        .unwrap_or("其他事件")
+}
+
+fn event_project_id<'a>(event: &'a LedgerEvent, data: &'a GovernanceSnapshot) -> Option<&'a str> {
+    use crate::governance::EventPayload;
+    match &event.payload {
+        EventPayload::ProjectCreated(project) => Some(project.id.as_str()),
+        EventPayload::EvidenceLinked(evidence) => Some(evidence.project_id.as_str()),
+        EventPayload::EvidenceReviewed(review) => data
+            .evidence
+            .iter()
+            .find(|evidence| evidence.id == review.evidence_id)
+            .map(|evidence| evidence.project_id.as_str()),
+        EventPayload::WorkflowSaved(_) | EventPayload::WorkflowPublished(_) => None,
+        EventPayload::QualityCaseCreated(case) => Some(case.project_id.as_str()),
+        EventPayload::QualityCaseUpdated(update) => data
+            .cases
+            .iter()
+            .find(|case| case.id == update.id)
+            .map(|case| case.project_id.as_str()),
+        EventPayload::QualityInspectionRecorded(inspection) => Some(inspection.project_id.as_str()),
+        EventPayload::GateDecisionRecorded(decision) => Some(decision.project_id.as_str()),
+    }
+}
+
+fn valid_iso_date(value: &str) -> bool {
+    if value.len() != 10
+        || value.as_bytes()[4] != b'-'
+        || value.as_bytes()[7] != b'-'
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b'-')
+    {
+        return false;
+    }
+    let year = value[0..4].parse::<u32>().ok();
+    let month = value[5..7].parse::<u32>().ok();
+    let day = value[8..10].parse::<u32>().ok();
+    let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+        return false;
+    };
+    if year == 0 || !(1..=12).contains(&month) || day == 0 {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        _ => 28,
+    };
+    day <= days
+}
+
+fn utc_today() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format_timestamp(seconds)
+        .split(' ')
+        .next()
+        .unwrap_or("1970-01-01")
+        .to_string()
 }
 
 fn recent_events(events: &[crate::governance::LedgerEvent], limit: usize) -> Markup {
@@ -2063,7 +2772,25 @@ fn recent_events(events: &[crate::governance::LedgerEvent], limit: usize) -> Mar
 }
 
 fn alert(message: Option<&str>) -> Markup {
-    html! { @if let Some(message) = message { div class="alert alert-error" role="alert" { (message) } } }
+    html! {
+        @if let Some(message) = message {
+            div class="alert alert-error" id="error-summary" role="alert" aria-live="assertive" tabindex="-1" autofocus {
+                strong { "請修正以下問題" }
+                p { (message) }
+                span class="alert-hint" { "你已輸入的內容已保留；修正後可重新送出。" }
+            }
+        }
+    }
+}
+
+fn read_only_panel(user: &CurrentUser, title: &str, description: &str) -> Markup {
+    html! {
+        div class="panel read-only-panel" {
+            div class="panel-heading" { div { h2 { (title) } p { "目前角色為「" (role_label(user.role)) "」" } } span class="role-chip" { "唯讀" } }
+            p { (description) }
+            p class="form-hint" { "需要變更資料時，請聯絡本機管理者調整角色。角色只存在於目前程序，重新啟動後需要重新建立帳號。" }
+        }
+    }
 }
 
 fn text_field(name: &str, label: &str, placeholder: &str, required: bool, value: &str) -> Markup {
@@ -2232,6 +2959,28 @@ fn review_label_text(value: &str) -> &'static str {
     match value {
         "accepted" => "已確認",
         _ => "退回補充",
+    }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct AuditFilter {
+    project: String,
+    actor: String,
+    event: String,
+    q: String,
+    from: String,
+    to: String,
+}
+
+impl AuditFilter {
+    fn is_empty(&self) -> bool {
+        self.project.trim().is_empty()
+            && self.actor.trim().is_empty()
+            && self.event.trim().is_empty()
+            && self.q.trim().is_empty()
+            && self.from.trim().is_empty()
+            && self.to.trim().is_empty()
     }
 }
 
