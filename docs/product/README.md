@@ -4,6 +4,7 @@
 - **Owner:** Product
 - **Last reviewed:** 2026-10-26
 - **Canonical detail:** [requirements](../governance/02-requirements-v0.1.md), [functional spec](../governance/05-functional-spec-v1.md), [data and state model](../governance/06-data-and-state-model-v1.md), [acceptance matrix](../governance/04-acceptance-test-matrix.md), [decision register](../governance/08-decision-register.md), [target traceability](../governance/10-traceability-baseline.md), [metrics](../metrics/targets.md)
+- **Redesign v2 (2026-11-06):** [master plan](redesign-v2-master-plan.md) · [quality standards](../quality/quality-standards-v2.md) · [test verification plan](../quality/test-verification-plan-v2.md) · [delivery checklist](../operations/delivery-checklist-v2.md)
 
 This brief frames the product; it does not replace the governance specifications. Where this page and a canonical specification differ, the specification wins.
 

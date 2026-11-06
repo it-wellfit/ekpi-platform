@@ -10,7 +10,7 @@ This is the entry point for repository documentation. It answers three questions
 
 | Question | Canonical document | Do not duplicate in |
 | --- | --- | --- |
-| Why the product exists, users, roles, MVP scope and non-goals | [Product brief](product/README.md), [MVP scope](product/mvp-scope.md), and the approved governance baselines | README marketing text, release notes |
+| Why the product exists, users, roles, MVP scope and non-goals | [Product brief](product/README.md), [MVP scope](product/mvp-scope.md), [redesign master plan v2](product/redesign-v2-master-plan.md), and the approved governance baselines | README marketing text, release notes |
 | Business requirements, functional behavior, data/state, security, decisions | [Governance requirements](governance/02-requirements-v0.1.md), [functional spec](governance/05-functional-spec-v1.md), [data and state model](governance/06-data-and-state-model-v1.md), [security and connector spec](governance/07-security-integration-spec-v1.md), [decision register](governance/08-decision-register.md) | Architecture and backend summaries |
 | Acceptance cases and target-product gaps | [Acceptance test matrix](governance/04-acceptance-test-matrix.md) and [traceability baseline](governance/10-traceability-baseline.md) | Test plans, release notes |
 | Numeric targets and hard gates | [Metrics target register](metrics/targets.md) | README, success-metrics summaries |
