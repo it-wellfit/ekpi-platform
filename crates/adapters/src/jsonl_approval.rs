@@ -300,6 +300,14 @@ impl ApprovalStore {
     }
 
     /// Mark overdue open tasks `Expired`; returns how many changed.
+    ///
+    /// Semantics note (IMP-020): this marks every overdue open task `Expired`
+    /// and does **not** yet honor the stage's configured `TimeoutAction`
+    /// (`Escalate`/`AutoReject`/`Cancel` are accepted by the model but await
+    /// the scheduler slice; `AutoApprove` is refused at definition validation
+    /// because ekpi-platform never auto-approves). Until then, "timeout means
+    /// Expired" is the documented behavior — do not present it as SLA-action
+    /// honoring.
     pub fn cleanup_expired(&mut self, now_unix: i64) -> Result<u64, GovernanceError> {
         let mut overdue: Vec<String> = self
             .projection
