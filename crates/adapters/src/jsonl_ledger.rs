@@ -837,8 +837,9 @@ mod tests {
     }
 
     /// IMP-019 regression locks: the validation messages an operator sees
-    /// must be readable Chinese, not the destroyed `??????` placeholders.
-    /// Each assertion names the exact message a refused action produces.
+    /// must be readable Chinese, not the destroyed placeholder runs that the
+    /// encoding corruption left behind. Each assertion names the exact
+    /// message a refused action produces.
     #[test]
     fn operator_facing_messages_are_readable_chinese() {
         let (mut ledger, path) = temp_ledger("messages");
