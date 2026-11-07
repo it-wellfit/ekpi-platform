@@ -1,8 +1,8 @@
 # EKPI Backup Log
 
-- **Status:** Active; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, **`41beaea`**, **`6ed236d`**, **`499e0d1`** and **`8ba4e0c`** (the last four via the automatic TEMP drill with restored `scripts/check.ps1` exit 0). The earlier `28b68cc` bundle is created and verified but its restore drill is **BLOCKED** by host policy; the preceding `bc7671a` and `c77fec4` bundles are also BLOCKED; earlier attempt `198d5f3` is also BLOCKED and not counted. All restores are local-only; no off-host copy or approved RPO/RTO exists.
+- **Status:** Active; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, **`41beaea`**, **`6ed236d`**, **`499e0d1`**, **`8ba4e0c`** and **`653eab4`** (the latest via a manual fresh-clone drill with the restored `scripts/check.ps1` observed at exit 0; earlier series via the automatic TEMP drill). The earlier `28b68cc` bundle is created and verified but its restore drill is **BLOCKED** by host policy; the preceding `bc7671a` and `c77fec4` bundles are also BLOCKED; earlier attempt `198d5f3` is also BLOCKED and not counted. **All these drills restore the repository only** — runtime JSONL data (governance ledger, approval store) has no executed restore drill (`IMP-021`). All restores are local-only; no off-host copy or approved RPO/RTO exists.
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
-- **Last reviewed:** 2026-11-05
+- **Last reviewed:** 2026-11-06
 - **Procedure:** [local-backup.md](local-backup.md)
 - **Phase gate:** [A8](../quality/phase-gates.md#phase-a-0--1-mvp-gate)
 - **Production gap:** [production-readiness.md](production-readiness.md)
