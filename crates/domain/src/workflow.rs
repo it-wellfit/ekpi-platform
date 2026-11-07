@@ -133,6 +133,16 @@ impl WorkflowDefinition {
                     stage.id
                 )));
             }
+            // IMP-020(a)：advisory 邊界是平台硬規則——ekpi-platform 永不自動
+            // 核准，因此 `AutoApprove` 在定義驗證期即拒絕，而不是在逾時時
+            // 靜默失效。其餘逾時動作（Escalate/AutoReject/Cancel）由模型
+            // 接受，但 cleanup 目前一律標記 Expired，尚未逐步兌現（IMP-020(b)）。
+            if stage.on_timeout == TimeoutAction::AutoApprove {
+                return Err(WorkflowError::InvalidDefinition(format!(
+                    "stage {} configures on_timeout AutoApprove, which ekpi-platform never performs (advisory boundary)",
+                    stage.id
+                )));
+            }
             for escalated in &stage.escalation_path {
                 if !self.stages.iter().any(|s| &s.id == escalated) {
                     return Err(WorkflowError::InvalidDefinition(format!(
@@ -817,6 +827,21 @@ mod tests {
         let mut def = valid_definition();
         def.id = "  ".into();
         assert!(def.validate().is_err());
+    }
+
+    /// IMP-020(a)：平台永不自動核准——逾時動作 `AutoApprove` 必須在定義
+    /// 驗證時即被拒絕，不得等到逾時才靜默失效（advisory 邊界為硬規則）。
+    #[test]
+    fn definition_with_auto_approve_timeout_is_refused() {
+        let mut def = valid_definition();
+        def.stages[0].on_timeout = TimeoutAction::AutoApprove;
+        let err = def
+            .validate()
+            .expect_err("AutoApprove must be refused at validation time");
+        assert!(
+            err.to_string().contains("AutoApprove"),
+            "the refusal must name the action: {err}"
+        );
     }
 
     // ── B 組：任務生命週期（BDD 場景鎖，見 docs/quality/bdd-scenarios-approval.md）──
