@@ -33,7 +33,20 @@
 | `/approvals` | 測試 `approval_lifecycle_through_web` | `empty_state("暫無簽核任務")`；定義「尚無定義。」 | 鏈徽章＋操作錯誤 notice；角色 403 | D1–D5 場景 |
 | `/settings` | 靜態資訊（版本/儲存模式） | N/A | N/A（無資料依賴） | |
 | `/api-docs` | 端點狀態表（誠實 501 標注） | N/A | 端點本身一律 501 結構化錯誤 | `unwired_api_endpoints_return_honest_501_never_fabricated_data` |
+| `/search`（S7 新增） | 檢索頁＋`doc@version§section` 引用卡＋分數計＋快速查詢 chips＋索引統計 | 空查詢引導狀態；無命中誠實空結果（「找不到相符條款」）；無假結果 | 文件庫載入失敗 notice-red；未登入 401；`search_page_renders_honest_states_and_index_counts`、`search_page_requires_session` | |
 | `/ready` `/healthz` `/metrics` | 探針輸出 | — | readiness 檢查失敗回非 200 | |
+
+### S7 視覺化元件與其狀態（2026-11-06 十維躍升層）
+
+| 元件 | 狀態覆蓋 | 證據 |
+|---|---|---|
+| KPI 卡（`.kpi-card`） | default / good（綠值）/ alert（紅值）/ hover 陰影升階 | `dashboard_renders_kpi_cards_and_grouped_nav`；CSS 鎖 `.kpi-card` |
+| 甜甜圈（`.donut`，conic-gradient） | 空資料→`empty-inline`；有資料→百分比環 | 同上（品質事項/關卡區塊） |
+| SLA 計（`.meter` 三色） | info（充足）/ warn（<15%）/ over（逾時紅＋「已逾時」）/ 終態「—」 | `approvals_page_shows_sla_meter_and_stage_dots` |
+| 階段點（`.stage-dots`） | done 綠 / current 藍環 / todo 灰；附「第 k/n 階段」文字（不以顏色為唯一傳達） | 同上 |
+| 時間軸（`.timeline`） | done/alert 標記；無事件→`empty_state` | 稽核與儀表板活動 |
+| 披露（`details.disclosure`） | 收合/展開箭頭旋轉；`prefers-reduced-motion` 下停用過渡 | CSS 鎖 |
+| 雜湊膠囊（`.hash-chip`） | 截短顯示（ASCII hex 安全截斷） | 稽核頁迴歸 |
 
 ## 3. 已修補缺口（2026-11-06）
 
