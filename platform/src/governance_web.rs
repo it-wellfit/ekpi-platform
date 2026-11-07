@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -157,6 +157,7 @@ pub fn router_with_approvals(
         .route("/controls/{id}/status", post(update_quality_case))
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
+        .route("/search", get(search_page))
         .route("/settings", get(settings_page))
         .route("/api-docs", get(api_docs_page))
         .route("/assets/governance.css", get(stylesheet))
@@ -675,6 +676,17 @@ fn session_identity(
     headers: &HeaderMap,
     required: Role,
 ) -> std::result::Result<String, Box<Response>> {
+    session_identity_full(auth, headers, required).map(|(username, _)| username)
+}
+
+/// Like [`session_identity`] but also returns the validated role, for the few
+/// handlers that must map the local role into another vocabulary (e.g. the
+/// retrieval permission context).
+fn session_identity_full(
+    auth: &SharedAuth,
+    headers: &HeaderMap,
+    required: Role,
+) -> std::result::Result<(String, Role), Box<Response>> {
     let request_id = headers
         .get(REQUEST_ID_HEADER)
         .and_then(|value| value.to_str().ok());
@@ -691,7 +703,7 @@ fn session_identity(
         )
     })?;
     match store.validate_session(&token) {
-        Some(session) if session.role >= required => Ok(session.username.clone()),
+        Some(session) if session.role >= required => Ok((session.username.clone(), session.role)),
         Some(_) => Err(Box::new(
             crate::errors::error_response(
                 "insufficient role for this operation",
@@ -1633,12 +1645,85 @@ fn urgency_badge(urgency: ekp_domain::workflow::Urgency) -> &'static str {
     }
 }
 
+/// Shortens a hex hash for display (hashes are ASCII hex, so byte slicing is
+/// UTF-8 safe here).
+fn short_hash(value: &str) -> String {
+    if value.len() > 14 {
+        format!("{}…{}", &value[..8], &value[value.len() - 4..])
+    } else {
+        value.to_string()
+    }
+}
+
+/// Stage-progress dots for an approval task: green = passed stages, blue
+/// ring = current stage, grey = ahead. Approved tasks show all stages done.
+fn stage_dots_view(
+    task: &ekp_domain::workflow::ApprovalTask,
+    workflows: &[ekp_domain::workflow::WorkflowDefinition],
+) -> Markup {
+    let definition = workflows
+        .iter()
+        .find(|d| d.id == task.workflow_id && d.version == task.workflow_version);
+    let Some(definition) = definition else {
+        return html! { span class="row-id" { (task.stage_id) } };
+    };
+    let total = definition.stages.len();
+    let current = definition
+        .stages
+        .iter()
+        .position(|stage| stage.id == task.stage_id)
+        .unwrap_or(0);
+    let done_all = task.state == ekp_domain::workflow::TaskState::Approved;
+    html! {
+        span class="stage-dots" {
+            @for (index, _stage) in definition.stages.iter().enumerate().take(12) {
+                @if done_all || index < current {
+                    i class="done" {}
+                } @else if index == current {
+                    i class="current" {}
+                } @else {
+                    i {}
+                }
+            }
+            span class="stage-dots-label" { (task.stage_id) " · 第 " (current + 1) "/" (total) " 階段" }
+        }
+    }
+}
+
+/// SLA budget meter for an open task: blue while >15% remains, amber under
+/// 15%, red once overdue. Terminal tasks show a dash — not a fabricated 0.
+fn sla_meter_view(task: &ekp_domain::workflow::ApprovalTask, now_secs: i64) -> Markup {
+    if !task.is_open() {
+        return html! { span class="meter-label" { "—" } };
+    }
+    let total = (task.due_at - task.created_at).max(1);
+    let remain = task.due_at - now_secs;
+    let pct = ((remain.max(0) * 100) / total).clamp(0, 100);
+    let (class, label) = if remain <= 0 {
+        ("meter meter-over", "已逾時".to_string())
+    } else if pct < 15 {
+        ("meter meter-warn", format!("剩 {} 分", remain / 60))
+    } else {
+        ("meter meter-info", format!("剩 {} 分", remain / 60))
+    };
+    html! {
+        div {
+            div class=(class) style=(format!("--w: {pct}")) { i {} }
+            span class="meter-label" { (label) }
+        }
+    }
+}
+
 fn approvals_content(
     tasks: &[ekp_domain::workflow::ApprovalTask],
     workflows: &[ekp_domain::workflow::WorkflowDefinition],
     integrity: bool,
     error: Option<&str>,
 ) -> Markup {
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
     html! {
         section class="page-heading" { div { p class="eyebrow" { "動態簽核工作流" } h1 { "核准任務佇列" } p class="page-subtitle" { "多急分級、階段推進、超時清理與 Agent 建議（advisory-only）。" } } }
         @if let Some(error) = error {
@@ -1652,14 +1737,15 @@ fn approvals_content(
                 (empty_state("暫無簽核任務", "先建立工作流定義並發布，再提交簽核任務。核准決策會寫入核准事件鏈。", "/projects", "新增專案"))
             } @else {
                 table class="api-table" {
-                    thead { tr { th { "任務" } th { "工作流" } th { "階段" } th { "急分級" } th { "狀態" } th { "升級次數" } th { "決策" } } }
+                    thead { tr { th { "任務" } th { "工作流" } th { "階段" } th { "急分級" } th { "SLA" } th { "狀態" } th { "升級次數" } th { "決策" } } }
                     tbody {
                         @for task in tasks {
                             tr {
                                 td { (task.id) }
                                 td { (task.workflow_id) "@" (task.workflow_version) }
-                                td { (task.stage_id) }
+                                td { (stage_dots_view(task, workflows)) }
                                 td { span class=(format!("badge {}", urgency_badge(task.urgency))) { (format!("{:?}", task.urgency)) } }
+                                td { (sla_meter_view(task, now_secs)) }
                                 td { span class=(if task.is_open() { "badge badge-blue" } else { "badge badge-grey" }) { (format!("{:?}", task.state)) } }
                                 td { (task.escalation_count) }
                                 td {
@@ -2108,10 +2194,14 @@ fn layout(title: &str, active: &str, content: Markup) -> Markup {
                         p class="nav-label" { "工作區" }
                         nav {
                             (nav_link("/", "overview", active, "總覽", "◫"))
+                            (nav_link("/search", "search", active, "文件檢索", "⌕"))
+                            div class="nav-group-label" { "治理" }
                             (nav_link("/projects", "projects", active, "專案", "▦"))
                             (nav_link("/evidence", "evidence", active, "文件與證據", "▤"))
                             (nav_link("/inspections", "inspections", active, "品質檢查", "✓"))
                             (nav_link("/workflows", "workflows", active, "流程範本", "⌘"))
+                            (nav_link("/approvals", "approvals", active, "核准任務", "◎"))
+                            div class="nav-group-label" { "品質與稽核" }
                             (nav_link("/controls", "controls", active, "風險與品質", "◇"))
                             (nav_link("/lifecycle", "lifecycle", active, "階段與關卡", "▥"))
                             (nav_link("/audit", "audit", active, "稽核紀錄", "◷"))
@@ -2156,18 +2246,75 @@ fn dashboard_content(data: &GovernanceSnapshot) -> Markup {
         .iter()
         .filter(|workflow| workflow.status == "draft")
         .count();
+    let closed_cases = data
+        .cases
+        .iter()
+        .filter(|case| case.status == "closed")
+        .count();
+    let closed_pct = (closed_cases * 100)
+        .checked_div(data.cases.len())
+        .unwrap_or(0) as i64;
+    let gate_go = data
+        .gate_decisions
+        .iter()
+        .filter(|decision| decision.decision == "go")
+        .count();
+    let gate_hold = data
+        .gate_decisions
+        .iter()
+        .filter(|decision| decision.decision == "hold")
+        .count();
+    let gate_exception = data
+        .gate_decisions
+        .iter()
+        .filter(|decision| decision.decision == "exception")
+        .count();
     html! {
         section class="page-heading" {
             div { p class="eyebrow" { "治理概況" } h1 { "工作總覽" } p class="page-subtitle" { "集中查看專案進度、文件追溯與需要人工確認的工作。" } }
-            a class="button button-primary" href="/projects" { "＋ 新增專案" }
+            div class="chip-row" {
+                a class="button button-primary" href="/projects" { "＋ 新增專案" }
+                a class="button button-secondary" href="/search" { "⌕ 文件檢索" }
+            }
         }
-        div class="metric-grid" {
-            (metric("專案", data.projects.len(), "已登錄專案"))
-            (metric("待審證據", waiting_review, "尚未留下人工審查紀錄"))
-            (metric("開放事項", open_cases, "風險、變更、缺失與 CAPA"))
-            (metric("流程草稿", draft_workflows, "等待負責人審查發布"))
+        div class="kpi-grid" {
+            (kpi("專案", &data.projects.len().to_string(), "已登錄專案", "default"))
+            (kpi("證據", &data.evidence.len().to_string(), "來源參照總數", "default"))
+            (kpi("待審證據", &waiting_review.to_string(), "尚未留下人工審查紀錄", if waiting_review > 0 { "alert" } else { "good" }))
+            (kpi("開放事項", &open_cases.to_string(), "風險、變更、缺失與 CAPA", if open_cases > 0 { "alert" } else { "good" }))
+            (kpi("流程草稿", &draft_workflows.to_string(), "等待負責人審查發布", "default"))
+            (kpi("稽核事件", &data.events.len().to_string(), "追加式雜湊鏈事件", "default"))
         }
         section class="content-grid" {
+            div class="panel" {
+                div class="panel-heading" { div { h2 { "品質事項狀態" } p { (closed_cases) " / " (data.cases.len()) " 已結案" } } }
+                @if data.cases.is_empty() {
+                    p class="empty-inline" { "尚無品質事項。" }
+                } @else {
+                    div class="donut-wrap" {
+                        div class="donut" style=(format!("--pct: {closed_pct}; --donut-a: #1d9a6c")) {
+                            div class="donut-hole" { strong { (closed_pct) "%" } span { "已結案" } }
+                        }
+                        div class="donut-legend" {
+                            (legend_row("已結案", closed_cases, data.cases.len(), "#1d9a6c"))
+                            (legend_row("未結案", data.cases.len() - closed_cases, data.cases.len(), "#d99a24"))
+                        }
+                    }
+                }
+            }
+            div class="panel" {
+                div class="panel-heading" { div { h2 { "關卡決策分佈" } p { "G1–G5 人工決議統計" } } }
+                @if data.gate_decisions.is_empty() {
+                    p class="empty-inline" { "尚無關卡決策。" }
+                } @else {
+                    div class="donut-legend" {
+                        (legend_row("放行 go", gate_go, data.gate_decisions.len(), "#1d9a6c"))
+                        (legend_row("暫緩 hold", gate_hold, data.gate_decisions.len(), "#d99a24"))
+                        (legend_row("例外 exception", gate_exception, data.gate_decisions.len(), "#c15461"))
+                    }
+                    p class="form-hint" { "例外決策需登錄風險接受人與補救期限；不可豁免關卡不得例外。" }
+                }
+            }
             div class="panel panel-wide" {
                 div class="panel-heading" { div { h2 { "最近專案" } p { "所有數字來自本機實際登錄資料。" } } a href="/projects" class="text-link" { "查看專案 →" } }
                 (project_table(&data.projects, 5))
@@ -2182,15 +2329,197 @@ fn dashboard_content(data: &GovernanceSnapshot) -> Markup {
             }
             div class="panel panel-wide" {
                 div class="panel-heading" { div { h2 { "最近活動" } p { "追加式記錄；摘要不代表來源系統已完成同步。" } } a href="/audit" class="text-link" { "開啟稽核紀錄 →" } }
-                (recent_events(&data.events, 5))
+                (recent_events(&data.events, 6))
             }
         }
         p class="data-note" { "試點指標尚未建立基線；此處只顯示登錄筆數，不代表證據完整度或流程改善成效。" }
     }
 }
 
-fn metric(label: &str, value: usize, note: &str) -> Markup {
-    html! { article class="metric-card" { p { (label) } strong class="metric-value" { (value) } small { (note) } } }
+fn kpi(label: &str, value: &str, foot: &str, tone: &str) -> Markup {
+    let class = match tone {
+        "alert" => "kpi-card kpi-alert",
+        "good" => "kpi-card kpi-good",
+        _ => "kpi-card",
+    };
+    html! {
+        article class=(class) {
+            p class="kpi-label" { (label) }
+            p class="kpi-value" { (value) }
+            p class="kpi-foot" { (foot) }
+        }
+    }
+}
+
+fn legend_row(label: &str, count: usize, total: usize, color: &str) -> Markup {
+    let pct = (count * 100).checked_div(total).unwrap_or(0);
+    html! {
+        div class="legend-row" {
+            span class="legend-dot" style=(format!("background: {color}")) {}
+            span { (label) }
+            span class="legend-bar" { i style=(format!("background: {color}; width: {pct}%")) {} }
+            span class="legend-score" { (count) }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct SearchParams {
+    q: Option<String>,
+}
+
+/// The bundled data directory (same resolution as the CLI: compile-time
+/// manifest path). The workbench reads it read-only for retrieval.
+fn platform_data_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data")
+}
+
+/// GET /search — read-only ranked retrieval over the versioned document
+/// sections, permission-filtered by the validated local session role.
+/// Zero-JS: the query travels as a GET parameter and results are rendered
+/// server-side with `doc_id@version§section` citations.
+async fn search_page(
+    State((_ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    Query(params): Query<SearchParams>,
+    request: Request,
+) -> Response {
+    let (username, role) = match session_identity_full(&auth, request.headers(), Role::Viewer) {
+        Ok(identity) => identity,
+        Err(response) => return *response,
+    };
+    let query = params.q.unwrap_or_default().trim().to_string();
+    let mut hits: Vec<(crate::retrieval::RetrievalHit, String)> = Vec::new();
+    let mut section_count = 0usize;
+    let mut doc_count = 0usize;
+    let mut load_error: Option<String> = None;
+    if !query.is_empty() {
+        match crate::docs::DocDatabase::load(&platform_data_dir().join("docs.json")) {
+            Ok(db) => {
+                let ctx = crate::retrieval::PermissionContext::new(
+                    "default",
+                    &username,
+                    vec![role.as_str().to_string()],
+                );
+                let mut pool = Vec::new();
+                for doc in &db.documents {
+                    if !ctx.can_access(&doc.permissions) {
+                        continue;
+                    }
+                    doc_count += 1;
+                    for version in &doc.versions {
+                        for section in &version.sections {
+                            pool.push(crate::retrieval::PoolSection {
+                                doc_id: doc.doc_id.clone(),
+                                version: version.version.clone(),
+                                section: section.section.clone(),
+                                verbatim_text: section.verbatim_text.clone(),
+                            });
+                        }
+                    }
+                }
+                section_count = pool.len();
+                let index = crate::retrieval::InvertedIndex::build(&pool);
+                let mut raw = index.search(&query, 0.15);
+                raw.truncate(10);
+                hits = raw
+                    .into_iter()
+                    .map(|hit| {
+                        let snippet = pool
+                            .iter()
+                            .find(|section| {
+                                section.doc_id == hit.doc_id
+                                    && section.version == hit.version
+                                    && section.section == hit.section
+                            })
+                            .map(|section| section.verbatim_text.clone())
+                            .unwrap_or_default();
+                        (hit, snippet)
+                    })
+                    .collect();
+            }
+            Err(error) => load_error = Some(error),
+        }
+    }
+    page_response(
+        "文件檢索",
+        "search",
+        search_content(
+            &query,
+            &hits,
+            doc_count,
+            section_count,
+            load_error.as_deref(),
+        ),
+    )
+}
+
+fn search_content(
+    query: &str,
+    hits: &[(crate::retrieval::RetrievalHit, String)],
+    doc_count: usize,
+    section_count: usize,
+    load_error: Option<&str>,
+) -> Markup {
+    html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "治理 / 文件檢索" }
+                h1 { "文件檢索與引用定位" }
+                p class="page-subtitle" { "字面相似度檢索版本化條款；結果附 doc@version§section 引用，可直接核對來源。" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "查詢" } p { "輸入關鍵詞或條款片段；檢索為唯讀操作（GET），不寫入稽核鏈。" } } }
+            form class="inline-form" method="get" action="/search" {
+                label class="field" { span { "關鍵詞" } input type="text" name="q" value=(query) maxlength="200" placeholder="例如：變更核准、版本綁定、CAPA"; }
+                button class="button button-primary" type="submit" { "檢索" }
+            }
+            div class="chip-row" {
+                a class="chip" href="/search?q=%E8%AE%8A%E6%9B%B4%E6%A0%B8%E5%87%86" { "變更核准" }
+                a class="chip" href="/search?q=%E7%89%88%E6%9C%AC" { "版本" }
+                a class="chip" href="/search?q=%E5%93%81%E8%B3%AA" { "品質" }
+                a class="chip" href="/search?q=CAPA" { "CAPA" }
+            }
+        }
+        @if let Some(error) = load_error {
+            div class="notice notice-red" role="alert" { strong { "文件庫載入失敗：" } span { (error) } }
+        }
+        @if query.is_empty() {
+            (empty_state("輸入關鍵詞開始檢索", "檢索涵蓋已載入的版本化條款；結果會標示版本與章節錨點，供人工核對。", "/search", "重新整理"))
+        } @else if hits.is_empty() {
+            div class="panel" {
+                (empty_state("找不到相符條款", "沒有條款達到相似度門檻。這是誠實的空結果——可嘗試更短或更通用的關鍵詞。", "/search", "重新檢索"))
+            }
+        } @else {
+            section class="panel" {
+                div class="panel-heading" { div { h2 { "檢索結果" } p { (hits.len()) " 筆結果（最多顯示 10 筆）· 相似度門檻 0.15" } } span class="badge badge-blue" { "唯讀" } }
+                div class="result-list" {
+                    @for (hit, snippet) in hits {
+                        article class="result-card" {
+                            div class="result-head" {
+                                span class="result-cite" { (hit.doc_id) "@" (hit.version) "§" (hit.section) }
+                                span class="meter-label" { "相似度" }
+                            }
+                            p class="result-snippet" {
+                                @if snippet.chars().count() > 180 {
+                                    (snippet.chars().take(180).collect::<String>()) "…"
+                                } @else {
+                                    (snippet)
+                                }
+                            }
+                            div class="result-foot" {
+                                div class="meter meter-info" style=(format!("--w: {}", (hit.score * 100.0).round() as i64)) { i {} }
+                                span class="meter-label" { (format!("{:.2}", hit.score)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        p class="data-note" {
+            "索引涵蓋 " (doc_count) " 份文件、" (section_count) " 個條款區段（依登入角色過濾權限）。檢索為字面相似度，不含語意模型；文件本體保留在來源平台。"
+        }
+    }
 }
 
 fn projects_content(data: &GovernanceSnapshot, error: Option<&str>) -> Markup {
@@ -2600,8 +2929,8 @@ fn audit_content(data: &GovernanceSnapshot, integrity: bool) -> Markup {
                             span class="audit-sequence" { (format!("{:04}", event.sequence)) }
                             div class="audit-event-body" {
                                 div class="workflow-title-row" { strong { (event_label(&event.payload)) } small { (event.actor) " · " (format_timestamp(event.timestamp_unix)) } }
-                                p class="row-id" { "前序雜湊 " (event.previous_sha256) }
-                                p class="hash-value" { "SHA-256 " (event.sha256) }
+                                p class="row-id" { "前序雜湊 " span class="hash-chip" { (short_hash(&event.previous_sha256)) } }
+                                p class="hash-value" { "SHA-256 " span class="hash-chip" { (short_hash(&event.sha256)) } }
                             }
                         }
                     }

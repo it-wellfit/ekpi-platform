@@ -173,13 +173,13 @@ impl Ledger {
         risk_tier: &str,
         actor: &str,
     ) -> Result<String, GovernanceError> {
-        validate_text("??????????", name, 120)?;
-        validate_text("????", department, 80)?;
-        validate_text("????????", owner, 80)?;
+        validate_text("專案名稱", name, 120)?;
+        validate_text("部門", department, 80)?;
+        validate_text("負責人", owner, 80)?;
         validate_actor(actor)?;
         if !["low", "medium", "high", "critical"].contains(&risk_tier) {
             return Err(GovernanceError::validation(
-                "??????????????????????????????".to_string(),
+                "風險等級必須為 low、medium、high 或 critical 之一".to_string(),
             ));
         }
         let created_at = now_unix()?;
@@ -210,15 +210,15 @@ impl Ledger {
     ) -> Result<String, GovernanceError> {
         if !self.snapshot.projects.iter().any(|p| p.id == project_id) {
             return Err(GovernanceError::validation(
-                "???????????????????????????".to_string(),
+                "找不到對應的專案記錄，請先建立專案再登錄證據".to_string(),
             ));
         }
-        validate_text("??????????", title, 160)?;
-        validate_text("???????????", source_system, 80)?;
+        validate_text("證據標題", title, 160)?;
+        validate_text("來源平台", source_system, 80)?;
         validate_source_url(source_url)?;
-        validate_text("??????????", source_version, 80)?;
-        validate_text("??????????", evidence_type, 80)?;
-        validate_text("????????", owner, 80)?;
+        validate_text("來源版本", source_version, 80)?;
+        validate_text("證據類型", evidence_type, 80)?;
+        validate_text("證據負責人", owner, 80)?;
         validate_actor(actor)?;
         let id = self.next_id("EVD");
         let evidence = Evidence {
@@ -245,20 +245,20 @@ impl Ledger {
     ) -> Result<(), GovernanceError> {
         if !self.snapshot.evidence.iter().any(|e| e.id == evidence_id) {
             return Err(GovernanceError::validation(
-                "???????????????????".to_string(),
+                "找不到要審查的證據記錄".to_string(),
             ));
         }
         if !["accepted", "changes_requested"].contains(&result) {
             return Err(GovernanceError::validation(
-                "?????????????????????????".to_string(),
+                "審查結果必須為 accepted 或 changes_requested".to_string(),
             ));
         }
         validate_actor(reviewer)?;
         if result == "changes_requested" {
-            validate_text("?????????", note, 1000)?;
+            validate_text("退回說明", note, 1000)?;
         }
         if !note.trim().is_empty() {
-            validate_text("???????????", note, 1000)?;
+            validate_text("審查備註", note, 1000)?;
         }
         self.append(
             reviewer,
@@ -276,18 +276,18 @@ impl Ledger {
         &mut self,
         draft: WorkflowDraftInput,
     ) -> Result<(String, u32), GovernanceError> {
-        validate_text("??????????", &draft.title, 120)?;
-        validate_text("????", &draft.department, 80)?;
-        validate_text("?????????????", &draft.owner, 80)?;
-        validate_multiline_text("?????????", &draft.description, 1500)?;
+        validate_text("流程名稱", &draft.title, 120)?;
+        validate_text("部門", &draft.department, 80)?;
+        validate_text("流程負責人", &draft.owner, 80)?;
+        validate_multiline_text("流程目的", &draft.description, 1500)?;
         validate_actor(&draft.actor)?;
         if draft.stages.is_empty() || draft.stages.len() > 30 {
             return Err(GovernanceError::validation(
-                "?????????1 ??30 ??????".to_string(),
+                "流程階段數量必須為 1 至 30 個".to_string(),
             ));
         }
         for stage in &draft.stages {
-            validate_text("??????????", stage, 120)?;
+            validate_text("階段名稱", stage, 120)?;
         }
         let (id, version) = match draft.base_id.as_deref() {
             Some(id) => {
@@ -297,11 +297,11 @@ impl Ledger {
                     .iter()
                     .filter(|w| w.id == id)
                     .max_by_key(|w| w.version)
-                    .ok_or_else(|| "?????????????????????".to_string())?;
+                    .ok_or_else(|| "找不到要修訂的流程版本".to_string())?;
                 let next_version = prior
                     .version
                     .checked_add(1)
-                    .ok_or_else(|| "???????????????????????????????????????????".to_string())?;
+                    .ok_or_else(|| "流程版本號已達上限，無法再遞增".to_string())?;
                 (id.to_string(), next_version)
             }
             None => (self.next_id("TPL"), 1),
@@ -335,10 +335,10 @@ impl Ledger {
             .workflows
             .iter()
             .find(|w| w.id == id && w.version == version)
-            .ok_or_else(|| "???????????????????".to_string())?;
+            .ok_or_else(|| "找不到要發布的流程版本".to_string())?;
         if workflow.status != "draft" {
             return Err(GovernanceError::validation(
-                "???????????????????????".to_string(),
+                "只有草稿狀態的流程可以發布".to_string(),
             ));
         }
         self.append(
@@ -365,18 +365,18 @@ impl Ledger {
     ) -> Result<String, GovernanceError> {
         if !self.snapshot.projects.iter().any(|p| p.id == project_id) {
             return Err(GovernanceError::validation(
-                "???????????????????????????".to_string(),
+                "找不到對應的專案記錄，請先建立專案再建立品質個案".to_string(),
             ));
         }
         if !["risk", "change", "finding", "capa"].contains(&kind) {
             return Err(GovernanceError::validation(
-                "??????????????????????????????".to_string(),
+                "個案類型必須為 risk、change、finding 或 capa 之一".to_string(),
             ));
         }
-        validate_text("???????????", title, 160)?;
-        validate_multiline_text("???????????", description, 2000)?;
-        validate_text("????????", owner, 80)?;
-        validate_date("??????", due_date)?;
+        validate_text("個案標題", title, 160)?;
+        validate_multiline_text("內容與影響", description, 2000)?;
+        validate_text("個案負責人", owner, 80)?;
+        validate_date("到期日", due_date)?;
         validate_actor(actor)?;
         let id = self.next_id("QMS");
         let now = now_unix()?;
@@ -411,10 +411,10 @@ impl Ledger {
             .cases
             .iter()
             .find(|c| c.id == id)
-            .ok_or_else(|| "????????????????????".to_string())?;
+            .ok_or_else(|| "找不到要更新的品質個案".to_string())?;
         if !["open", "in_progress", "verification", "closed"].contains(&status) {
             return Err(GovernanceError::validation(
-                "????????????????????????".to_string(),
+                "個案狀態必須為 open、in_progress、verification 或 closed 之一".to_string(),
             ));
         }
         // Give the CAPA-specific refusal precedence: it tells the reviewer the
@@ -423,25 +423,25 @@ impl Ledger {
         if status == "closed" && case.kind == "capa" {
             if case.status != "verification" {
                 return Err(GovernanceError::validation(
-                    "CAPA ???????????????????????????????????????????????".to_string(),
+                    "CAPA 個案必須先完成複驗（verification）才能結案".to_string(),
                 ));
             }
-            validate_text("CAPA ??????????????", note, 1200)?;
+            validate_text("CAPA 結案複驗說明", note, 1200)?;
         }
         if !quality_case_transition_allowed(&case.status, status) {
             return Err(GovernanceError::validation(format!(
-                "????????????????????????{}??????????????{}??",
+                "個案狀態不可由 {} 直接變更為 {}，請依允許的狀態流程操作",
                 case.status, status
             )));
         }
         validate_actor(actor)?;
         if status == "closed" && note.trim().is_empty() {
             return Err(GovernanceError::validation(
-                "????????????????????????????????".to_string(),
+                "結案時必須填寫結案說明".to_string(),
             ));
         }
         if !note.trim().is_empty() {
-            validate_text("?????????", note, 1200)?;
+            validate_text("狀態變更備註", note, 1200)?;
         }
         self.append(
             actor,
@@ -466,7 +466,7 @@ impl Ledger {
             .any(|project| project.id == inspection.project_id)
         {
             return Err(GovernanceError::validation(
-                "???????????????????????????".to_string(),
+                "找不到對應的專案記錄，請先建立專案再登錄檢驗".to_string(),
             ));
         }
         validate_actor(&inspection.reviewer)?;
@@ -500,34 +500,34 @@ impl Ledger {
     ) -> Result<String, GovernanceError> {
         if !self.snapshot.projects.iter().any(|p| p.id == project_id) {
             return Err(GovernanceError::validation(
-                "???????????????????????????".to_string(),
+                "找不到對應的專案記錄，請先建立專案再記錄關卡決策".to_string(),
             ));
         }
         if !["G1", "G2", "G3", "G4", "G5"].contains(&gate_id) {
             return Err(GovernanceError::validation(
-                "???????????????????".to_string(),
+                "關卡必須為 G1、G2、G3、G4 或 G5 之一".to_string(),
             ));
         }
         if !["go", "hold", "exception"].contains(&decision) {
             return Err(GovernanceError::validation(
-                "?????????????????????????".to_string(),
+                "決策必須為 go、hold 或 exception 之一".to_string(),
             ));
         }
         if decision == "exception" && non_waivable {
             return Err(GovernanceError::validation(
-                "????????????????????????????????????????????????????????".to_string(),
+                "不可豁免的關卡不得採用 exception 例外決策".to_string(),
             ));
         }
         validate_actor(actor)?;
         if decision != "go" {
-            validate_multiline_text("??????????", reason, 1200)?;
+            validate_multiline_text("原因／例外依據", reason, 1200)?;
         }
         if decision == "exception" {
-            validate_text("????????????", risk_acceptor, 80)?;
-            validate_date("?????????", remediation_due)?;
+            validate_text("風險接受人", risk_acceptor, 80)?;
+            validate_date("補救期限", remediation_due)?;
         }
         if !evidence_reference.trim().is_empty() {
-            validate_text("??????????", evidence_reference, 2048)?;
+            validate_text("證據參照", evidence_reference, 2048)?;
         }
         let id = self.next_id("GTE");
         self.append(
@@ -554,7 +554,7 @@ impl Ledger {
         for (index, event) in self.snapshot.events.iter().enumerate() {
             if event.sequence != index as u64 + 1 || event.previous_sha256 != previous {
                 return Err(GovernanceError::validation(format!(
-                    "?????????????{} ?????????????????",
+                    "帳鏈驗證失敗：第 {} 個事件的順序或前序雜湊不符",
                     index + 1
                 )));
             }
@@ -567,7 +567,7 @@ impl Ledger {
             )?;
             if event.sha256 != expected {
                 return Err(GovernanceError::validation(format!(
-                    "??????????? {} ?????????????????",
+                    "帳鏈驗證失敗：第 {} 個事件的雜湊不符",
                     index + 1
                 )));
             }
@@ -822,4 +822,81 @@ impl ekp_application::ports::GovernanceRepository for Ledger {
     }
 }
 
-// Tests removed due to encoding issues
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_ledger(label: &str) -> (Ledger, PathBuf) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "ekpi-ledger-msg-{}-{}-{label}.jsonl",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        (Ledger::open(&path).expect("temp ledger opens"), path)
+    }
+
+    /// IMP-019 regression locks: the validation messages an operator sees
+    /// must be readable Chinese, not the destroyed `??????` placeholders.
+    /// Each assertion names the exact message a refused action produces.
+    #[test]
+    fn operator_facing_messages_are_readable_chinese() {
+        let (mut ledger, path) = temp_ledger("messages");
+
+        let err = ledger
+            .record_project("", "PMO", "Alex", "medium", "tester")
+            .expect_err("empty project name is refused");
+        assert!(
+            err.to_string().contains("專案名稱"),
+            "project-name refusal must name the field: {err}"
+        );
+
+        let err = ledger
+            .record_project("Pilot", "PMO", "Alex", "extreme", "tester")
+            .expect_err("unknown risk tier is refused");
+        assert!(
+            err.to_string().contains("風險等級"),
+            "risk-tier refusal must name the field and allowed values: {err}"
+        );
+
+        let project_id = ledger
+            .record_project("Pilot", "PMO", "Alex", "medium", "tester")
+            .expect("valid project records");
+
+        let err = ledger
+            .create_quality_case(
+                "PRJ-999999",
+                "risk",
+                "t",
+                "d",
+                "Alex",
+                "2026-12-31",
+                "tester",
+            )
+            .expect_err("unknown project is refused");
+        assert!(
+            err.to_string().contains("請先建立專案"),
+            "quality-case refusal must tell the operator the required step: {err}"
+        );
+
+        let err = ledger
+            .record_gate_decision(&project_id, "G9", "go", "tester", "", "", "", "", false)
+            .expect_err("unknown gate is refused");
+        assert!(
+            err.to_string().contains("關卡必須"),
+            "gate refusal must list the allowed gates: {err}"
+        );
+
+        let err = ledger
+            .update_quality_case("QMS-999999", "closed", "tester", "done")
+            .expect_err("unknown quality case is refused");
+        assert!(
+            err.to_string().contains("找不到要更新的品質個案"),
+            "unknown-case refusal must be readable: {err}"
+        );
+
+        drop(ledger);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("lock"));
+    }
+}

@@ -244,6 +244,16 @@ async fn workbench_renders_accessible_shell_and_local_stylesheet() {
         css.contains("prefers-reduced-motion"),
         "reduced-motion must be honored"
     );
+    // Design System v2 primitives（S7 十維躍升層）。
+    assert!(css.contains(".kpi-card"), "KPI cards");
+    assert!(css.contains(".donut"), "CSS donut visualization");
+    assert!(css.contains(".timeline"), "timeline component");
+    assert!(css.contains(".hash-chip"), "hash chips");
+    assert!(css.contains(".result-card"), "search result cards");
+    assert!(css.contains(".stage-dots"), "approval stage dots");
+    assert!(css.contains(".meter"), "SLA/score meters");
+    assert!(css.contains(".chip"), "quick-query chips");
+    assert!(css.contains(".nav-group-label"), "grouped navigation");
 
     for (route, expected_heading) in [
         ("/projects", "專案登錄"),
@@ -444,6 +454,72 @@ async fn viewer_role_cannot_mutate() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// S7：檢索頁載入、唯讀標示、誠實空查詢狀態與索引統計。
+#[tokio::test]
+async fn search_page_renders_honest_states_and_index_counts() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    // 空查詢：引導狀態，不出假結果。
+    let page = get_with_cookie(&app, "/search", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("輸入關鍵詞開始檢索"), "empty-query guidance");
+    assert!(html.contains("索引涵蓋"), "index counts note");
+
+    // 有查詢：結果卡或誠實空結果，二者必居其一，不得捏造。
+    let page = get_with_cookie(&app, "/search?q=%E8%AE%8A%E6%9B%B4", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(
+        html.contains("result-card") || html.contains("找不到相符條款"),
+        "either ranked results or an honest empty result"
+    );
+    assert!(html.contains("唯讀"), "the read-only badge is shown");
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// S7：檢索需登入（Viewer 以上）。
+#[tokio::test]
+async fn search_page_requires_session() {
+    let path = test_path();
+    let app = test_app(&path);
+    let response = get_with_cookie(&app, "/search", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// S7：儀表板含 KPI 卡與品質狀態區塊；nav 含檢索與核准入口。
+#[tokio::test]
+async fn dashboard_renders_kpi_cards_and_grouped_nav() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let page = get_with_cookie(&app, "/", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("kpi-card"), "KPI cards render");
+    assert!(html.contains("品質事項狀態"), "case-status panel");
+    assert!(html.contains("關卡決策分佈"), "gate distribution panel");
+    assert!(html.contains("href=\"/search\""), "nav links to search");
+    assert!(
+        html.contains("href=\"/approvals\""),
+        "nav links to approvals"
+    );
+    assert!(html.contains("nav-group-label"), "grouped navigation");
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");

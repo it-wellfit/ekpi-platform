@@ -629,6 +629,44 @@ async fn approvals_page_renders_submitted_task() {
     );
 }
 
+/// S7：核准頁呈現 SLA 計量條與階段進度點。
+#[tokio::test]
+async fn approvals_page_shows_sla_meter_and_stage_dots() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("s7-sla");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-sla&name=sla-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
+    )
+    .await;
+    post_form(&app, "/approvals/workflows/wf-sla/1/publish", &approver, "").await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-sla@1&amount_cents=15000&platform=momo&classification=internal&risk_score=20&urgency=normal",
+    )
+    .await;
+
+    let page = get_with_cookies(&app, "/approvals", &approver).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(page.into_body(), 256 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body).to_string();
+    assert!(html.contains("stage-dots"), "stage progress dots render");
+    assert!(html.contains("第 1/2 階段"), "stage position label");
+    assert!(html.contains("meter meter-"), "SLA meter with a tone class");
+    assert!(html.contains("剩 "), "remaining time label");
+    assert!(html.contains("SLA"), "SLA column header");
+}
+
 /// D2+D5：工作台全生命週期（建立→發布→提交→核准推進→完成），全程 session actor。
 #[tokio::test]
 async fn approval_lifecycle_through_web() {
