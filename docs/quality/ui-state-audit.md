@@ -30,7 +30,7 @@
 | `/controls` | 路由測試 | `empty_state("尚無追蹤事項")` | 同上；CAPA 關閉需驗證訊息 | |
 | `/lifecycle` | 路由測試 | inline「尚無關卡決策」 | 同上；exception＋non-waivable 拒絕 | |
 | `/audit` | 路由測試 | `empty_state("尚無稽核事件")` | 鏈徽章（綠/紅） | |
-| `/approvals` | 測試 `approval_lifecycle_through_web` | `empty_state("暫無簽核任務")`；定義「尚無定義。」 | 鏈徽章＋操作錯誤 notice；角色 403 | D1–D5 場景 |
+| `/approvals` | 測試 `approval_lifecycle_through_web` | `empty_state("暫無簽核任務")`；定義「尚無定義。」；S8 視圖專屬空狀態（「目前沒有待你決策的任務」／「你尚未送出任何簽核任務」） | 鏈徽章＋操作錯誤 notice；角色 403；Editor 見「需 Approver 角色決策」誠實提示而非假表單 | D1–D5 場景＋`queue_views_filter_and_adapt_to_role`（S8：mine/submitted 過濾、送出者欄、分頁籤計數、角色自適應） |
 | `/settings` | 靜態資訊（版本/儲存模式） | N/A | N/A（無資料依賴） | |
 | `/api-docs` | 端點狀態表（誠實 501 標注） | N/A | 端點本身一律 501 結構化錯誤 | `unwired_api_endpoints_return_honest_501_never_fabricated_data` |
 | `/search`（S7 新增） | 檢索頁＋`doc@version§section` 引用卡＋分數計＋快速查詢 chips＋索引統計 | 空查詢引導狀態；無命中誠實空結果（「找不到相符條款」）；無假結果 | 文件庫載入失敗 notice-red；未登入 401；`search_page_renders_honest_states_and_index_counts`、`search_page_requires_session` | |

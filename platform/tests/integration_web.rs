@@ -740,6 +740,72 @@ async fn approval_lifecycle_through_web() {
     approvals.lock().unwrap().verify().expect("chain verifies");
 }
 
+/// S8：佇列視圖 — 「我的待簽核 / 我送出的」過濾正確、送出者可追溯、
+/// 決策表單依角色自適應（Editor 只讀，見提示不得捏造可操作性）。
+#[tokio::test]
+async fn queue_views_filter_and_adapt_to_role() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("s8-views");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-q&name=queue-flow&stages=s1,s2&slas=3600,86400&urgency=normal",
+    )
+    .await;
+    post_form(&app, "/approvals/workflows/wf-q/1/publish", &approver, "").await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/submit",
+        &editor,
+        "workflow_ref=wf-q@1&amount_cents=1&platform=momo&classification=internal&risk_score=0&urgency=normal",
+    )
+    .await;
+
+    // Editor：submitted 檢視看到自己的任務；all 檢視可見但無決策表單。
+    let page = get_with_cookies(&app, "/approvals?view=submitted", &editor).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(page.into_body(), 256 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body).to_string();
+    assert!(html.contains("TSK-000001"), "editor sees own submission");
+    assert!(
+        html.contains("我送出的 · 1"),
+        "submitted tab count reflects the queue: {html}"
+    );
+    assert!(
+        !html.contains("送出決策"),
+        "editor must not be offered a decide form"
+    );
+    assert!(
+        html.contains("需 Approver 角色決策"),
+        "editor sees the honest role hint"
+    );
+
+    // Approver：mine 檢視看到待決任務且有決策表單；送出者欄顯示 editor-a。
+    let page = get_with_cookies(&app, "/approvals?view=mine", &approver).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(page.into_body(), 256 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body).to_string();
+    assert!(html.contains("TSK-000001"), "approver sees the open task");
+    assert!(html.contains("送出決策"), "approver can decide");
+    assert!(
+        html.contains("editor-a"),
+        "submitter column is traceable to the session actor"
+    );
+    assert!(
+        html.contains("我的待簽核 · 1"),
+        "mine tab count reflects open tasks"
+    );
+}
+
 /// D3：表單 actor 不被信任。
 #[tokio::test]
 async fn form_supplied_actor_is_ignored() {

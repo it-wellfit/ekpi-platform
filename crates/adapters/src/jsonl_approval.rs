@@ -344,6 +344,21 @@ impl ApprovalStore {
             .collect()
     }
 
+    /// Maps every task id to the actor of its `TaskSubmitted` event (the
+    /// session-derived submitter). Read accessor so the queue views can
+    /// answer "tasks I submitted" without trusting any form field.
+    pub fn task_submitters(&self) -> std::collections::BTreeMap<String, String> {
+        let mut submitters = std::collections::BTreeMap::new();
+        for event in &self.events {
+            if let ApprovalEventPayload::TaskSubmitted { task } = &event.payload {
+                submitters
+                    .entry(task.id.clone())
+                    .or_insert_with(|| event.actor.clone());
+            }
+        }
+        submitters
+    }
+
     /// Task ids number the *tasks*, not the events: definitions and
     /// publications must not shift task identifiers. The store is
     /// single-instance per file (file lock), so ids cannot collide.

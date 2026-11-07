@@ -358,3 +358,6 @@ details.disclosure .d-body { padding: var(--space-3) 0 0 18px; }
   .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .donut-wrap { justify-content: center; }
 }
+
+.chip.chip-active { background: #182f56; color: #fff; border-color: #152a4d; }
+

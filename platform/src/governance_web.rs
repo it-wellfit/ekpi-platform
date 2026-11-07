@@ -228,7 +228,7 @@ async fn api_workflows_list(
     State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
 ) -> Response {
     let workflows = match approvals_view(&approvals) {
-        Ok((_, workflows, _)) => workflows,
+        Ok((_, workflows, _, _)) => workflows,
         Err(error) => {
             return crate::errors::error_response(error, StatusCode::INTERNAL_SERVER_ERROR, None)
                 .into_response();
@@ -274,7 +274,7 @@ async fn api_approvals_list(
     State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
 ) -> Response {
     let tasks = match approvals_view(&approvals) {
-        Ok((tasks, _, _)) => tasks,
+        Ok((tasks, _, _, _)) => tasks,
         Err(error) => {
             return crate::errors::error_response(error, StatusCode::INTERNAL_SERVER_ERROR, None)
                 .into_response();
@@ -1604,33 +1604,57 @@ async fn audit_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -
 
 // ── 核准工作流（S2：真資料渲染 + 動作接線）────────────────────────
 
-fn approvals_view(
-    approvals: &SharedApprovals,
-) -> Result<
-    (
-        Vec<ekp_domain::workflow::ApprovalTask>,
-        Vec<ekp_domain::workflow::WorkflowDefinition>,
-        bool,
-    ),
-    String,
-> {
+type ApprovalViewData = (
+    Vec<ekp_domain::workflow::ApprovalTask>,
+    Vec<ekp_domain::workflow::WorkflowDefinition>,
+    bool,
+    std::collections::BTreeMap<String, String>,
+);
+
+fn approvals_view(approvals: &SharedApprovals) -> Result<ApprovalViewData, String> {
     let store = approvals
         .lock()
         .map_err(|_| "核准資料鎖定失敗".to_string())?;
     let tasks = store.list_tasks();
     let workflows = store.list_workflows();
     let integrity = store.verify().is_ok();
-    Ok((tasks, workflows, integrity))
+    let submitters = store.task_submitters();
+    Ok((tasks, workflows, integrity, submitters))
 }
 
+#[derive(Deserialize)]
+struct ApprovalQuery {
+    view: Option<String>,
+}
+
+/// GET /approvals[?view=mine|submitted|all] — role-adaptive queue views.
+/// `mine` shows open tasks awaiting a decision (for Approvers), `submitted`
+/// shows tasks whose submit event actor is the current session user.
 async fn approvals_page(
     State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    Query(params): Query<ApprovalQuery>,
+    request: Request,
 ) -> Response {
+    let (username, role) = match session_identity_full(&_auth, request.headers(), Role::Viewer) {
+        Ok(identity) => identity,
+        Err(response) => return *response,
+    };
+    let view = params.view.as_deref().unwrap_or("all");
+    let can_decide = role >= Role::Approver;
     match approvals_view(&approvals) {
-        Ok((tasks, workflows, integrity)) => page_response(
+        Ok((tasks, workflows, integrity, submitters)) => page_response(
             "核准任務",
             "approvals",
-            approvals_content(&tasks, &workflows, integrity, None),
+            approvals_content(
+                &tasks,
+                &workflows,
+                integrity,
+                None,
+                view,
+                &username,
+                can_decide,
+                &submitters,
+            ),
         ),
         Err(error) => page_error_response("approvals", &error),
     }
@@ -1714,16 +1738,38 @@ fn sla_meter_view(task: &ekp_domain::workflow::ApprovalTask, now_secs: i64) -> M
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn approvals_content(
     tasks: &[ekp_domain::workflow::ApprovalTask],
     workflows: &[ekp_domain::workflow::WorkflowDefinition],
     integrity: bool,
     error: Option<&str>,
+    view: &str,
+    username: &str,
+    can_decide: bool,
+    submitters: &std::collections::BTreeMap<String, String>,
 ) -> Markup {
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0);
+    let open_count = tasks.iter().filter(|task| task.is_open()).count();
+    let submitted_count = tasks
+        .iter()
+        .filter(|task| submitters.get(&task.id).map(String::as_str) == Some(username))
+        .count();
+    let view = match view {
+        "mine" | "submitted" => view,
+        _ => "all",
+    };
+    let visible: Vec<&ekp_domain::workflow::ApprovalTask> = match view {
+        "mine" => tasks.iter().filter(|task| task.is_open()).collect(),
+        "submitted" => tasks
+            .iter()
+            .filter(|task| submitters.get(&task.id).map(String::as_str) == Some(username))
+            .collect(),
+        _ => tasks.iter().collect(),
+    };
     html! {
         section class="page-heading" { div { p class="eyebrow" { "動態簽核工作流" } h1 { "核准任務佇列" } p class="page-subtitle" { "多急分級、階段推進、超時清理與 Agent 建議（advisory-only）。" } } }
         @if let Some(error) = error {
@@ -1733,13 +1779,24 @@ fn approvals_content(
             div class="panel-heading" { div { h2 { "簽核任務" } p { "任務由工作流定義觸發；所有決策寫入核准事件鏈。" } }
                 span class="badge" class=(if integrity { "badge-green" } else { "badge-red" }) { (if integrity { "鏈已驗證" } else { "鏈驗證失敗" }) }
             }
+            div class="chip-row" {
+                a class=(if view == "all" { "chip chip-active" } else { "chip" }) href="/approvals" { "全部 · " (tasks.len()) }
+                a class=(if view == "mine" { "chip chip-active" } else { "chip" }) href="/approvals?view=mine" { "我的待簽核 · " (open_count) }
+                a class=(if view == "submitted" { "chip chip-active" } else { "chip" }) href="/approvals?view=submitted" { "我送出的 · " (submitted_count) }
+            }
             @if tasks.is_empty() {
                 (empty_state("暫無簽核任務", "先建立工作流定義並發布，再提交簽核任務。核准決策會寫入核准事件鏈。", "/projects", "新增專案"))
+            } @else if visible.is_empty() {
+                @if view == "mine" {
+                    (empty_state("目前沒有待你決策的任務", "所有開放任務已處理完畢，或任務尚在他人手上。", "/approvals", "查看全部任務"))
+                } @else {
+                    (empty_state("你尚未送出任何簽核任務", "以 Editor 角色提交任務後，會出現在這個檢視。", "/approvals", "查看全部任務"))
+                }
             } @else {
                 table class="api-table" {
-                    thead { tr { th { "任務" } th { "工作流" } th { "階段" } th { "急分級" } th { "SLA" } th { "狀態" } th { "升級次數" } th { "決策" } } }
+                    thead { tr { th { "任務" } th { "工作流" } th { "階段" } th { "急分級" } th { "SLA" } th { "狀態" } th { "送出者" } th { "升級次數" } th { "決策" } } }
                     tbody {
-                        @for task in tasks {
+                        @for task in &visible {
                             tr {
                                 td { (task.id) }
                                 td { (task.workflow_id) "@" (task.workflow_version) }
@@ -1747,9 +1804,10 @@ fn approvals_content(
                                 td { span class=(format!("badge {}", urgency_badge(task.urgency))) { (format!("{:?}", task.urgency)) } }
                                 td { (sla_meter_view(task, now_secs)) }
                                 td { span class=(if task.is_open() { "badge badge-blue" } else { "badge badge-grey" }) { (format!("{:?}", task.state)) } }
+                                td { (submitters.get(&task.id).map(String::as_str).unwrap_or("—")) }
                                 td { (task.escalation_count) }
                                 td {
-                                    @if task.is_open() {
+                                    @if task.is_open() && can_decide {
                                         form class="inline-form" method="post" action={ "/approvals/" (task.id) "/decide" } {
                                             select name="action" required {
                                                 option value="approve" { "核准" }
@@ -1759,6 +1817,8 @@ fn approvals_content(
                                             input type="text" name="note" maxlength="300" placeholder="備註（可留空）";
                                             button class="button button-primary" type="submit" { "送出決策" }
                                         }
+                                    } @else if task.is_open() {
+                                        span class="meter-label" { "需 Approver 角色決策" }
                                     } @else {
                                         span { "—" }
                                     }
@@ -2060,12 +2120,25 @@ async fn publish_approval_workflow(
 
 async fn render_approval_error(approvals: &SharedApprovals, error: &str) -> Response {
     match approvals_view(approvals) {
-        Ok((tasks, workflows, integrity)) => page_response(
-            "核准任務",
-            "approvals",
-            approvals_content(&tasks, &workflows, integrity, Some(error)),
-        )
-        .into_response(),
+        Ok((tasks, workflows, integrity, submitters)) => {
+            // Error glance pages render read-only ("all" view, no decide
+            // forms) to avoid role-ambiguous affordances after a refused POST.
+            page_response(
+                "核准任務",
+                "approvals",
+                approvals_content(
+                    &tasks,
+                    &workflows,
+                    integrity,
+                    Some(error),
+                    "all",
+                    "",
+                    false,
+                    &submitters,
+                ),
+            )
+            .into_response()
+        }
         Err(view_error) => page_error_response("approvals", &view_error),
     }
 }
