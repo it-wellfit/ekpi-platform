@@ -458,8 +458,7 @@ fn run(args: &[String]) -> i32 {
     let export_dir = flag_value(args, "--export-legalruleml").map(PathBuf::from);
     let evidence_pack_dir = flag_value(args, "--export-evidence-pack").map(PathBuf::from);
     let data_map_dir = flag_value(args, "--data-map").map(PathBuf::from);
-    let compliance_report_dir =
-        flag_value(args, "--export-compliance-report").map(PathBuf::from);
+    let compliance_report_dir = flag_value(args, "--export-compliance-report").map(PathBuf::from);
     let governance_data_override = flag_value(args, "--governance-data").map(PathBuf::from);
     let approval_data_override = flag_value(args, "--approval-data").map(PathBuf::from);
 
@@ -812,6 +811,7 @@ fn run(args: &[String]) -> i32 {
         if export_dir.is_none()
             && evidence_pack_dir.is_none()
             && data_map_dir.is_none()
+            && compliance_report_dir.is_none()
             && !want_coverage
         {
             if schema_flag {
@@ -896,8 +896,9 @@ fn run(args: &[String]) -> i32 {
             return 0;
         }
         if let Some(dir) = &compliance_report_dir {
-            let governance_path =
-                governance_data_override.clone().unwrap_or_else(default_ledger_path);
+            let governance_path = governance_data_override
+                .clone()
+                .unwrap_or_else(default_ledger_path);
             let approvals_path = approval_data_override
                 .clone()
                 .unwrap_or_else(default_approval_path);
@@ -1197,13 +1198,16 @@ fn compliance_report_markdown(report: &Value) -> String {
         governance["evidence"]["total"].as_u64().unwrap_or(0)
             - governance["evidence"]["reviewed"].as_u64().unwrap_or(0)
     ));
-    if let Some(ids) = governance["evidence"]["unreviewed_ids"].as_array() {
-        if !ids.is_empty() {
-            out.push_str(&format!(
-                "- 未審證據：{}\n",
-                ids.iter().filter_map(|id| id.as_str()).collect::<Vec<_>>().join("、")
-            ));
-        }
+    if let Some(ids) = governance["evidence"]["unreviewed_ids"].as_array()
+        && !ids.is_empty()
+    {
+        out.push_str(&format!(
+            "- 未審證據：{}\n",
+            ids.iter()
+                .filter_map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join("、")
+        ));
     }
     out.push_str(&format!(
         "- 品質個案：{} 筆（狀態分佈 {:?}）\n- 檢驗：{} 筆\n- 關卡決策：{} 筆（{:?}）\n",
@@ -1213,18 +1217,25 @@ fn compliance_report_markdown(report: &Value) -> String {
         governance["gate_decisions"]["total"],
         governance["gate_decisions"]["by_decision"],
     ));
-    if let Some(ids) = governance["quality_cases"]["non_closed_ids"].as_array() {
-        if !ids.is_empty() {
-            out.push_str(&format!(
-                "- 未結案個案：{}\n",
-                ids.iter().filter_map(|id| id.as_str()).collect::<Vec<_>>().join("、")
-            ));
-        }
+    if let Some(ids) = governance["quality_cases"]["non_closed_ids"].as_array()
+        && !ids.is_empty()
+    {
+        out.push_str(&format!(
+            "- 未結案個案：{}\n",
+            ids.iter()
+                .filter_map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join("、")
+        ));
     }
     out.push_str(&format!(
         "- 帳鏈：{} 事件、驗證 {}、鏈頭 {}\n\n",
         governance["event_count"],
-        if governance["chain_verified"] == true { "通過" } else { "失敗" },
+        if governance["chain_verified"] == true {
+            "通過"
+        } else {
+            "失敗"
+        },
         governance["head_sha256"],
     ));
     let approvals = &report["approvals"];
@@ -1235,7 +1246,11 @@ fn compliance_report_markdown(report: &Value) -> String {
         approvals["tasks"]["total"],
         approvals["tasks"]["by_state"],
         approvals["event_count"],
-        if approvals["chain_verified"] == true { "通過" } else { "失敗" },
+        if approvals["chain_verified"] == true {
+            "通過"
+        } else {
+            "失敗"
+        },
         approvals["head_sha256"],
     ));
     let platform = &report["platform"];
