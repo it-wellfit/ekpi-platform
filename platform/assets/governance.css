@@ -362,3 +362,16 @@ details.disclosure .d-body { padding: var(--space-3) 0 0 18px; }
 .chip.chip-active { background: #182f56; color: #fff; border-color: #152a4d; }
 
 .status-wired { color: #176c48; font-weight: 600; }
+
+/* ── S12：SLA 行事曆（CSS grid 月曆；零 JS） ── */
+.calendar-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.calendar-table thead th { font-size: 11px; color: var(--muted); padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.calendar-cell { height: 88px; vertical-align: top; border: 1px solid var(--line); padding: 4px 5px; font-size: 12px; background: var(--paper); }
+.calendar-cell.calendar-blank { background: var(--canvas); }
+.calendar-cell.calendar-overdue { background: #fdf1f2; }
+.calendar-day-num { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.calendar-task { display: block; margin-top: 3px; font-size: 11px; line-height: 1.5; text-decoration: none; color: var(--ink-soft); }
+.calendar-task:hover { text-decoration: underline; color: var(--ink); }
+.calendar-task .calendar-overdue-mark { color: #a23b44; font-weight: 700; }
+.calendar-caption-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.calendar-caption { font-size: 16px; font-weight: 700; color: var(--navy); }

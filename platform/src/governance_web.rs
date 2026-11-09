@@ -177,6 +177,7 @@ pub fn router_with_approvals(
 
     let approval_routes = Router::new()
         .route("/approvals", get(approvals_page))
+        .route("/approvals/calendar", get(calendar_page))
         .route("/approvals/workflows", post(create_approval_workflow))
         .route(
             "/approvals/workflows/{id}/{version}/publish",
@@ -1973,6 +1974,7 @@ fn approvals_content(view: ApprovalsPageView) -> Markup {
                 a class=(if view == "all" { "chip chip-active" } else { "chip" }) href="/approvals" { "全部 · " (tasks.len()) }
                 a class=(if view == "mine" { "chip chip-active" } else { "chip" }) href="/approvals?view=mine" { "我的待簽核 · " (open_count) }
                 a class=(if view == "submitted" { "chip chip-active" } else { "chip" }) href="/approvals?view=submitted" { "我送出的 · " (submitted_count) }
+                a class="chip" href="/approvals/calendar" { "📅 行事曆" }
             }
             @if tasks.is_empty() {
                 (empty_state("暫無簽核任務", "先建立工作流定義並發布，再提交簽核任務。核准決策會寫入核准事件鏈。", "/projects", "新增專案"))
@@ -2482,6 +2484,196 @@ fn layout(title: &str, active: &str, content: Markup) -> Markup {
                     span { "EKPI · 跨專案治理試點" }
                     span { "雲端文件留在原始平台，工作台僅保存參照與治理紀錄。" }
                 }
+            }
+        }
+    }
+}
+
+// ── S12：SLA 行事曆日期演算法（Hinnant civil-date，純整數、零依賴） ──
+
+/// Unix 秒 → (年, 月, 日)（UTC）。Howard Hinnant 的 `civil_from_days` 演算法：
+/// 純整數運算、無浮點、對所有 64 位輸入決定論。
+pub fn civil_from_unix(secs: i64) -> (i64, u32, u32) {
+    let days = secs.div_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// (年, 月, 日) → Unix 天數（`civil_from_unix` 的反函數）。
+pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = (y - era * 400) as u64;
+    let mp = if m > 2 { m - 3 } else { m + 9 } as u64;
+    let doy = (153 * mp + 2) / 5 + u64::from(d) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    // Hinnant 公式以 1970-03-01 為紀元內部原點，需減回 Unix 紀元
+    // （civil_from_unix 的 +719_468 與此對稱——缺此行即整體平移錯誤，
+    // 已由 epoch_round_trip 紅測試抓出）。
+    era * 146_097 + doe as i64 - 719_468
+}
+
+/// 指定月份天數（閏年規則：4 年一閏、百年不閏、四百年再閏）。
+pub fn days_in_month(y: i64, m: u32) -> u32 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 0,
+    }
+}
+
+/// 月初的 Unix 天數 → 週幾（0=一 … 6=日）。1970-01-01 為週四。
+fn weekday_of_first(y: i64, m: u32) -> u32 {
+    (days_from_civil(y, m, 1) + 3).rem_euclid(7) as u32
+}
+
+fn calendar_caption(y: i64, m: u32) -> String {
+    format!("{y} 年 {m:02} 月")
+}
+
+fn shift_month(y: i64, m: u32, delta: i32) -> (i64, u32) {
+    let total = (y * 12 + i64::from(m) - 1) + i64::from(delta);
+    (total.div_euclid(12), (total.rem_euclid(12) + 1) as u32)
+}
+
+#[derive(Deserialize)]
+struct CalendarQuery {
+    month: Option<String>,
+}
+
+async fn calendar_page(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    Query(params): Query<CalendarQuery>,
+) -> Response {
+    let (tasks, _workflows, _integrity, _submitters) = match approvals_view(&approvals) {
+        Ok(view) => view,
+        Err(error) => return page_error_response("approvals", &error),
+    };
+    let now_secs = match now_i64() {
+        Ok(now) => now,
+        Err(error) => return page_error_response("approvals", &error),
+    };
+    let (year, month) = match params.month.as_deref() {
+        None | Some("") => {
+            let (y, m, _d) = civil_from_unix(now_secs);
+            (y, m)
+        }
+        Some(text) => match parse_calendar_month(text) {
+            Some(ym) => ym,
+            None => {
+                return crate::errors::error_response(
+                    format!("month must be YYYY-MM (got `{text}`)"),
+                    StatusCode::BAD_REQUEST,
+                    None,
+                )
+                .into_response();
+            }
+        },
+    };
+    let tasks_ref: Vec<&ekp_domain::workflow::ApprovalTask> = tasks.iter().collect();
+    page_response(
+        "SLA 行事曆",
+        "approvals",
+        calendar_content(&tasks_ref, year, month, now_secs),
+    )
+}
+
+/// 解析 `YYYY-MM`；年份限 1970–9999，月份 1–12（fail-closed，不靜默回退）。
+fn parse_calendar_month(text: &str) -> Option<(i64, u32)> {
+    let (y, m) = text.split_once('-')?;
+    let y = y.trim().parse::<i64>().ok()?;
+    let m = m.trim().parse::<u32>().ok()?;
+    if !(1970..=9999).contains(&y) || !(1..=12).contains(&m) {
+        return None;
+    }
+    Some((y, m))
+}
+
+fn calendar_content(
+    tasks: &[&ekp_domain::workflow::ApprovalTask],
+    year: i64,
+    month: u32,
+    now_secs: i64,
+) -> Markup {
+    let days = days_in_month(year, month);
+    let leading = weekday_of_first(year, month);
+    let (prev_y, prev_m) = shift_month(year, month, -1);
+    let (next_y, next_m) = shift_month(year, month, 1);
+    // 到期日落在本月的任務（依 due_at 的 UTC 日）。
+    let mut due_by_day: BTreeMap<u32, Vec<&ekp_domain::workflow::ApprovalTask>> = BTreeMap::new();
+    let mut outside = 0usize;
+    for task in tasks {
+        let (due_y, due_m, due_d) = civil_from_unix(task.due_at);
+        if due_y == year && due_m == month {
+            due_by_day.entry(due_d).or_default().push(task);
+        } else {
+            outside += 1;
+        }
+    }
+    html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "動態簽核工作流" }
+                h1 { "SLA 行事曆" }
+                p class="page-subtitle" { "任務到期日分佈（UTC）；逾期以紅色與文字雙重標注，不以顏色為唯一傳達。" }
+            }
+            div class="chip-row" {
+                a class="chip" href={ "/approvals/calendar?month=" (format!("{prev_y:04}-{prev_m:02}")) } { "← 上一月" }
+                span class="calendar-caption" { (calendar_caption(year, month)) }
+                a class="chip" href={ "/approvals/calendar?month=" (format!("{next_y:04}-{next_m:02}")) } { "下一月 →" }
+                a class="chip" href="/approvals" { "返回佇列" }
+            }
+        }
+        section class="panel" {
+            table class="calendar-table" {
+                caption class="visually-hidden" { (calendar_caption(year, month)) " 到期日分佈" }
+                thead { tr { th { "一" } th { "二" } th { "三" } th { "四" } th { "五" } th { "六" } th { "日" } } }
+                tbody {
+                    @for week in 0..(leading + days).div_ceil(7) {
+                        tr {
+                            @for weekday in 0..7 {
+                                @let slot = week * 7 + weekday;
+                                @if slot < leading || slot >= leading + days {
+                                    td class="calendar-cell calendar-blank" {}
+                                } @else {
+                                    @let day = slot - leading + 1;
+                                    @let due_tasks = due_by_day.get(&day);
+                                    @let has_overdue = due_tasks.map(|list| list.iter().any(|task| task.is_overdue(now_secs))).unwrap_or(false);
+                                    td class=(if has_overdue { "calendar-cell calendar-overdue" } else { "calendar-cell" }) data-date=(format!("{year:04}-{month:02}-{day:02}")) {
+                                        span class="calendar-day-num" { (day) }
+                                        @if let Some(list) = due_tasks {
+                                            @for task in list {
+                                                @if task.is_overdue(now_secs) {
+                                                    a class="calendar-task" href="/approvals" { span class="calendar-overdue-mark" { "已逾時 " } (task.id) }
+                                                } @else {
+                                                    a class="calendar-task" href="/approvals" { (task.id) }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            p class="form-hint" {
+                "本月到期任務 " (due_by_day.values().map(Vec::len).sum::<usize>()) " 筆；到期日在本月任務之外 " (outside) " 筆（見佇列檢視）。時區語義：UTC。"
             }
         }
     }
@@ -3724,5 +3916,67 @@ mod request_limits_tests {
 
         assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
         drop(permit);
+    }
+}
+
+#[cfg(test)]
+mod civil_date_tests {
+    use super::*;
+
+    /// 已知日期：Unix 紀元 1970-01-01（週四）。
+    #[test]
+    fn epoch_round_trip() {
+        assert_eq!(days_from_civil(1970, 1, 1), 0);
+        assert_eq!(civil_from_unix(0), (1970, 1, 1));
+        assert_eq!(weekday_of_first(1970, 1), 3, "1970-01-01 is Thursday");
+    }
+
+    /// 閏年規則：2000-02-29 存在（400 年再閏）、1900-02-29 不存在（百年不閏）。
+    #[test]
+    fn leap_year_rule() {
+        assert_eq!(days_in_month(2000, 2), 29);
+        assert_eq!(days_in_month(1900, 2), 28);
+        assert_eq!(days_in_month(2024, 2), 29);
+        assert_eq!(days_in_month(2026, 2), 28);
+    }
+
+    /// 月界往返：月底最後一日 → 次月一日（含跨年 12→1）。
+    #[test]
+    fn month_boundaries_round_trip() {
+        assert_eq!(
+            civil_from_unix(days_from_civil(2026, 11, 30) * 86_400),
+            (2026, 11, 30)
+        );
+        assert_eq!(
+            civil_from_unix(days_from_civil(2026, 12, 31) * 86_400),
+            (2026, 12, 31)
+        );
+        assert_eq!(
+            civil_from_unix(days_from_civil(2027, 1, 1) * 86_400),
+            (2027, 1, 1)
+        );
+        assert_eq!(shift_month(2026, 12, 1), (2027, 1));
+        assert_eq!(shift_month(2026, 1, -1), (2025, 12));
+    }
+
+    /// 不變式：次月一日的星期＝本月一日星期＋本月天數（mod 7）——
+    /// 對 120 個連續月份驗證（涵蓋閏年與跨年）。
+    #[test]
+    fn month_start_weekday_advances_by_month_length() {
+        let mut y = 2020;
+        let mut m = 1u32;
+        for _ in 0..120 {
+            let w = weekday_of_first(y, m);
+            let len = days_in_month(y, m);
+            let (ny, nm) = shift_month(y, m, 1);
+            let w2 = weekday_of_first(ny, nm);
+            assert_eq!(
+                w2,
+                (w + len) % 7,
+                "weekday must advance by month length mod 7 ({y}-{m:02})"
+            );
+            y = ny;
+            m = nm;
+        }
     }
 }

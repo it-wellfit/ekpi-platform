@@ -1086,3 +1086,116 @@ async fn post_json(
         .await
         .unwrap()
 }
+
+/// S12：SLA 行事曆——逾期任務在其到期月的格子上以紅色＋文字雙重標注；
+/// 月份導航；無效月份誠實 400；空白月誠實空狀態。
+#[tokio::test]
+async fn sla_calendar_renders_overdue_task_on_its_due_date() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, approvals) = app_with_approval_users("s12-calendar");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-cal&name=cal-flow&stages=s1&slas=3600&urgency=normal",
+    )
+    .await;
+    post_form(&app, "/approvals/workflows/wf-cal/1/publish", &approver, "").await;
+
+    // 以「兩天前」為提交時點 → SLA 1 小時 → 任務已逾時，且到期日可推導。
+    let real_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let submitted_at = real_now - 2 * 86_400;
+    let input = ekp_domain::workflow::TaskSubmission {
+        workflow_id: "wf-cal".into(),
+        workflow_version: 1,
+        amount_cents: 1,
+        platform: "momo".into(),
+        classification: "internal".into(),
+        risk_score: 0,
+        urgency: ekp_domain::workflow::Urgency::Normal,
+    };
+    approvals
+        .lock()
+        .unwrap()
+        .submit_task(&input, "editor-a", submitted_at, None)
+        .expect("overdue task seeded");
+    let due_at = submitted_at + 3600;
+    let (due_y, due_m, due_d) = ekp_platform::governance_web::civil_from_unix(due_at);
+    let due_iso = format!("{due_y:04}-{due_m:02}-{due_d:02}");
+    let month_param = format!("{due_y:04}-{due_m:02}");
+
+    let page = get_with_cookies(
+        &app,
+        &format!("/approvals/calendar?month={month_param}"),
+        &approver,
+    )
+    .await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(page.into_body(), 256 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body).to_string();
+    assert!(
+        html.contains(&format!("data-date=\"{due_iso}\"")),
+        "the due-date cell must exist: {due_iso}"
+    );
+    let cell = html
+        .split("calendar-cell")
+        .find(|segment| segment.contains(&format!("data-date=\"{due_iso}\"")))
+        .expect("due-date cell segment");
+    assert!(cell.contains("TSK-000001"), "task id in its due cell");
+    assert!(cell.contains("已逾時"), "overdue must be text-labelled");
+    assert!(
+        html.contains(&month_param),
+        "caption shows the viewed month"
+    );
+}
+
+/// S12：月份導航與無效輸入的誠實處理。
+#[tokio::test]
+async fn sla_calendar_navigation_and_validation() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("s12-nav");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+
+    // 空白月（1970-01，無任務）→ 誠實空狀態文字。
+    let page = get_with_cookies(&app, "/approvals/calendar?month=1970-01", &approver).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(page.into_body(), 256 * 1024)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body).to_string();
+    assert!(html.contains("1970 年 01 月"), "caption reflects the query");
+    assert!(
+        html.contains("0 筆"),
+        "honest zero count for an empty month"
+    );
+
+    // 無效月份 → 400（fail-closed，不靜默回退到當月）。
+    for bad in ["2026-13", "2026-00", "not-a-month", "999999-01"] {
+        let response =
+            get_with_cookies(&app, &format!("/approvals/calendar?month={bad}"), &approver).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "month `{bad}`");
+    }
+
+    // 未登入 → 401。
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get("/approvals/calendar")
+                .header("host", "127.0.0.1:8080")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
