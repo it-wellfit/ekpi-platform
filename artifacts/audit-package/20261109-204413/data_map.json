@@ -1,0 +1,255 @@
+{
+  "approvals": [
+    {
+      "event": "workflow_created",
+      "fields": [
+        "definition.id",
+        "definition.name",
+        "stages[].id",
+        "stages[].sla_seconds",
+        "stages[].urgency",
+        "stages[].on_timeout"
+      ],
+      "pages": [
+        "/approvals"
+      ],
+      "write_surfaces": [
+        "表單 POST /approvals/workflows"
+      ]
+    },
+    {
+      "event": "workflow_published",
+      "fields": [
+        "workflow_id",
+        "version"
+      ],
+      "pages": [
+        "/approvals"
+      ],
+      "write_surfaces": [
+        "表單 POST /approvals/workflows/{id}/{version}/publish"
+      ]
+    },
+    {
+      "event": "task_submitted",
+      "fields": [
+        "task.id",
+        "task.workflow_id@version",
+        "task.stage_id",
+        "task.urgency",
+        "task.amount_cents",
+        "task.platform",
+        "task.classification",
+        "task.risk_score",
+        "task.due_at",
+        "idempotency_key(選填)"
+      ],
+      "pages": [
+        "/approvals"
+      ],
+      "write_surfaces": [
+        "表單 POST /approvals/submit",
+        "API POST /api/v1/approvals（Idempotency-Key 可選）"
+      ]
+    },
+    {
+      "event": "task_transitioned",
+      "fields": [
+        "decision.task_id",
+        "decision.action",
+        "decision.from_state→to_state",
+        "decision.from_stage→to_stage",
+        "escalated_to",
+        "note"
+      ],
+      "pages": [
+        "/approvals"
+      ],
+      "write_surfaces": [
+        "表單 POST /approvals/{id}/decide"
+      ]
+    },
+    {
+      "event": "tasks_expired",
+      "fields": [
+        "task_ids"
+      ],
+      "pages": [
+        "—（無頁面；帳內狀態變更）"
+      ],
+      "write_surfaces": [
+        "cleanup_expired（自動排程未建，IMP-020(b)）"
+      ]
+    }
+  ],
+  "governance": [
+    {
+      "event": "project_created",
+      "fields": [
+        "id",
+        "name",
+        "department",
+        "owner",
+        "risk_tier",
+        "created_at"
+      ],
+      "pages": [
+        "/projects",
+        "/"
+      ],
+      "write_surfaces": [
+        "表單 POST /projects"
+      ]
+    },
+    {
+      "event": "evidence_linked",
+      "fields": [
+        "id",
+        "project_id",
+        "title",
+        "source_system",
+        "source_url",
+        "source_version",
+        "evidence_type",
+        "owner",
+        "created_at"
+      ],
+      "pages": [
+        "/evidence"
+      ],
+      "write_surfaces": [
+        "表單 POST /evidence"
+      ]
+    },
+    {
+      "event": "evidence_reviewed",
+      "fields": [
+        "evidence_id",
+        "result",
+        "reviewer",
+        "note",
+        "reviewed_at"
+      ],
+      "pages": [
+        "/evidence"
+      ],
+      "write_surfaces": [
+        "表單 POST /evidence/{id}/review"
+      ]
+    },
+    {
+      "event": "workflow_saved",
+      "fields": [
+        "id",
+        "version",
+        "title",
+        "department",
+        "owner",
+        "description",
+        "stages",
+        "status",
+        "created_at",
+        "published_at",
+        "published_by"
+      ],
+      "pages": [
+        "/workflows"
+      ],
+      "write_surfaces": [
+        "表單 POST /workflows"
+      ]
+    },
+    {
+      "event": "workflow_published",
+      "fields": [
+        "id",
+        "version",
+        "reviewer",
+        "published_at"
+      ],
+      "pages": [
+        "/workflows"
+      ],
+      "write_surfaces": [
+        "表單 POST /workflows/{id}/{version}/publish"
+      ]
+    },
+    {
+      "event": "quality_case_created",
+      "fields": [
+        "id",
+        "project_id",
+        "kind",
+        "title",
+        "description",
+        "owner",
+        "due_date",
+        "status",
+        "created_at",
+        "updated_at",
+        "closure_note"
+      ],
+      "pages": [
+        "/controls"
+      ],
+      "write_surfaces": [
+        "表單 POST /controls"
+      ]
+    },
+    {
+      "event": "quality_case_updated",
+      "fields": [
+        "id",
+        "status",
+        "actor",
+        "note",
+        "updated_at"
+      ],
+      "pages": [
+        "/controls"
+      ],
+      "write_surfaces": [
+        "表單 POST /controls/{id}/status"
+      ]
+    },
+    {
+      "event": "quality_inspection_recorded",
+      "fields": [
+        "id",
+        "project_id",
+        "reviewer",
+        "created_at",
+        "results(item_id, result, note, evidence_reference, issue_id)"
+      ],
+      "pages": [
+        "/inspections"
+      ],
+      "write_surfaces": [
+        "表單 POST /inspections"
+      ]
+    },
+    {
+      "event": "gate_decision_recorded",
+      "fields": [
+        "id",
+        "project_id",
+        "gate_id",
+        "decision",
+        "actor",
+        "reason",
+        "evidence_reference",
+        "risk_acceptor",
+        "remediation_due",
+        "non_waivable",
+        "created_at"
+      ],
+      "pages": [
+        "/lifecycle"
+      ],
+      "write_surfaces": [
+        "表單 POST /lifecycle"
+      ]
+    }
+  ],
+  "schema": "ekpi-data-map-v1"
+}

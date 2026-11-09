@@ -280,6 +280,10 @@ Contract:
 - The `.md` twin renders the same JSON with a mandatory disclaimer (狀態事實，非合規認證). It adds no facts.
 - Exit codes: `0` when both chains load and verify; `1` when a chain fails (report still written, `chain_verified: false`); `2` usage errors. Conflicts mirror CTR-EXP-003 plus this flag; the two path overrides are shared with CTR-EXP-003.
 
+## Audit package manifest
+
+`CTR-EXP-005`. `scripts/audit-package.ps1` produces an auditable package: git bundle (full history), runtime chain copies (governance/approvals), `evidence_pack.json` (CTR-EXP-003), `data_map.json` (CTR-DATA-008), and `manifest.json` (`ekpi-audit-manifest-v1`: `head_commit` + sorted `files[{name, sha256, bytes}]`). The manifest content is deterministic given the same packaged bytes (no timestamps inside the file; the output directory name carries the wall-clock stamp). Self-verification re-hashes every manifest entry. The operational restore drill (`scripts/drill-runtime-data.ps1`, IMP-021) is packaged alongside the evidence.
+
 ## Compatibility and change rules
 
 - Adding an optional JSON field is backward-compatible; update the schema/doc and tests.

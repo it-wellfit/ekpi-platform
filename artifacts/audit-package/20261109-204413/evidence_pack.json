@@ -1,0 +1,23 @@
+{
+  "approvals": {
+    "chain_verified": true,
+    "event_count": 0,
+    "head_sha256": null,
+    "payload_counts": {}
+  },
+  "governance": {
+    "chain_verified": true,
+    "event_count": 1,
+    "head_sha256": "89938685217d41e59ba677a6170004471323df667fdb816a787d89487b9fb504",
+    "payload_counts": {
+      "建立專案：供應商文件治理試點": 1
+    }
+  },
+  "platform": {
+    "active_rules": 19,
+    "docs": 7,
+    "load_ok": true,
+    "processes": 3
+  },
+  "schema": "ekpi-evidence-pack-v1"
+}

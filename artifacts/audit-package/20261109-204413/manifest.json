@@ -1,0 +1,26 @@
+{
+    "schema":  "ekpi-audit-manifest-v1",
+    "head_commit":  "cdfdba6b4e40435f34081d1f508f0f8b7d0e67e5",
+    "files":  [
+                  {
+                      "sha256":  "99DF15CA98044290F6A1B83FA970C0ED843B79DFF9CED04680CE79F58F73C66A",
+                      "name":  "data_map.json",
+                      "bytes":  5040
+                  },
+                  {
+                      "sha256":  "383D8B94BA1D76CBE6055F8113A8ED43A08D494456E97400C79B648953666E99",
+                      "name":  "ekpi-platform.bundle",
+                      "bytes":  1677619
+                  },
+                  {
+                      "sha256":  "15379722B70EA8A658A434C0D80C96175D107D4C0710410055DB88FBA084CCF2",
+                      "name":  "evidence_pack.json",
+                      "bytes":  505
+                  },
+                  {
+                      "sha256":  "9E30B6608C89DC31F0666E8E76566A700445E97E6D72CB379AE804B9FE8979C7",
+                      "name":  "governance-ledger.jsonl",
+                      "bytes":  349
+                  }
+              ]
+}

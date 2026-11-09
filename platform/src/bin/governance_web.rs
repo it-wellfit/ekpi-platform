@@ -74,7 +74,13 @@ async fn main() {
     let approvals_state = Arc::new(Mutex::new(approval_store));
 
     let app = governance_web::router_with_approvals(ledger_state, auth_state, approvals_state);
-    let address = SocketAddr::from(([127, 0, 0, 1], 3000));
+    // Port is overridable for ops tooling (drills, parallel local runs);
+    // the default stays 3000 for interactive use.
+    let port: u16 = std::env::var("EKPI_WEB_PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(3000);
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = match tokio::net::TcpListener::bind(address).await {
         Ok(listener) => listener,
         Err(error) => {
