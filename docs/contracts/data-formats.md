@@ -267,6 +267,19 @@ Contract:
 - Note: `platform::governance::EventPayload` (the ledger's live type) and `ekp_domain::governance::EventPayload` are two independent enums today; the data map targets the live ledger type. Consolidation is tracked as refactor candidate C6 (see `docs/development/refactor-criteria.md`).
 - Exit codes: `0` on success; `2` for usage errors (conflicting modes).
 
+## Compliance report export
+
+`CTR-EXP-004`. `--export-compliance-report DIR [--governance-data PATH] [--approval-data PATH]` writes `DIR/compliance_report.json` (`ekpi-compliance-report-v1`) plus `DIR/compliance_report.md` (rendered from the same JSON — single source).
+
+Contract:
+
+- `governance`: `projects`; `evidence` (`total`, `reviewed`, `unreviewed_ids` sorted); `quality_cases` (`total`, `by_status` BTree order, `non_closed_ids` sorted — "non-closed" means `status != "closed"`); `inspections`; `gate_decisions` (`total`, `by_decision`); `chain_verified`; `event_count`; `head_sha256`. On load failure: zeroed counts plus `load_ok: false`.
+- `approvals`: `workflows_total`; `tasks` (`total`, `by_state`, `per_task` sorted by id — each with `id`/`workflow`/`stage_id`/`state`/`due_at`); `chain_verified`; `event_count`; `head_sha256`. Same `load_ok` rule.
+- `platform`: `docs`, `active_rules`, `processes`, `load_ok`.
+- **No timestamps, no paths, no time-relative computations** (overdue is deliberately NOT computed — timeliness is the consumer's job against `due_at`). Byte-identical replays locked by `compliance_report_export_is_deterministic`.
+- The `.md` twin renders the same JSON with a mandatory disclaimer (狀態事實，非合規認證). It adds no facts.
+- Exit codes: `0` when both chains load and verify; `1` when a chain fails (report still written, `chain_verified: false`); `2` usage errors. Conflicts mirror CTR-EXP-003 plus this flag; the two path overrides are shared with CTR-EXP-003.
+
 ## Compatibility and change rules
 
 - Adding an optional JSON field is backward-compatible; update the schema/doc and tests.
