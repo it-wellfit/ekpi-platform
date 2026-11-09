@@ -499,7 +499,7 @@ pub fn default_approval_path() -> PathBuf {
     if let Some(path) = std::env::var_os("EKP_APPROVAL_DATA") {
         return PathBuf::from(path);
     }
-    super::jsonl_ledger::default_ledger_path().join("approvals.jsonl")
+    super::jsonl_ledger::default_data_dir().join("approvals.jsonl")
 }
 
 #[cfg(test)]

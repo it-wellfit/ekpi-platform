@@ -675,7 +675,14 @@ impl Ledger {
     }
 }
 
-pub fn default_ledger_path() -> PathBuf {
+/// Default **data directory** (not a file path): `%LOCALAPPDATA%\EKPI` or
+/// `$TMP/ekpi`. Distinct from the identically-purposed file helpers —
+/// [`crate::configuration::default_ledger_path`] and
+/// `ekp_platform::governance::default_ledger_path` — which resolve the
+/// governance ledger *file*. The two names must stay distinct so boundary
+/// readers cannot conflate directory and file semantics (refactor-criteria
+/// case C2, 2026-11-09).
+pub fn default_data_dir() -> PathBuf {
     if let Some(path) = std::env::var_os("EKP_GOVERNANCE_DATA") {
         return PathBuf::from(path);
     }

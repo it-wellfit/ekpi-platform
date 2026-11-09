@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -1208,18 +1208,16 @@ fn event_hash(
     Ok(sha256_hex(&encoded))
 }
 
+/// Default governance ledger **file** path.
+///
+/// Single source: delegates to
+/// [`ekp_adapters::configuration::default_ledger_path`] (parity verified
+/// 2026-11-09 — the two implementations differed only in an equivalent
+/// `PathBuf::from`/`Path::new` construction; `refactor-criteria` case C1).
+/// Kept as a re-export-style wrapper so the platform-facing name is stable
+/// for the CLI and the workbench binary.
 pub fn default_ledger_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("EKP_GOVERNANCE_DATA") {
-        return PathBuf::from(path);
-    }
-    if let Some(root) = std::env::var_os("LOCALAPPDATA") {
-        return Path::new(&root)
-            .join("EKPI")
-            .join("governance-ledger.jsonl");
-    }
-    std::env::temp_dir()
-        .join("ekpi")
-        .join("governance-ledger.jsonl")
+    ekp_adapters::configuration::default_ledger_path()
 }
 
 fn now_unix() -> Result<u64, String> {
