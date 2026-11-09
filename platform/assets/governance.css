@@ -361,3 +361,4 @@ details.disclosure .d-body { padding: var(--space-3) 0 0 18px; }
 
 .chip.chip-active { background: #182f56; color: #fff; border-color: #152a4d; }
 
+.status-wired { color: #176c48; font-weight: 600; }

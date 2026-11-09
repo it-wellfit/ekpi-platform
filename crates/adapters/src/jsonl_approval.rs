@@ -234,12 +234,43 @@ impl ApprovalStore {
     }
 
     /// Create a task on the first stage of a published definition.
+    ///
+    /// Idempotency (S10): when `idempotency_key` is provided (non-empty after
+    /// trim) and a previous `TaskSubmitted` event carries the same key, the
+    /// original task id is returned with `replayed = true` and **no new event
+    /// is appended**. Keys are validated at the API boundary; the store
+    /// additionally refuses keys longer than 128 chars or with non-printable
+    /// ASCII characters (fail-closed, same rule on both layers).
     pub fn submit_task(
         &mut self,
         input: &TaskSubmission,
         actor: &str,
         now_unix: i64,
-    ) -> Result<String, GovernanceError> {
+        idempotency_key: Option<&str>,
+    ) -> Result<(String, bool), GovernanceError> {
+        let key = idempotency_key.map(str::trim).filter(|key| !key.is_empty());
+        let key = match key {
+            Some(key)
+                if key.len() > 128 || !key.bytes().all(|byte| (0x20..=0x7e).contains(&byte)) =>
+            {
+                return Err(GovernanceError::validation(
+                    "idempotency key must be 1-128 printable ASCII characters".to_string(),
+                ));
+            }
+            other => other,
+        };
+        if let Some(key) = key {
+            for event in &self.events {
+                if let ApprovalEventPayload::TaskSubmitted {
+                    task,
+                    idempotency_key: Some(existing),
+                } = &event.payload
+                    && existing == key
+                {
+                    return Ok((task.id.clone(), true));
+                }
+            }
+        }
         let definition = self
             .projection
             .definitions
@@ -254,9 +285,15 @@ impl ApprovalStore {
             .clone();
         let task_id = self.next_task_id();
         let task = ekp_domain::workflow::submit_task(&definition, input, &task_id, actor, now_unix)
-            .map_err(|e| GovernanceError::validation(e.to_string()))?;
-        self.append(actor, ApprovalEventPayload::TaskSubmitted { task })?;
-        Ok(task_id)
+            .map_err(|error| GovernanceError::validation(error.to_string()))?;
+        self.append(
+            actor,
+            ApprovalEventPayload::TaskSubmitted {
+                task,
+                idempotency_key: key.map(str::to_string),
+            },
+        )?;
+        Ok((task_id, false))
     }
 
     /// Apply a decision to an open task.
@@ -350,7 +387,7 @@ impl ApprovalStore {
     pub fn task_submitters(&self) -> std::collections::BTreeMap<String, String> {
         let mut submitters = std::collections::BTreeMap::new();
         for event in &self.events {
-            if let ApprovalEventPayload::TaskSubmitted { task } = &event.payload {
+            if let ApprovalEventPayload::TaskSubmitted { task, .. } = &event.payload {
                 submitters
                     .entry(task.id.clone())
                     .or_insert_with(|| event.actor.clone());
@@ -571,7 +608,7 @@ mod tests {
                 .publish_workflow("wf-two", 1, "approver-a")
                 .expect("publish");
             store
-                .submit_task(&submission(), "editor-a", 1_000_000)
+                .submit_task(&submission(), "editor-a", 1_000_000, None)
                 .expect("submit");
             store
                 .decide_task(
@@ -665,7 +702,7 @@ mod tests {
             .publish_workflow("wf-two", 1, "approver-a")
             .expect("publish");
         store
-            .submit_task(&submission(), "editor-a", 1_000_000)
+            .submit_task(&submission(), "editor-a", 1_000_000, None)
             .expect("submit");
         store
             .decide_task(

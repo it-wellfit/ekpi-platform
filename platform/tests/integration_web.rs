@@ -970,3 +970,119 @@ async fn wired_api_list_endpoints_serve_real_contracted_data() {
     .await;
     assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
 }
+
+/// S10：冪等寫入 API——同 Idempotency-Key 重放回原任務且**不追加事件**；
+/// 不同鍵建立新任務；缺鍵正常建立；格式錯誤 400。
+#[tokio::test]
+async fn api_submit_is_idempotent_by_key() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, approvals) = app_with_approval_users("s10-idem");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-api&name=api-flow&stages=s1&slas=3600&urgency=normal",
+    )
+    .await;
+    post_form(&app, "/approvals/workflows/wf-api/1/publish", &approver, "").await;
+    let editor = login(&app, "editor-a", "correct-horse-battery-staple").await;
+
+    let json_body = r#"{"workflow_ref":"wf-api@1","amount_cents":1,"platform":"momo","classification":"internal","risk_score":0,"urgency":"normal"}"#;
+
+    let first = post_json(&app, &editor, Some("K-1"), json_body).await;
+    assert_eq!(first.status(), StatusCode::CREATED, "first submit creates");
+    let first_body = axum::body::to_bytes(first.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let first_json: serde_json::Value = serde_json::from_slice(&first_body).unwrap();
+    assert_eq!(first_json["schema"], "ekpi-approval-submit-v1");
+    assert_eq!(first_json["replayed"], false);
+    assert_eq!(first_json["task_id"], "TSK-000001");
+
+    let count_after_first = approvals.lock().unwrap().event_count();
+
+    let replay = post_json(&app, &editor, Some("K-1"), json_body).await;
+    assert_eq!(replay.status(), StatusCode::OK, "same key replays");
+    assert_eq!(
+        replay
+            .headers()
+            .get("idempotency-replayed")
+            .map(|v| v.to_str().unwrap()),
+        Some("true")
+    );
+    let replay_body = axum::body::to_bytes(replay.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let replay_json: serde_json::Value = serde_json::from_slice(&replay_body).unwrap();
+    assert_eq!(
+        replay_json["task_id"], "TSK-000001",
+        "same task id on replay"
+    );
+    assert_eq!(replay_json["replayed"], true);
+    assert_eq!(
+        approvals.lock().unwrap().event_count(),
+        count_after_first,
+        "a replay must not append an event"
+    );
+
+    let second = post_json(&app, &editor, Some("K-2"), json_body).await;
+    assert_eq!(second.status(), StatusCode::CREATED, "a new key creates");
+    let second_body = axum::body::to_bytes(second.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let second_json: serde_json::Value = serde_json::from_slice(&second_body).unwrap();
+    assert_eq!(second_json["task_id"], "TSK-000002");
+    assert_eq!(second_json["replayed"], false);
+
+    let malformed = post_json(&app, &editor, Some("K-3"), "{not json").await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST, "honest 400");
+}
+
+/// S10：API 提交需 Editor 角色（Viewer 不可送出——以未註冊帳號路徑驗證 401 已涵蓋；
+/// 此處驗證 Approver 亦可送出，角色序位 Viewer<Editor<Approver）。
+#[tokio::test]
+async fn api_submit_accepts_approver_role_by_ordering() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let (app, _ledger_path, _approvals) = app_with_approval_users("s10-role");
+    let approver = login(&app, "approver-a", "correct-horse-battery-staple").await;
+    post_form(
+        &app,
+        "/approvals/workflows",
+        &approver,
+        "id=wf-r&name=role-flow&stages=s1&slas=3600&urgency=normal",
+    )
+    .await;
+    post_form(&app, "/approvals/workflows/wf-r/1/publish", &approver, "").await;
+    let response = post_json(
+        &app,
+        &approver,
+        None,
+        r#"{"workflow_ref":"wf-r@1","amount_cents":1,"platform":"momo","classification":"internal","risk_score":0,"urgency":"normal"}"#,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+async fn post_json(
+    app: &axum::Router,
+    cookies: &str,
+    key: Option<&str>,
+    body: &str,
+) -> axum::response::Response {
+    let mut request = Request::post("/api/v1/approvals")
+        .header("content-type", "application/json")
+        .header("host", "127.0.0.1:8080")
+        .header("origin", "http://127.0.0.1:8080")
+        .header("cookie", cookies);
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    app.clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}

@@ -56,7 +56,8 @@ impl ApprovalRepository for PgApprovalRepository {
         _input: &TaskSubmission,
         _actor: &str,
         _now_unix: i64,
-    ) -> Result<String, GovernanceError> {
+        _idempotency_key: Option<&str>,
+    ) -> Result<(String, bool), GovernanceError> {
         Err(GovernanceError::Storage("not yet implemented".into()))
     }
 

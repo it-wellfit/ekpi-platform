@@ -70,6 +70,7 @@ const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 
 const CSS: &str = include_str!("../assets/governance.css");
 const REQUEST_ID_HEADER: &str = "x-request-id";
+const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_CONCURRENT_REQUESTS: usize = 64;
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -311,8 +312,171 @@ async fn api_approvals_list(
         .into_response()
 }
 
-async fn api_submit_task() -> Response {
-    api_not_implemented("POST /api/v1/approvals")
+#[derive(Deserialize)]
+struct ApiSubmitTaskBody {
+    workflow_ref: String,
+    amount_cents: i64,
+    platform: String,
+    classification: String,
+    risk_score: i32,
+    urgency: String,
+}
+
+/// POST /api/v1/approvals — JSON write path with optional idempotency
+/// (`Idempotency-Key` header, 1–128 printable ASCII).
+///
+/// Responses: `201 Created` (new task, `Location` header), `200 OK` when the
+/// key replays (`Idempotency-Replayed: true`, same task id, **no second
+/// event**), structured `400` for malformed body/key, `403` for
+/// role/CSRF refusals, `422` for domain refusals (e.g. unpublished
+/// workflow). Session actor is the submitter; form-free by design.
+async fn api_submit_task(
+    State((_auth, approvals)): State<(SharedAuth, SharedApprovals)>,
+    request: Request,
+) -> Response {
+    let headers = request.headers().clone();
+    let request_id = headers
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok());
+    let (username, _role) = match session_identity_full(&_auth, &headers, Role::Editor) {
+        Ok(identity) => identity,
+        Err(response) => return *response,
+    };
+    let body_bytes = match read_limited_body(request).await {
+        Ok(bytes) => bytes,
+        Err(response) => return *response,
+    };
+    let body: ApiSubmitTaskBody = match serde_json::from_slice(&body_bytes) {
+        Ok(body) => body,
+        Err(error) => {
+            return crate::errors::error_response(
+                format!("malformed JSON body: {error}"),
+                StatusCode::BAD_REQUEST,
+                request_id,
+            )
+            .into_response();
+        }
+    };
+    let idempotency_key: Option<String> = match headers.get(IDEMPOTENCY_KEY_HEADER) {
+        None => None,
+        Some(value) => match value.to_str() {
+            Ok(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    None
+                } else if trimmed.len() > 128
+                    || !trimmed.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+                {
+                    return crate::errors::error_response(
+                        "idempotency key must be 1-128 printable ASCII characters",
+                        StatusCode::BAD_REQUEST,
+                        request_id,
+                    )
+                    .into_response();
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            Err(_) => {
+                return crate::errors::error_response(
+                    "idempotency key must be ASCII",
+                    StatusCode::BAD_REQUEST,
+                    request_id,
+                )
+                .into_response();
+            }
+        },
+    };
+    let (workflow_id, version) = match body.workflow_ref.split_once('@') {
+        Some((id, version)) => match version.trim().parse::<u32>() {
+            Ok(version) => (id.trim().to_string(), version),
+            Err(_) => {
+                return crate::errors::error_response(
+                    "workflow version must be a number",
+                    StatusCode::BAD_REQUEST,
+                    request_id,
+                )
+                .into_response();
+            }
+        },
+        None => {
+            return crate::errors::error_response(
+                "workflow_ref must be id@version",
+                StatusCode::BAD_REQUEST,
+                request_id,
+            )
+            .into_response();
+        }
+    };
+    let urgency = match parse_urgency(&body.urgency) {
+        Some(urgency) => urgency,
+        None => {
+            return crate::errors::error_response(
+                "urgency must be one of low, normal, high, critical",
+                StatusCode::BAD_REQUEST,
+                request_id,
+            )
+            .into_response();
+        }
+    };
+    let now = match now_i64() {
+        Ok(now) => now,
+        Err(error) => {
+            return crate::errors::error_response(
+                error,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                request_id,
+            )
+            .into_response();
+        }
+    };
+    let input = ekp_domain::workflow::TaskSubmission {
+        workflow_id,
+        workflow_version: version,
+        amount_cents: body.amount_cents,
+        platform: body.platform.trim().to_string(),
+        classification: body.classification.trim().to_string(),
+        risk_score: body.risk_score,
+        urgency,
+    };
+    let outcome = match approvals.lock() {
+        Ok(mut store) => store
+            .submit_task(&input, &username, now, idempotency_key.as_deref())
+            .map_err(|e| e.to_string()),
+        Err(_) => Err("核准資料鎖定失敗".to_string()),
+    };
+    match outcome {
+        Ok((task_id, replayed)) => {
+            let status = if replayed {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            };
+            let mut response = (
+                status,
+                Json(serde_json::json!({
+                    "schema": "ekpi-approval-submit-v1",
+                    "task_id": task_id,
+                    "replayed": replayed,
+                })),
+            )
+                .into_response();
+            if let Ok(location) = HeaderValue::from_str(&format!("/api/v1/approvals/{task_id}")) {
+                response.headers_mut().insert(header::LOCATION, location);
+            }
+            if replayed {
+                response.headers_mut().insert(
+                    HeaderName::from_static("idempotency-replayed"),
+                    HeaderValue::from_static("true"),
+                );
+            }
+            response
+        }
+        Err(message) => {
+            crate::errors::error_response(message, StatusCode::UNPROCESSABLE_ENTITY, request_id)
+                .into_response()
+        }
+    }
 }
 
 async fn api_decide_task() -> Response {
@@ -538,7 +702,6 @@ fn session_token(headers: &HeaderMap) -> Option<String> {
     token
 }
 
-/// Structured 401 used by middleware layers that know the request id.
 fn unauthorized_with_id(request_id: &str) -> Response {
     crate::errors::error_response(
         "authentication required",
@@ -546,6 +709,11 @@ fn unauthorized_with_id(request_id: &str) -> Response {
         Some(request_id),
     )
     .into_response()
+}
+
+/// Shared 400 for unreadable form bodies (C5: one branch, three callers).
+fn malformed_form(error: impl std::fmt::Display) -> Response {
+    (StatusCode::BAD_REQUEST, format!("無法解析表單：{error}")).into_response()
 }
 
 /// Structured 403 used by middleware layers that know the request id.
@@ -1161,7 +1329,7 @@ async fn create_project(
     };
     let form: ProjectForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let result = ledger
         .lock()
@@ -1213,7 +1381,7 @@ async fn link_evidence(
     };
     let form: EvidenceForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let result = ledger
         .lock()
@@ -1262,7 +1430,7 @@ async fn review_evidence(
     };
     let form: ReviewForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let result = ledger
         .lock()
@@ -1306,7 +1474,7 @@ async fn save_workflow(
     };
     let form: WorkflowForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let stages: Vec<String> = form
         .stages
@@ -1395,7 +1563,7 @@ async fn create_quality_case(
     };
     let form: QualityCaseForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let result = ledger
         .lock()
@@ -1443,7 +1611,7 @@ async fn update_quality_case(
     };
     let form: QualityCaseUpdateForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let result = ledger
         .lock()
@@ -1487,7 +1655,7 @@ async fn record_inspection(
     };
     let fields: HashMap<String, String> = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let get = |field: &str| fields.get(field).cloned().unwrap_or_default();
     let results = QUALITY_CHECKLIST
@@ -1550,7 +1718,7 @@ async fn record_gate_decision(
     };
     let form: GateDecisionForm = match serde_urlencoded::from_bytes(&body) {
         Ok(f) => f,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     if !["yes", "no"].contains(&form.non_waivable.as_str()) {
         return match snapshot(&ledger) {
@@ -1645,16 +1813,16 @@ async fn approvals_page(
         Ok((tasks, workflows, integrity, submitters)) => page_response(
             "核准任務",
             "approvals",
-            approvals_content(
-                &tasks,
-                &workflows,
+            approvals_content(ApprovalsPageView {
+                tasks: &tasks,
+                workflows: &workflows,
                 integrity,
-                None,
+                error: None,
                 view,
-                &username,
+                username: &username,
                 can_decide,
-                &submitters,
-            ),
+                submitters: &submitters,
+            }),
         ),
         Err(error) => page_error_response("approvals", &error),
     }
@@ -1738,17 +1906,31 @@ fn sla_meter_view(task: &ekp_domain::workflow::ApprovalTask, now_secs: i64) -> M
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn approvals_content(
-    tasks: &[ekp_domain::workflow::ApprovalTask],
-    workflows: &[ekp_domain::workflow::WorkflowDefinition],
+/// Render inputs for the approvals page. C4 refactor: one view struct
+/// instead of eight positional parameters (the `too_many_arguments` allow is
+/// gone), and the queue views / role adaptation read from it directly.
+struct ApprovalsPageView<'a> {
+    tasks: &'a [ekp_domain::workflow::ApprovalTask],
+    workflows: &'a [ekp_domain::workflow::WorkflowDefinition],
     integrity: bool,
-    error: Option<&str>,
-    view: &str,
-    username: &str,
+    error: Option<&'a str>,
+    view: &'a str,
+    username: &'a str,
     can_decide: bool,
-    submitters: &std::collections::BTreeMap<String, String>,
-) -> Markup {
+    submitters: &'a std::collections::BTreeMap<String, String>,
+}
+
+fn approvals_content(view: ApprovalsPageView) -> Markup {
+    let ApprovalsPageView {
+        tasks,
+        workflows,
+        integrity,
+        error,
+        view,
+        username,
+        can_decide,
+        submitters,
+    } = view;
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
@@ -1917,7 +2099,7 @@ async fn create_approval_workflow(
     };
     let form: CreateApprovalWorkflowForm = match serde_urlencoded::from_bytes(&body) {
         Ok(form) => form,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let stage_ids: Vec<&str> = form
         .stages
@@ -2003,7 +2185,7 @@ async fn submit_approval_task(
     };
     let form: SubmitApprovalTaskForm = match serde_urlencoded::from_bytes(&body) {
         Ok(form) => form,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let (workflow_id, version) = match form.workflow_ref.split_once('@') {
         Some((id, version)) => match version.trim().parse::<u32>() {
@@ -2034,7 +2216,7 @@ async fn submit_approval_task(
         .map_err(|_| "核准資料鎖定失敗".to_string())
         .and_then(|mut store| {
             store
-                .submit_task(&input, &actor, now)
+                .submit_task(&input, &actor, now, None)
                 .map_err(|e| e.to_string())
         });
     match result {
@@ -2064,7 +2246,7 @@ async fn decide_approval_task(
     };
     let form: DecideApprovalTaskForm = match serde_urlencoded::from_bytes(&body) {
         Ok(form) => form,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("無法解析表單：{e}")).into_response(),
+        Err(e) => return malformed_form(e),
     };
     let action = match ekp_domain::workflow::TaskAction::parse(form.action.trim()) {
         Some(
@@ -2126,16 +2308,16 @@ async fn render_approval_error(approvals: &SharedApprovals, error: &str) -> Resp
             page_response(
                 "核准任務",
                 "approvals",
-                approvals_content(
-                    &tasks,
-                    &workflows,
+                approvals_content(ApprovalsPageView {
+                    tasks: &tasks,
+                    workflows: &workflows,
                     integrity,
-                    Some(error),
-                    "all",
-                    "",
-                    false,
-                    &submitters,
-                ),
+                    error: Some(error),
+                    view: "all",
+                    username: "",
+                    can_decide: false,
+                    submitters: &submitters,
+                }),
             )
             .into_response()
         }
@@ -2197,9 +2379,10 @@ fn api_docs_content() -> Markup {
                     tr { th { "方法" } th { "端點" } th { "狀態" } }
                 }
                 tbody {
-                    tr { td { "GET" } td { "/api/v1/workflows" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "GET" } td { "/api/v1/workflows" } td class="status-wired" { "已實作（唯讀）" } }
                     tr { td { "POST" } td { "/api/v1/workflows" } td class="status-planned" { "未實作（一律 501）" } }
-                    tr { td { "GET" } td { "/api/v1/approvals" } td class="status-planned" { "未實作（一律 501）" } }
+                    tr { td { "GET" } td { "/api/v1/approvals" } td class="status-wired" { "已實作（唯讀）" } }
+                    tr { td { "POST" } td { "/api/v1/approvals" } td class="status-wired" { "已實作（冪等鍵可選）" } }
                     tr { td { "POST" } td { "/api/v1/approvals/{id}/decide" } td class="status-planned" { "未實作（一律 501）" } }
                     tr { td { "POST" } td { "/api/v1/events/replay" } td class="status-planned" { "未實作（一律 501）" } }
                     tr { td { "GET" } td { "/api/v1/channels" } td class="status-planned" { "未實作（一律 501）" } }
@@ -2209,7 +2392,7 @@ fn api_docs_content() -> Markup {
             }
             div class="notice notice-blue" role="info" {
                 strong { "誠實聲明：" }
-                span { "所有 API 端點目前一律回 501，不提供任何資料；本頁不宣稱任何認證機制。契約與認證設計將於再設計總計畫 S4 完成後實作，屆時本頁才會更新為可用狀態。目前唯一的變更介面是 HTML 工作台。" }
+                span { "三個端點已接線（見綠色標示）：唯讀清單與冪等任務提交，契約見 approval-api.md。其餘端點一律回 501，不提供任何資料；本頁不宣稱任何認證機制。寫入端點的決策（decide）與其它模式將依契約逐項實作。" }
             }
         }
     }

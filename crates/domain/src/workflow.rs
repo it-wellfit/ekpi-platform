@@ -499,6 +499,11 @@ pub enum ApprovalEventPayload {
     },
     TaskSubmitted {
         task: ApprovalTask,
+        /// Optional for backward compatibility: files written before S10 lack
+        /// the field and replay unchanged; newer files record the caller's
+        /// idempotency key so duplicate submissions return the original task.
+        #[serde(default)]
+        idempotency_key: Option<String>,
     },
     TaskTransitioned {
         decision: TaskDecision,
@@ -590,7 +595,7 @@ pub fn apply_approval_event(
             }
             definition.active = true;
         }
-        ApprovalEventPayload::TaskSubmitted { task } => {
+        ApprovalEventPayload::TaskSubmitted { task, .. } => {
             if projection.tasks.iter().any(|t| t.id == task.id) {
                 return Err(WorkflowError::InvalidSubmission(format!(
                     "task {} already exists",

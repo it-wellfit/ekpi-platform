@@ -351,12 +351,17 @@ pub trait ApprovalRepository: Send + Sync {
         actor: &str,
     ) -> Result<(), GovernanceError>;
     /// Create a task on the first stage of a published definition.
+    /// Create a task on the first stage of a published definition. When
+    /// `idempotency_key` is `Some`, a repeat submission with the same key
+    /// returns the original task id (`replayed = true`) without appending a
+    /// second event.
     async fn submit_task(
         &mut self,
         input: &TaskSubmission,
         actor: &str,
         now_unix: i64,
-    ) -> Result<String, GovernanceError>;
+        idempotency_key: Option<&str>,
+    ) -> Result<(String, bool), GovernanceError>;
     /// Apply a decision; returns the exact before/after transition.
     async fn decide_task(
         &mut self,

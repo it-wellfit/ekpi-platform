@@ -29,14 +29,18 @@ pub async fn publish_workflow(
     repo.publish_workflow(workflow_id, version, actor).await
 }
 
-/// Submit an approval task; returns the generated task id.
+/// Submit an approval task; returns `(task_id, replayed)`. When
+/// `idempotency_key` is provided and already seen, the original task id is
+/// returned with `replayed = true` (no second event).
 pub async fn submit_task(
     repo: &mut dyn ApprovalRepository,
     input: &TaskSubmission,
     actor: &str,
     now_unix: i64,
-) -> Result<String, GovernanceError> {
-    repo.submit_task(input, actor, now_unix).await
+    idempotency_key: Option<&str>,
+) -> Result<(String, bool), GovernanceError> {
+    repo.submit_task(input, actor, now_unix, idempotency_key)
+        .await
 }
 
 /// Decide an approval task (human decision, Approver role upstream).
@@ -138,8 +142,9 @@ mod tests {
             _input: &TaskSubmission,
             _actor: &str,
             _now_unix: i64,
-        ) -> Result<String, GovernanceError> {
-            Ok("TSK-000001".into())
+            _idempotency_key: Option<&str>,
+        ) -> Result<(String, bool), GovernanceError> {
+            Ok(("TSK-000001".into(), false))
         }
         async fn decide_task(
             &mut self,

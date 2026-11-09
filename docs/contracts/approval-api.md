@@ -65,6 +65,15 @@
 
 欄位語義同 [BDD 場景規格](../quality/bdd-scenarios-approval.md)之領域語彙；`state` 為 snake_case 終態/進行態列舉。
 
+### POST /api/v1/approvals（S10；冪等寫入）
+
+- Headers：session cookie（Editor 以上）＋ CSRF（`ekpi_csrf` cookie 或 `X-CSRF-Token` header，與工作台同一 middleware）；選填 `Idempotency-Key`（1–128 個可印 ASCII，逾界回 `400`）。
+- Body（`application/json`）：`{"workflow_ref":"id@version","amount_cents":int,"platform":str,"classification":str,"risk_score":int,"urgency":"low|normal|high|critical"}`。
+- 成功（新任務）：`201 Created`＋`Location: /api/v1/approvals/{task_id}`＋`{"schema":"ekpi-approval-submit-v1","task_id":...,"replayed":false}`。
+- 冪等重放（同 `Idempotency-Key` 再次提交）：`200 OK`＋`Idempotency-Replayed: true`＋**同一 task_id**，且**不追加事件**（以 store 事件計數鎖定）。鍵與任務的對應記錄於 `TaskSubmitted` 事件之選填欄位（向後相容，舊檔重放不變）。
+- 網域拒絕（未發布流程、版本不存在）：`422`＋結構化錯誤；格式錯誤：`400`；角色/CSRF：`403`；未登入：`401`。
+- 測試鎖：`api_submit_is_idempotent_by_key`、`api_submit_accepts_approver_role_by_ordering`。
+
 ## 3. 維持 501（未接線，契約屬後續切片）
 
 | 端點 | 理由 |
