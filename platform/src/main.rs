@@ -49,7 +49,7 @@ use ekp_adapters::jsonl_approval::{ApprovalStore, default_approval_path};
 use ekp_platform::governance::{Ledger, default_ledger_path};
 use ekp_platform::governance_web::event_label;
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--export-evidence-pack DIR [--governance-data PATH] [--approval-data PATH]]\n        [--data-map DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
+const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--export-evidence-pack DIR [--governance-data PATH] [--approval-data PATH]]\n        [--export-compliance-report DIR [--governance-data PATH] [--approval-data PATH]]\n        [--data-map DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -76,7 +76,7 @@ const BOOLEAN_FLAGS: [&str; 6] = [
     "--eval",
 ];
 
-const VALUE_FLAGS: [&str; 15] = [
+const VALUE_FLAGS: [&str; 16] = [
     "--out",
     "--cases",
     "--data",
@@ -84,6 +84,7 @@ const VALUE_FLAGS: [&str; 15] = [
     "--params",
     "--export-legalruleml",
     "--export-evidence-pack",
+    "--export-compliance-report",
     "--data-map",
     "--governance-data",
     "--approval-data",
@@ -97,13 +98,14 @@ const VALUE_FLAGS: [&str; 15] = [
 /// Flags that only make sense for report generation. `--search` and `--eval`
 /// return before the report path, so accepting these together would silently
 /// ignore the flag; treat that as a usage error instead.
-const REPORT_ONLY_FLAGS: [&str; 7] = [
+const REPORT_ONLY_FLAGS: [&str; 8] = [
     "--out",
     "--cases",
     "--html",
     "--coverage-report",
     "--export-legalruleml",
     "--export-evidence-pack",
+    "--export-compliance-report",
     "--data-map",
 ];
 
@@ -200,13 +202,15 @@ fn validate_args(args: &[String]) -> Result<(), String> {
             }
         }
     }
-    // Path overrides exist only for the evidence-pack mode; without it they
-    // would silently have no effect.
+    // Path overrides exist only for the runtime-data-consuming export modes
+    // (evidence pack, compliance report); without them they would silently
+    // have no effect.
     if (has_flag(args, "--governance-data") || has_flag(args, "--approval-data"))
         && !has_flag(args, "--export-evidence-pack")
+        && !has_flag(args, "--export-compliance-report")
     {
         return Err(
-            "`--governance-data` and `--approval-data` require `--export-evidence-pack`"
+            "`--governance-data` and `--approval-data` require `--export-evidence-pack` or `--export-compliance-report`"
                 .to_string(),
         );
     }
@@ -226,6 +230,7 @@ fn validate_args(args: &[String]) -> Result<(), String> {
             "--html",
             "--coverage-report",
             "--export-legalruleml",
+            "--export-compliance-report",
             "--import-wellfit",
             "--audit-log",
         ] {
@@ -251,6 +256,7 @@ fn validate_args(args: &[String]) -> Result<(), String> {
             "--coverage-report",
             "--export-legalruleml",
             "--export-evidence-pack",
+            "--export-compliance-report",
             "--import-wellfit",
             "--audit-log",
             "--governance-data",
@@ -258,6 +264,35 @@ fn validate_args(args: &[String]) -> Result<(), String> {
         ] {
             if has_flag(args, flag) {
                 return Err(format!("`{flag}` cannot be combined with `--data-map`"));
+            }
+        }
+    }
+    if has_flag(args, "--export-compliance-report") {
+        // Compliance report is a standalone derivation mode over the runtime
+        // chains: combining it with report generation or another data mode
+        // would let the caller believe an artifact was produced that never
+        // was.
+        if search || eval {
+            return Err(
+                "`--export-compliance-report` cannot be combined with `--search` or `--eval`"
+                    .to_string(),
+            );
+        }
+        for flag in [
+            "--out",
+            "--cases",
+            "--html",
+            "--coverage-report",
+            "--export-legalruleml",
+            "--export-evidence-pack",
+            "--data-map",
+            "--import-wellfit",
+            "--audit-log",
+        ] {
+            if has_flag(args, flag) {
+                return Err(format!(
+                    "`{flag}` cannot be combined with `--export-compliance-report`"
+                ));
             }
         }
     }
@@ -423,6 +458,8 @@ fn run(args: &[String]) -> i32 {
     let export_dir = flag_value(args, "--export-legalruleml").map(PathBuf::from);
     let evidence_pack_dir = flag_value(args, "--export-evidence-pack").map(PathBuf::from);
     let data_map_dir = flag_value(args, "--data-map").map(PathBuf::from);
+    let compliance_report_dir =
+        flag_value(args, "--export-compliance-report").map(PathBuf::from);
     let governance_data_override = flag_value(args, "--governance-data").map(PathBuf::from);
     let approval_data_override = flag_value(args, "--approval-data").map(PathBuf::from);
 
@@ -858,6 +895,49 @@ fn run(args: &[String]) -> i32 {
             println!("data map written: {}", path.display());
             return 0;
         }
+        if let Some(dir) = &compliance_report_dir {
+            let governance_path =
+                governance_data_override.clone().unwrap_or_else(default_ledger_path);
+            let approvals_path = approval_data_override
+                .clone()
+                .unwrap_or_else(default_approval_path);
+            let (report, verified) = match build_compliance_report(
+                &data_dir,
+                threshold,
+                &governance_path,
+                &approvals_path,
+            ) {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("FAIL: compliance report: {e}");
+                    return 1;
+                }
+            };
+            let json_path = dir.join("compliance_report.json");
+            let json_text = match serde_json::to_string_pretty(&report) {
+                Ok(text) => text,
+                Err(e) => {
+                    eprintln!("FAIL: serialize compliance report: {e}");
+                    return 1;
+                }
+            };
+            if let Err(e) = write_text(&json_path, &json_text) {
+                eprintln!("FAIL: write compliance report: {e}");
+                return 1;
+            }
+            let md_path = dir.join("compliance_report.md");
+            let md_text = compliance_report_markdown(&report);
+            if let Err(e) = write_text(&md_path, &md_text) {
+                eprintln!("FAIL: write compliance report markdown: {e}");
+                return 1;
+            }
+            println!("compliance report written: {}", json_path.display());
+            if !verified {
+                eprintln!("FAIL: compliance report records at least one unverified chain");
+                return 1;
+            }
+            return 0;
+        }
         if want_coverage {
             match coverage_markdown(&platform) {
                 Ok(md) => match write_text(Path::new("coverage_report.md"), &md) {
@@ -955,6 +1035,216 @@ fn write_legalruleml(dir: &Path, xml: &str) -> Result<PathBuf, String> {
     let path = dir.join("legalruleml_v1_compact.xml");
     write_text(&path, xml)?;
     Ok(path)
+}
+
+/// 建構合規狀態報告（CTR-EXP-004）：全部欄位可從雙鏈與語料**推導**，
+/// 無時間戳/路徑 → 同輸入重放逐位元組一致。本報告是**狀態事實**，
+/// 不是合規認證；時效判定（逾期）由消費者以 `due_at` 對照產生後時間。
+fn build_compliance_report(
+    data_dir: &Path,
+    threshold: f64,
+    governance_path: &Path,
+    approvals_path: &Path,
+) -> Result<(Value, bool), String> {
+    let mut all_verified = true;
+
+    let governance = match Ledger::open(governance_path) {
+        Ok(ledger) => {
+            let verified = ledger.verify().is_ok();
+            if !verified {
+                all_verified = false;
+            }
+            let snapshot = ledger.snapshot();
+            let unreviewed_ids: Vec<String> = snapshot
+                .evidence
+                .iter()
+                .filter(|item| !snapshot.reviews.contains_key(&item.id))
+                .map(|item| item.id.clone())
+                .collect();
+            let mut by_status: BTreeMap<String, usize> = BTreeMap::new();
+            for case in &snapshot.cases {
+                *by_status.entry(case.status.clone()).or_insert(0) += 1;
+            }
+            let non_closed_ids: Vec<String> = snapshot
+                .cases
+                .iter()
+                .filter(|case| case.status != "closed")
+                .map(|case| case.id.clone())
+                .collect();
+            let mut by_decision: BTreeMap<String, usize> = BTreeMap::new();
+            for decision in &snapshot.gate_decisions {
+                *by_decision.entry(decision.decision.clone()).or_insert(0) += 1;
+            }
+            serde_json::json!({
+                "projects": snapshot.projects.len(),
+                "evidence": {
+                    "total": snapshot.evidence.len(),
+                    "reviewed": snapshot.reviews.len(),
+                    "unreviewed_ids": unreviewed_ids,
+                },
+                "quality_cases": {
+                    "total": snapshot.cases.len(),
+                    "by_status": by_status,
+                    "non_closed_ids": non_closed_ids,
+                },
+                "inspections": snapshot.inspections.len(),
+                "gate_decisions": {
+                    "total": snapshot.gate_decisions.len(),
+                    "by_decision": by_decision,
+                },
+                "chain_verified": verified,
+                "event_count": snapshot.events.len(),
+                "head_sha256": snapshot.events.last().map(|event| event.sha256.clone()),
+            })
+        }
+        Err(_) => {
+            all_verified = false;
+            serde_json::json!({
+                "projects": 0,
+                "evidence": { "total": 0, "reviewed": 0, "unreviewed_ids": [], "load_ok": false },
+                "quality_cases": { "total": 0, "by_status": {}, "non_closed_ids": [], "load_ok": false },
+                "inspections": 0,
+                "gate_decisions": { "total": 0, "by_decision": {} },
+                "chain_verified": false,
+                "event_count": 0,
+                "head_sha256": Value::Null,
+                "load_ok": false,
+            })
+        }
+    };
+
+    let approvals = match ApprovalStore::open(approvals_path) {
+        Ok(store) => {
+            let verified = store.verify().is_ok();
+            if !verified {
+                all_verified = false;
+            }
+            let mut by_state: BTreeMap<String, usize> = BTreeMap::new();
+            let mut per_task: Vec<Value> = Vec::new();
+            for task in store.list_tasks() {
+                *by_state.entry(format!("{:?}", task.state)).or_insert(0) += 1;
+                per_task.push(serde_json::json!({
+                    "id": task.id,
+                    "workflow": format!("{}@{}", task.workflow_id, task.workflow_version),
+                    "stage_id": task.stage_id,
+                    "state": task.state,
+                    "due_at": task.due_at,
+                }));
+            }
+            per_task.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+            serde_json::json!({
+                "workflows_total": store.list_workflows().len(),
+                "tasks": {
+                    "total": per_task.len(),
+                    "by_state": by_state,
+                    "per_task": per_task,
+                },
+                "chain_verified": verified,
+                "event_count": store.event_count(),
+                "head_sha256": store.head_sha256(),
+            })
+        }
+        Err(_) => {
+            all_verified = false;
+            serde_json::json!({
+                "workflows_total": 0,
+                "tasks": { "total": 0, "by_state": {}, "per_task": [], "load_ok": false },
+                "chain_verified": false,
+                "event_count": 0,
+                "head_sha256": Value::Null,
+                "load_ok": false,
+            })
+        }
+    };
+
+    let platform = match load_platform(data_dir, threshold) {
+        Ok(platform) => serde_json::json!({
+            "docs": platform.docs.documents.len(),
+            "active_rules": platform.rules.active_rules().count(),
+            "processes": platform.processes.processes.len(),
+            "load_ok": true,
+        }),
+        Err(_) => {
+            all_verified = false;
+            serde_json::json!({ "load_ok": false })
+        }
+    };
+
+    Ok((
+        serde_json::json!({
+            "schema": "ekpi-compliance-report-v1",
+            "governance": governance,
+            "approvals": approvals,
+            "platform": platform,
+        }),
+        all_verified,
+    ))
+}
+
+/// 由同一份 JSON 渲染人讀版 Markdown（單一事實來源；決定性）。
+fn compliance_report_markdown(report: &Value) -> String {
+    let mut out = String::new();
+    out.push_str("# 合規狀態報告（ekpi-compliance-report-v1）\n\n");
+    out.push_str("> 本報告記錄雙鏈與語料的**狀態事實**，不是合規認證。");
+    out.push_str("時效判定（逾期）請以各任務的 `due_at` 對照產生後時間；本檔不內嵌產生時間以維持重放一致性。\n\n");
+    let governance = &report["governance"];
+    out.push_str("## 治理帳鏈\n\n");
+    out.push_str(&format!(
+        "- 專案：{}\n- 證據：{} 筆（已審 {}、未審 {}）\n",
+        governance["projects"],
+        governance["evidence"]["total"],
+        governance["evidence"]["reviewed"],
+        governance["evidence"]["total"].as_u64().unwrap_or(0)
+            - governance["evidence"]["reviewed"].as_u64().unwrap_or(0)
+    ));
+    if let Some(ids) = governance["evidence"]["unreviewed_ids"].as_array() {
+        if !ids.is_empty() {
+            out.push_str(&format!(
+                "- 未審證據：{}\n",
+                ids.iter().filter_map(|id| id.as_str()).collect::<Vec<_>>().join("、")
+            ));
+        }
+    }
+    out.push_str(&format!(
+        "- 品質個案：{} 筆（狀態分佈 {:?}）\n- 檢驗：{} 筆\n- 關卡決策：{} 筆（{:?}）\n",
+        governance["quality_cases"]["total"],
+        governance["quality_cases"]["by_status"],
+        governance["inspections"],
+        governance["gate_decisions"]["total"],
+        governance["gate_decisions"]["by_decision"],
+    ));
+    if let Some(ids) = governance["quality_cases"]["non_closed_ids"].as_array() {
+        if !ids.is_empty() {
+            out.push_str(&format!(
+                "- 未結案個案：{}\n",
+                ids.iter().filter_map(|id| id.as_str()).collect::<Vec<_>>().join("、")
+            ));
+        }
+    }
+    out.push_str(&format!(
+        "- 帳鏈：{} 事件、驗證 {}、鏈頭 {}\n\n",
+        governance["event_count"],
+        if governance["chain_verified"] == true { "通過" } else { "失敗" },
+        governance["head_sha256"],
+    ));
+    let approvals = &report["approvals"];
+    out.push_str("## 核准帳鏈\n\n");
+    out.push_str(&format!(
+        "- 工作流定義：{}\n- 任務：{} 筆（狀態分佈 {:?}）\n- 帳鏈：{} 事件、驗證 {}、鏈頭 {}\n\n",
+        approvals["workflows_total"],
+        approvals["tasks"]["total"],
+        approvals["tasks"]["by_state"],
+        approvals["event_count"],
+        if approvals["chain_verified"] == true { "通過" } else { "失敗" },
+        approvals["head_sha256"],
+    ));
+    let platform = &report["platform"];
+    out.push_str("## 語料\n\n");
+    out.push_str(&format!(
+        "- 文件 {}、有效規則 {}、流程 {}\n\n",
+        platform["docs"], platform["active_rules"], platform["processes"]
+    ));
+    out
 }
 
 /// 建構證據包（CTR-EXP-003）：治理與核准雙鏈的決定性摘要＋平台資料計數。

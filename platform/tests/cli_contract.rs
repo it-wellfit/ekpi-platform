@@ -933,3 +933,108 @@ fn data_map_refuses_conflicting_modes() {
     assert!(!map.exists(), "a usage error must not produce a map");
     cleanup(&dir);
 }
+
+/// S13（CTR-EXP-004）：合規報告為決定性產物——雙跑逐位元組一致；
+/// 空鏈狀態如實記錄（0 專案/0 證據/鏈已驗證）。
+#[test]
+fn compliance_report_export_is_deterministic() {
+    let dir = temp_dir();
+    let gov = dir.join("gov-ledger.jsonl");
+    let appr = dir.join("approvals.jsonl");
+    let pack_a = dir.join("r-a");
+    let pack_b = dir.join("r-b");
+    let args_common = [
+        "--governance-data",
+        gov.to_str().expect("utf-8 path"),
+        "--approval-data",
+        appr.to_str().expect("utf-8 path"),
+    ];
+    let out_a = run_in(
+        &dir,
+        &[
+            "--export-compliance-report",
+            pack_a.to_str().expect("utf-8 path"),
+            args_common[0],
+            args_common[1],
+            args_common[2],
+            args_common[3],
+        ],
+    );
+    assert_eq!(exit_code(&out_a), 0, "stderr: {}", stderr(&out_a));
+    let out_b = run_in(
+        &dir,
+        &[
+            "--export-compliance-report",
+            pack_b.to_str().expect("utf-8 path"),
+            args_common[0],
+            args_common[1],
+            args_common[2],
+            args_common[3],
+        ],
+    );
+    assert_eq!(exit_code(&out_b), 0, "stderr: {}", stderr(&out_b));
+    let a = std::fs::read_to_string(pack_a.join("compliance_report.json")).expect("report a");
+    let b = std::fs::read_to_string(pack_b.join("compliance_report.json")).expect("report b");
+    let parsed: serde_json::Value = serde_json::from_str(&a).expect("valid JSON");
+    assert_eq!(parsed["schema"], "ekpi-compliance-report-v1");
+    assert_eq!(parsed["governance"]["chain_verified"], true);
+    assert_eq!(parsed["approvals"]["chain_verified"], true);
+    assert_eq!(parsed["platform"]["active_rules"], 19);
+    assert_eq!(a, b, "same inputs must produce byte-identical reports");
+    let md = std::fs::read_to_string(pack_a.join("compliance_report.md")).expect("md report");
+    assert!(md.contains("不是合規認證"), "the disclaimer is mandatory");
+    cleanup(&dir);
+}
+
+/// S13：鏈損毀 → 如實記錄 chain_verified=false 並 exit 1。
+#[test]
+fn compliance_report_records_a_corrupt_chain_honestly() {
+    let dir = temp_dir();
+    let gov = dir.join("gov-ledger.jsonl");
+    std::fs::write(&gov, "not json\n").expect("write corrupt ledger");
+    let appr = dir.join("approvals.jsonl");
+    let pack = dir.join("r");
+    let output = run_in(
+        &dir,
+        &[
+            "--export-compliance-report",
+            pack.to_str().expect("utf-8 path"),
+            "--governance-data",
+            gov.to_str().expect("utf-8 path"),
+            "--approval-data",
+            appr.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 1, "stderr: {}", stderr(&output));
+    let text =
+        std::fs::read_to_string(pack.join("compliance_report.json")).expect("report written");
+    let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(parsed["governance"]["chain_verified"], false);
+    assert_eq!(parsed["governance"]["load_ok"], false);
+    cleanup(&dir);
+}
+
+/// S13：不得與報告模式或其它資料模式併用。
+#[test]
+fn compliance_report_refuses_conflicting_modes() {
+    let dir = temp_dir();
+    let report = dir.join("r");
+    let out = dir.join("out");
+    let output = run_in(
+        &dir,
+        &[
+            "--export-compliance-report",
+            report.to_str().expect("utf-8 path"),
+            "--out",
+            out.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("cannot be combined with `--export-compliance-report`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(!report.exists(), "a usage error must not produce a report");
+    cleanup(&dir);
+}
