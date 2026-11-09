@@ -12,6 +12,7 @@ pub mod bpmn;
 pub mod causal;
 pub mod config;
 pub mod coverage_report;
+pub mod data_map;
 pub mod docs;
 pub mod engine;
 pub mod errors;

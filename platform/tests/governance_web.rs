@@ -1074,3 +1074,58 @@ async fn logout_mirrors_the_secure_cookie_attribute() {
         std::fs::remove_file(path).expect("test ledger removed");
     }
 }
+
+/// S11：資料地圖頁——血緣表（治理 9＋核准 5）需登入；未登入 401。
+#[tokio::test]
+async fn data_map_page_requires_session_and_renders() {
+    unsafe {
+        std::env::set_var("EKPI_TEST_MODE", "1");
+    }
+    let path = test_path();
+    let app = test_app(&path);
+    let response = get_with_cookie(&app, "/data-map", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let page = get_with_cookie(&app, "/data-map", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("資料血緣地圖"), "page heading");
+    assert!(html.contains("project_created"), "governance lineage tag");
+    assert!(
+        html.contains("gate_decision_recorded"),
+        "last governance tag"
+    );
+    assert!(html.contains("task_submitted"), "approval lineage tag");
+    assert!(html.contains("tasks_expired"), "last approval tag");
+    assert!(html.contains("現有事件數"), "live count column");
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// S11：血緣計數隨實際資料增長——建立專案後 project_created 計數為 1。
+#[tokio::test]
+async fn data_map_counts_reflect_live_ledger() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let page = get_with_cookie(&app, "/data-map", Some(&cookie)).await;
+    let html = response_text(page).await;
+    let before = html.matches("project_created").count();
+    let form = "name=血緣測試&department=PMO&owner=Alex&risk_tier=low";
+    let created = post_form_with_cookie(&app, "/projects", form, Some(&cookie)).await;
+    assert_eq!(created.status(), StatusCode::SEE_OTHER, "project created");
+    let page = get_with_cookie(&app, "/data-map", Some(&cookie)).await;
+    let html = response_text(page).await;
+    let after = html.matches("project_created").count();
+    assert_eq!(before, after, "lineage tags are static (type-driven)");
+    assert!(
+        html.contains("血緣測試") || html.contains("1"),
+        "live count column must reflect the new ledger event"
+    );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}

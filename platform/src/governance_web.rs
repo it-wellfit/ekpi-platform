@@ -2,7 +2,7 @@
 
 //! CSS-first, server-rendered local pilot workbench.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -137,6 +137,9 @@ pub fn router_with_approvals(
     let auth_for_guard = auth.clone();
     let auth_for_csrf = auth.clone();
     let auth_for_approvals = auth.clone();
+    let auth_for_map = auth.clone();
+    let ledger_for_map = ledger.clone();
+    let approvals_for_map = approvals.clone();
 
     let core = Router::new()
         .route("/ready", get(ready_check))
@@ -195,7 +198,12 @@ pub fn router_with_approvals(
         .route("/api/v1/approvals/{id}/escalate", post(api_escalate_task))
         .with_state((auth_for_approvals, approvals));
 
+    let data_map_routes = Router::new()
+        .route("/data-map", get(data_map_page))
+        .with_state((ledger_for_map, auth_for_map, approvals_for_map));
+
     core.merge(approval_routes)
+        .merge(data_map_routes)
         .layer(middleware::from_fn_with_state(
             auth_for_guard,
             require_session,
@@ -2461,6 +2469,7 @@ fn layout(title: &str, active: &str, content: Markup) -> Markup {
                             (nav_link("/controls", "controls", active, "風險與品質", "◇"))
                             (nav_link("/lifecycle", "lifecycle", active, "階段與關卡", "▥"))
                             (nav_link("/audit", "audit", active, "稽核紀錄", "◷"))
+                            (nav_link("/data-map", "data-map", active, "資料地圖", "⌗"))
                         }
                         div class="sidebar-note" {
                             span class="status-dot" aria-hidden="true" {}
@@ -2775,6 +2784,112 @@ fn search_content(
         p class="data-note" {
             "索引涵蓋 " (doc_count) " 份文件、" (section_count) " 個條款區段（依登入角色過濾權限）。檢索為字面相似度，不含語意模型；文件本體保留在來源平台。"
         }
+    }
+}
+
+/// GET /data-map — 欄位 → 事件 → 寫入面 → 呈現頁的血緣（S11，CTR-DATA-008）。
+/// 血緣本體為 `'static` 常數表（型別系統驅動、窮舉鎖定）；此頁另附雙鏈
+/// 的**現況事件計數**，讓血緣與實際資料對照。唯讀（GET），Viewer 以上。
+async fn data_map_page(
+    State((ledger, auth, approvals)): State<(SharedLedger, SharedAuth, SharedApprovals)>,
+    request: Request,
+) -> Response {
+    let (_username, _role) = match session_identity_full(&auth, request.headers(), Role::Viewer) {
+        Ok(identity) => identity,
+        Err(response) => return *response,
+    };
+    let (governance_counts, approvals_counts, approvals_integrity) =
+        match approvals_view(&approvals) {
+            Ok((_, _, integrity, _)) => {
+                let snapshot = match ledger.lock() {
+                    Ok(ledger) => ledger.snapshot(),
+                    Err(_) => return page_error_response("data-map", "治理資料鎖定失敗"),
+                };
+                let mut governance_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+                for event in &snapshot.events {
+                    let tag = crate::data_map::governance_payload_tag(&event.payload);
+                    *governance_counts.entry(tag).or_insert(0) += 1;
+                }
+                let mut approvals_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+                for (tag, count) in approvals_view_counts(&approvals) {
+                    approvals_counts.insert(tag, count);
+                }
+                (governance_counts, approvals_counts, integrity)
+            }
+            Err(error) => return page_error_response("data-map", &error),
+        };
+    page_response(
+        "資料地圖",
+        "data-map",
+        data_map_content(&governance_counts, &approvals_counts, approvals_integrity),
+    )
+}
+
+/// 核准鏈各事件標籤的現況計數（唯讀；借道 store 的摘要存取子）。
+fn approvals_view_counts(approvals: &SharedApprovals) -> Vec<(&'static str, usize)> {
+    let store = match approvals.lock() {
+        Ok(store) => store,
+        Err(_) => return Vec::new(),
+    };
+    let counts = store.event_type_counts();
+    crate::data_map::APPROVAL_LINEAGE
+        .iter()
+        .map(|entry| (entry.event, counts.get(entry.event).copied().unwrap_or(0)))
+        .collect()
+}
+
+fn data_map_content(
+    governance_counts: &BTreeMap<&'static str, usize>,
+    approval_counts: &BTreeMap<&'static str, usize>,
+    approvals_integrity: bool,
+) -> Markup {
+    html! {
+        section class="page-heading" {
+            div {
+                p class="eyebrow" { "治理 / 資料地圖" }
+                h1 { "資料血緣地圖" }
+                p class="page-subtitle" { "欄位 → 事件 → 寫入面 → 呈現頁；血緣由型別系統窮舉鎖定，新增事件變體時編譯失敗即強制更新。" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "治理事件血緣" } p { "governance ledger（JSONL 雜湊鏈）全部事件變體" } }
+                span class="meter-label" { (format!("已記錄 {} 筆", governance_counts.values().sum::<usize>())) }
+            }
+            table class="api-table" {
+                thead { tr { th { "事件" } th { "欄位" } th { "寫入面" } th { "呈現頁" } th { "現有事件數" } } }
+                tbody {
+                    @for entry in crate::data_map::GOVERNANCE_LINEAGE {
+                        tr {
+                            td { span class="result-cite" { (entry.event) } }
+                            td { (entry.fields.join("、")) }
+                            td { (entry.write_surfaces.join("；")) }
+                            td { (entry.pages.join(" ")) }
+                            td class="num" { (governance_counts.get(entry.event).copied().unwrap_or(0)) }
+                        }
+                    }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "核准事件血緣" } p { "approval store（獨立 JSONL 雜湊鏈）全部事件變體" } }
+                span class="badge" class=(if approvals_integrity { "badge-green" } else { "badge-red" }) { (if approvals_integrity { "鏈已驗證" } else { "鏈驗證失敗" }) }
+            }
+            table class="api-table" {
+                thead { tr { th { "事件" } th { "欄位" } th { "寫入面" } th { "呈現頁" } th { "現有事件數" } } }
+                tbody {
+                    @for entry in crate::data_map::APPROVAL_LINEAGE {
+                        tr {
+                            td { span class="result-cite" { (entry.event) } }
+                            td { (entry.fields.join("、")) }
+                            td { (entry.write_surfaces.join("；")) }
+                            td { (entry.pages.join(" ")) }
+                            td class="num" { (approval_counts.get(entry.event).copied().unwrap_or(0)) }
+                        }
+                    }
+                }
+            }
+        }
+        p class="data-note" { "血緣為 'static 常數表＋窮舉 match 鎖定（編譯期保證覆蓋全部事件變體）；本頁為唯讀（GET），不寫入任何鏈。" }
     }
 }
 

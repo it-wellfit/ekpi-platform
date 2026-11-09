@@ -887,3 +887,49 @@ fn evidence_pack_records_a_corrupt_chain_honestly_and_exits_nonzero() {
     assert_eq!(parsed["governance"]["load_ok"], false);
     cleanup(&dir);
 }
+
+/// S11（CTR-DATA-008）：資料地圖匯出為決定性產物——雙跑逐位元組一致，
+/// 治理 9 列＋核准 5 列，schema ekpi-data-map-v1。
+#[test]
+fn data_map_export_is_deterministic() {
+    let dir = temp_dir();
+    let out_a = dir.join("map-a");
+    let out_b = dir.join("map-b");
+    let out_a_run = run_in(&dir, &["--data-map", out_a.to_str().expect("utf-8 path")]);
+    assert_eq!(exit_code(&out_a_run), 0, "stderr: {}", stderr(&out_a_run));
+    let out_b_run = run_in(&dir, &["--data-map", out_b.to_str().expect("utf-8 path")]);
+    assert_eq!(exit_code(&out_b_run), 0, "stderr: {}", stderr(&out_b_run));
+    let a = std::fs::read_to_string(out_a.join("data_map.json")).expect("map a");
+    let b = std::fs::read_to_string(out_b.join("data_map.json")).expect("map b");
+    let parsed: serde_json::Value = serde_json::from_str(&a).expect("valid JSON");
+    assert_eq!(parsed["schema"], "ekpi-data-map-v1");
+    assert_eq!(parsed["governance"].as_array().map(|v| v.len()), Some(9));
+    assert_eq!(parsed["approvals"].as_array().map(|v| v.len()), Some(5));
+    assert_eq!(a, b, "same inputs must produce byte-identical maps");
+    cleanup(&dir);
+}
+
+/// S11：資料地圖不得與報告模式或其它資料模式併用。
+#[test]
+fn data_map_refuses_conflicting_modes() {
+    let dir = temp_dir();
+    let map = dir.join("map");
+    let out = dir.join("out");
+    let output = run_in(
+        &dir,
+        &[
+            "--data-map",
+            map.to_str().expect("utf-8 path"),
+            "--out",
+            out.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("cannot be combined with `--data-map`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(!map.exists(), "a usage error must not produce a map");
+    cleanup(&dir);
+}

@@ -49,7 +49,7 @@ use ekp_adapters::jsonl_approval::{ApprovalStore, default_approval_path};
 use ekp_platform::governance::{Ledger, default_ledger_path};
 use ekp_platform::governance_web::event_label;
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--export-evidence-pack DIR [--governance-data PATH] [--approval-data PATH]]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
+const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--export-evidence-pack DIR [--governance-data PATH] [--approval-data PATH]]\n        [--data-map DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -76,7 +76,7 @@ const BOOLEAN_FLAGS: [&str; 6] = [
     "--eval",
 ];
 
-const VALUE_FLAGS: [&str; 14] = [
+const VALUE_FLAGS: [&str; 15] = [
     "--out",
     "--cases",
     "--data",
@@ -84,6 +84,7 @@ const VALUE_FLAGS: [&str; 14] = [
     "--params",
     "--export-legalruleml",
     "--export-evidence-pack",
+    "--data-map",
     "--governance-data",
     "--approval-data",
     "--search",
@@ -96,13 +97,14 @@ const VALUE_FLAGS: [&str; 14] = [
 /// Flags that only make sense for report generation. `--search` and `--eval`
 /// return before the report path, so accepting these together would silently
 /// ignore the flag; treat that as a usage error instead.
-const REPORT_ONLY_FLAGS: [&str; 6] = [
+const REPORT_ONLY_FLAGS: [&str; 7] = [
     "--out",
     "--cases",
     "--html",
     "--coverage-report",
     "--export-legalruleml",
     "--export-evidence-pack",
+    "--data-map",
 ];
 
 fn has_flag(args: &[String], flag: &str) -> bool {
@@ -231,6 +233,31 @@ fn validate_args(args: &[String]) -> Result<(), String> {
                 return Err(format!(
                     "`{flag}` cannot be combined with `--export-evidence-pack`"
                 ));
+            }
+        }
+    }
+    if has_flag(args, "--data-map") {
+        // Data-map export is a standalone, read-only lineage mode (static
+        // constant table): combining it with report generation or another
+        // data mode would let the caller believe an artifact was produced
+        // that never was.
+        if search || eval {
+            return Err("`--data-map` cannot be combined with `--search` or `--eval`".to_string());
+        }
+        for flag in [
+            "--out",
+            "--cases",
+            "--html",
+            "--coverage-report",
+            "--export-legalruleml",
+            "--export-evidence-pack",
+            "--import-wellfit",
+            "--audit-log",
+            "--governance-data",
+            "--approval-data",
+        ] {
+            if has_flag(args, flag) {
+                return Err(format!("`{flag}` cannot be combined with `--data-map`"));
             }
         }
     }
@@ -395,6 +422,7 @@ fn run(args: &[String]) -> i32 {
     let want_html = args.iter().any(|a| a == "--html");
     let export_dir = flag_value(args, "--export-legalruleml").map(PathBuf::from);
     let evidence_pack_dir = flag_value(args, "--export-evidence-pack").map(PathBuf::from);
+    let data_map_dir = flag_value(args, "--data-map").map(PathBuf::from);
     let governance_data_override = flag_value(args, "--governance-data").map(PathBuf::from);
     let approval_data_override = flag_value(args, "--approval-data").map(PathBuf::from);
 
@@ -744,7 +772,11 @@ fn run(args: &[String]) -> i32 {
 
     if !has_flag(args, "--out") {
         // 獨立模式：--export-legalruleml / --coverage-report / 純 schema 校驗。
-        if export_dir.is_none() && evidence_pack_dir.is_none() && !want_coverage {
+        if export_dir.is_none()
+            && evidence_pack_dir.is_none()
+            && data_map_dir.is_none()
+            && !want_coverage
+        {
             if schema_flag {
                 // 純 schema 校驗：檢查結果即成敗（違規已在上方 return 1）。
                 return 0;
@@ -807,6 +839,23 @@ fn run(args: &[String]) -> i32 {
                 eprintln!("FAIL: evidence pack records at least one unverified chain");
                 return 1;
             }
+            return 0;
+        }
+        if let Some(dir) = &data_map_dir {
+            let map = ekp_platform::data_map::build_data_map();
+            let path = dir.join("data_map.json");
+            let text = match serde_json::to_string_pretty(&map) {
+                Ok(text) => text,
+                Err(e) => {
+                    eprintln!("FAIL: serialize data map: {e}");
+                    return 1;
+                }
+            };
+            if let Err(e) = write_text(&path, &text) {
+                eprintln!("FAIL: write data map: {e}");
+                return 1;
+            }
+            println!("data map written: {}", path.display());
             return 0;
         }
         if want_coverage {
