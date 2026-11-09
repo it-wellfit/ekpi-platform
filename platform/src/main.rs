@@ -45,7 +45,11 @@ use ekp_platform::process::{ReplayEvent, events_sha256};
 use ekp_platform::snapshot::DecisionSnapshot;
 use ekp_platform::{params as params_module, validate};
 
-const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
+use ekp_adapters::jsonl_approval::{ApprovalStore, default_approval_path};
+use ekp_platform::governance::{Ledger, default_ledger_path};
+use ekp_platform::governance_web::event_label;
+
+const USAGE: &str = "usage: ekp_platform [--selftest | --health | --out DIR [--cases PATH] [--data DIR] [--threshold F]\n        [--params PATH] [--declared-rules-schema] [--export-legalruleml DIR]\n        [--export-evidence-pack DIR [--governance-data PATH] [--approval-data PATH]]\n        [--coverage-report] [--html] | --search QUERY [--audit-log PATH] [--llm PROVIDER[:MODEL]]\n        | --eval --test-set PATH | --import-wellfit PATH]";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -72,13 +76,16 @@ const BOOLEAN_FLAGS: [&str; 6] = [
     "--eval",
 ];
 
-const VALUE_FLAGS: [&str; 11] = [
+const VALUE_FLAGS: [&str; 14] = [
     "--out",
     "--cases",
     "--data",
     "--threshold",
     "--params",
     "--export-legalruleml",
+    "--export-evidence-pack",
+    "--governance-data",
+    "--approval-data",
     "--search",
     "--test-set",
     "--audit-log",
@@ -89,12 +96,13 @@ const VALUE_FLAGS: [&str; 11] = [
 /// Flags that only make sense for report generation. `--search` and `--eval`
 /// return before the report path, so accepting these together would silently
 /// ignore the flag; treat that as a usage error instead.
-const REPORT_ONLY_FLAGS: [&str; 5] = [
+const REPORT_ONLY_FLAGS: [&str; 6] = [
     "--out",
     "--cases",
     "--html",
     "--coverage-report",
     "--export-legalruleml",
+    "--export-evidence-pack",
 ];
 
 fn has_flag(args: &[String], flag: &str) -> bool {
@@ -186,6 +194,42 @@ fn validate_args(args: &[String]) -> Result<(), String> {
             if has_flag(args, flag) {
                 return Err(format!(
                     "`{flag}` cannot be combined with `--import-wellfit`"
+                ));
+            }
+        }
+    }
+    // Path overrides exist only for the evidence-pack mode; without it they
+    // would silently have no effect.
+    if (has_flag(args, "--governance-data") || has_flag(args, "--approval-data"))
+        && !has_flag(args, "--export-evidence-pack")
+    {
+        return Err(
+            "`--governance-data` and `--approval-data` require `--export-evidence-pack`"
+                .to_string(),
+        );
+    }
+    if has_flag(args, "--export-evidence-pack") {
+        // Evidence-pack export is a standalone data-layer mode: combining it
+        // with report generation or another data mode would let the caller
+        // believe an artifact was produced that never was.
+        if search || eval {
+            return Err(
+                "`--export-evidence-pack` cannot be combined with `--search` or `--eval`"
+                    .to_string(),
+            );
+        }
+        for flag in [
+            "--out",
+            "--cases",
+            "--html",
+            "--coverage-report",
+            "--export-legalruleml",
+            "--import-wellfit",
+            "--audit-log",
+        ] {
+            if has_flag(args, flag) {
+                return Err(format!(
+                    "`{flag}` cannot be combined with `--export-evidence-pack`"
                 ));
             }
         }
@@ -350,6 +394,9 @@ fn run(args: &[String]) -> i32 {
     let want_coverage = args.iter().any(|a| a == "--coverage-report");
     let want_html = args.iter().any(|a| a == "--html");
     let export_dir = flag_value(args, "--export-legalruleml").map(PathBuf::from);
+    let evidence_pack_dir = flag_value(args, "--export-evidence-pack").map(PathBuf::from);
+    let governance_data_override = flag_value(args, "--governance-data").map(PathBuf::from);
+    let approval_data_override = flag_value(args, "--approval-data").map(PathBuf::from);
 
     // ── --search QUERY：知識搜尋 with citations（Slice 3）。
     if let Some(query) = flag_value(args, "--search") {
@@ -697,7 +744,7 @@ fn run(args: &[String]) -> i32 {
 
     if !has_flag(args, "--out") {
         // 獨立模式：--export-legalruleml / --coverage-report / 純 schema 校驗。
-        if export_dir.is_none() && !want_coverage {
+        if export_dir.is_none() && evidence_pack_dir.is_none() && !want_coverage {
             if schema_flag {
                 // 純 schema 校驗：檢查結果即成敗（違規已在上方 return 1）。
                 return 0;
@@ -723,6 +770,44 @@ fn run(args: &[String]) -> i32 {
                     return 1;
                 }
             }
+        }
+        if let Some(dir) = &evidence_pack_dir {
+            let governance_path = governance_data_override
+                .clone()
+                .unwrap_or_else(default_ledger_path);
+            let approvals_path = approval_data_override
+                .clone()
+                .unwrap_or_else(default_approval_path);
+            let (pack, verified) = match build_evidence_pack(
+                &data_dir,
+                threshold,
+                &governance_path,
+                &approvals_path,
+            ) {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("FAIL: evidence pack: {e}");
+                    return 1;
+                }
+            };
+            let path = dir.join("evidence_pack.json");
+            let text = match serde_json::to_string_pretty(&pack) {
+                Ok(text) => text,
+                Err(e) => {
+                    eprintln!("FAIL: serialize evidence pack: {e}");
+                    return 1;
+                }
+            };
+            if let Err(e) = write_text(&path, &text) {
+                eprintln!("FAIL: write evidence pack: {e}");
+                return 1;
+            }
+            println!("evidence pack written: {}", path.display());
+            if !verified {
+                eprintln!("FAIL: evidence pack records at least one unverified chain");
+                return 1;
+            }
+            return 0;
         }
         if want_coverage {
             match coverage_markdown(&platform) {
@@ -821,6 +906,100 @@ fn write_legalruleml(dir: &Path, xml: &str) -> Result<PathBuf, String> {
     let path = dir.join("legalruleml_v1_compact.xml");
     write_text(&path, xml)?;
     Ok(path)
+}
+
+/// 建構證據包（CTR-EXP-003）：治理與核准雙鏈的決定性摘要＋平台資料計數。
+///
+/// 契約要點：不含時間戳與路徑（跨執行逐位元組一致）；鏈不可載入或驗證
+/// 失敗時如實記錄 `chain_verified: false` 與 `load_ok: false`（pack 仍寫出，
+/// exit code 反映真相——機械可讀的誠實，而非靜默降級）。
+fn build_evidence_pack(
+    data_dir: &Path,
+    threshold: f64,
+    governance_path: &Path,
+    approvals_path: &Path,
+) -> Result<(Value, bool), String> {
+    let mut all_verified = true;
+
+    let governance = match Ledger::open(governance_path) {
+        Ok(ledger) => {
+            let verified = ledger.verify().is_ok();
+            if !verified {
+                all_verified = false;
+            }
+            let snapshot = ledger.snapshot();
+            let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+            for event in &snapshot.events {
+                *counts
+                    .entry(event_label(&event.payload).to_string())
+                    .or_insert(0) += 1;
+            }
+            serde_json::json!({
+                "event_count": snapshot.events.len(),
+                "chain_verified": verified,
+                "head_sha256": snapshot.events.last().map(|event| event.sha256.clone()),
+                "payload_counts": counts,
+            })
+        }
+        Err(_) => {
+            all_verified = false;
+            serde_json::json!({
+                "event_count": 0,
+                "chain_verified": false,
+                "head_sha256": Value::Null,
+                "payload_counts": {},
+                "load_ok": false,
+            })
+        }
+    };
+
+    let approvals = match ApprovalStore::open(approvals_path) {
+        Ok(store) => {
+            let verified = store.verify().is_ok();
+            if !verified {
+                all_verified = false;
+            }
+            serde_json::json!({
+                "event_count": store.event_count(),
+                "chain_verified": verified,
+                "head_sha256": store.head_sha256(),
+                "payload_counts": store.event_type_counts(),
+            })
+        }
+        Err(_) => {
+            all_verified = false;
+            serde_json::json!({
+                "event_count": 0,
+                "chain_verified": false,
+                "head_sha256": Value::Null,
+                "payload_counts": {},
+                "load_ok": false,
+            })
+        }
+    };
+
+    let platform = match load_platform(data_dir, threshold) {
+        Ok(platform) => serde_json::json!({
+            "docs": platform.docs.documents.len(),
+            "active_rules": platform.rules.active_rules().count(),
+            "processes": platform.processes.processes.len(),
+            "load_ok": true,
+        }),
+        Err(_) => {
+            all_verified = false;
+            serde_json::json!({ "load_ok": false })
+        }
+    };
+
+    Ok((
+        serde_json::json!({
+            "schema": "ekpi-evidence-pack-v1",
+            "governance": governance,
+            "approvals": approvals,
+            "platform": platform,
+        }),
+        all_verified,
+    ))
 }
 
 fn write_text(path: &Path, text: &str) -> Result<(), String> {

@@ -771,3 +771,119 @@ fn ablation_writes_deterministic_decisions_export() {
     );
     cleanup(&dir);
 }
+
+/// S9（CTR-EXP-003）：證據包匯出為決定性產物——同輸入兩次執行逐位元組一致，
+/// 並如實記錄雙鏈驗證狀態與平台計數。以顯式路徑旗標注入（免環境變數）。
+#[test]
+fn evidence_pack_export_is_deterministic_and_records_chain_state() {
+    let dir = temp_dir();
+    let gov = dir.join("gov-ledger.jsonl");
+    let appr = dir.join("approvals.jsonl");
+    let pack_a = dir.join("pack-a");
+    let pack_b = dir.join("pack-b");
+    let out_a = run_in(
+        &dir,
+        &[
+            "--export-evidence-pack",
+            pack_a.to_str().expect("utf-8 path"),
+            "--governance-data",
+            gov.to_str().expect("utf-8 path"),
+            "--approval-data",
+            appr.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(exit_code(&out_a), 0, "stderr: {}", stderr(&out_a));
+    let out_b = run_in(
+        &dir,
+        &[
+            "--export-evidence-pack",
+            pack_b.to_str().expect("utf-8 path"),
+            "--governance-data",
+            gov.to_str().expect("utf-8 path"),
+            "--approval-data",
+            appr.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(exit_code(&out_b), 0, "stderr: {}", stderr(&out_b));
+    let a = std::fs::read_to_string(pack_a.join("evidence_pack.json")).expect("pack a");
+    let b = std::fs::read_to_string(pack_b.join("evidence_pack.json")).expect("pack b");
+    let parsed: serde_json::Value = serde_json::from_str(&a).expect("pack is valid JSON");
+    assert_eq!(parsed["schema"], "ekpi-evidence-pack-v1");
+    assert_eq!(parsed["governance"]["chain_verified"], true);
+    assert_eq!(parsed["approvals"]["chain_verified"], true);
+    assert_eq!(parsed["platform"]["load_ok"], true);
+    assert_eq!(parsed["platform"]["active_rules"], 19);
+    assert_eq!(a, b, "same inputs must produce byte-identical packs");
+    cleanup(&dir);
+}
+
+/// S9：證據包不得與報告模式或其它資料模式併用（否則成品看似存在實則未產生）；
+/// 路徑覆寫旗標亦僅限本模式使用。
+#[test]
+fn evidence_pack_refuses_conflicting_modes() {
+    let dir = temp_dir();
+    let pack = dir.join("pack");
+    let out = dir.join("out");
+    let output = run_in(
+        &dir,
+        &[
+            "--export-evidence-pack",
+            pack.to_str().expect("utf-8 path"),
+            "--out",
+            out.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("cannot be combined with `--export-evidence-pack`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(!pack.exists(), "a usage error must not produce a pack");
+
+    let stray = dir.join("stray.jsonl");
+    let output = run_in(
+        &dir,
+        &["--governance-data", stray.to_str().expect("utf-8 path")],
+    );
+    assert_eq!(exit_code(&output), 2, "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("require `--export-evidence-pack`"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    cleanup(&dir);
+}
+
+/// S9：鏈損毀時 pack 仍寫出並如實記錄 chain_verified/load_ok = false，exit 1。
+#[test]
+fn evidence_pack_records_a_corrupt_chain_honestly_and_exits_nonzero() {
+    let dir = temp_dir();
+    let gov = dir.join("gov-ledger.jsonl");
+    std::fs::write(&gov, "not json\n").expect("write corrupt ledger");
+    let appr = dir.join("approvals.jsonl");
+    let pack = dir.join("pack");
+    let output = run_in(
+        &dir,
+        &[
+            "--export-evidence-pack",
+            pack.to_str().expect("utf-8 path"),
+            "--governance-data",
+            gov.to_str().expect("utf-8 path"),
+            "--approval-data",
+            appr.to_str().expect("utf-8 path"),
+        ],
+    );
+    assert_eq!(
+        exit_code(&output),
+        1,
+        "an unverified chain must exit 1; stderr: {}",
+        stderr(&output)
+    );
+    let text = std::fs::read_to_string(pack.join("evidence_pack.json"))
+        .expect("the pack is still written so the failure is auditable");
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("pack is valid JSON");
+    assert_eq!(parsed["governance"]["chain_verified"], false);
+    assert_eq!(parsed["governance"]["load_ok"], false);
+    cleanup(&dir);
+}

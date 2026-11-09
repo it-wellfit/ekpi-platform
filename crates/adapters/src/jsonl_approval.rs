@@ -359,6 +359,35 @@ impl ApprovalStore {
         submitters
     }
 
+    /// Total number of events in the chain.
+    pub fn event_count(&self) -> usize {
+        self.events.len()
+    }
+
+    /// The chain head hash, or `None` for an empty store.
+    pub fn head_sha256(&self) -> Option<String> {
+        self.events.last().map(|event| event.sha256.clone())
+    }
+
+    /// Deterministic payload-type counts (`serde` snake_case tags), used by
+    /// the evidence-pack export.
+    pub fn event_type_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut counts = std::collections::BTreeMap::new();
+        for event in &self.events {
+            let kind = serde_json::to_value(&event.payload)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("type")
+                        .and_then(|tag| tag.as_str())
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            *counts.entry(kind).or_insert(0) += 1;
+        }
+        counts
+    }
+
     /// Task ids number the *tasks*, not the events: definitions and
     /// publications must not shift task identifiers. The store is
     /// single-instance per file (file lock), so ids cannot collide.
@@ -660,6 +689,14 @@ mod tests {
         let tasks = store.list_tasks();
         assert_eq!(tasks[0].escalation_count, 1, "escalation count persisted");
         assert_eq!(tasks[0].stage_id, "s2");
+        // S9 摘要存取子：事件計數、鏈頭、決定性 type 統計。
+        assert_eq!(store.event_count(), 5);
+        assert!(store.head_sha256().is_some(), "non-empty chain has a head");
+        let counts = store.event_type_counts();
+        assert_eq!(counts.get("workflow_created"), Some(&1));
+        assert_eq!(counts.get("workflow_published"), Some(&1));
+        assert_eq!(counts.get("task_submitted"), Some(&1));
+        assert_eq!(counts.get("task_transitioned"), Some(&2));
     }
 
     /// C5：獨佔鎖。

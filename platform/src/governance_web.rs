@@ -3123,7 +3123,8 @@ fn format_timestamp(seconds: u64) -> String {
     format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} UTC")
 }
 
-fn event_label(payload: &crate::governance::EventPayload) -> String {
+/// Human-readable event label; shared with the CLI evidence-pack export.
+pub fn event_label(payload: &crate::governance::EventPayload) -> String {
     use crate::governance::EventPayload;
     match payload {
         EventPayload::ProjectCreated(project) => format!("建立專案：{}", project.name),

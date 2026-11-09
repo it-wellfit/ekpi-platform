@@ -57,7 +57,7 @@
 | 切片 | 內容 | 驗收 |
 |---|---|---|
 | S8 | 佇列視圖：「我的待簽核 / 我送出的」兩個檢視（無新資料模型） | e2e 兩檢視正確過濾 |
-| S9 | 證據包匯出：`--export-evidence-pack DIR`（manifest+decisions+雙鏈快照） | 重放一致＋schema 鎖 |
+| S9 | 證據包匯出：`--export-evidence-pack DIR`（manifest+decisions+雙鏈快照） | 重放一致＋schema 鎖 | ✅ 完成：`CTR-EXP-003`；501 測試；canonical `CHECK_EXITCODE=0`；雙跑逐位元組一致、損毀鏈誠實 exit 1 |
 | S10 | API 寫入契約 v2（冪等鍵）＋ `POST /api/v1/approvals` 真接線 | 契約測試＋重放防護測試 |
 | S11 | 資料地圖頁（欄位→事件→頁面血緣，靜態生成） | 血緣與程式掃描一致 |
 | S12 | SLA 行事曆檢視（CSS grid 月曆，逾期日紅點） | 逾期資料驅動正確 |

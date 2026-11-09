@@ -240,6 +240,20 @@ Contract:
 - **No timestamps.** Same corpus + parameters must replay the file byte-identically (locked by `ablation_writes_deterministic_decisions_export`); any timestamp added later would violate the contract and require a schema version bump.
 - Change rules: adding an optional field is backward-compatible (bump doc + tests); removing/renaming or changing meaning requires a new schema version (`ekpi-decisions-v3`) and an ADR.
 
+## Evidence pack export
+
+`CTR-EXP-003`. `--export-evidence-pack DIR [--governance-data PATH] [--approval-data PATH]` writes `DIR/evidence_pack.json` — a deterministic digest of the two runtime hash chains plus platform corpus counts. Standalone data-layer mode: it cannot be combined with `--out`/`--eval`/`--search`/`--import-wellfit`/`--audit-log`/`--export-legalruleml`/`--coverage-report`/`--html`/`--cases` (usage error, exit 2), and the two path overrides require this flag.
+
+Contract:
+
+- Top level: `schema` (`"ekpi-evidence-pack-v1"`), `governance`, `approvals`, `platform`.
+- `governance`: `event_count`, `chain_verified` (bool), `head_sha256` (string|null), `payload_counts` (label → count, BTree order); on load failure additionally `load_ok: false` with zeroed counts.
+- `approvals`: `event_count`, `chain_verified`, `head_sha256`, `payload_counts` (serde snake_case tags); same `load_ok` rule.
+- `platform`: `docs`, `active_rules`, `processes`, `load_ok`.
+- **No timestamps and no paths** — the pack must be byte-identical for the same inputs (locked by `evidence_pack_export_is_deterministic_and_records_chain_state`).
+- Exit codes: `0` when both chains load and verify; `1` when a chain fails (the pack is still written with `chain_verified: false` so the failure is auditable); `2` for usage errors.
+- This pack summarises chain state; it is not a substitute for the runtime-data restore drill (`IMP-021`) or off-host backup (Phase B).
+
 ## Compatibility and change rules
 
 - Adding an optional JSON field is backward-compatible; update the schema/doc and tests.
