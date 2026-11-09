@@ -254,6 +254,19 @@ Contract:
 - Exit codes: `0` when both chains load and verify; `1` when a chain fails (the pack is still written with `chain_verified: false` so the failure is auditable); `2` for usage errors.
 - This pack summarises chain state; it is not a substitute for the runtime-data restore drill (`IMP-021`) or off-host backup (Phase B).
 
+## Data map export
+
+`CTR-DATA-008`. `--data-map DIR` writes `DIR/data_map.json` — the field→event→write-surface→page lineage table, generated from **`'static` constant tables** in `platform/src/data_map.rs` (type-system-driven, not text scanning).
+
+Contract:
+
+- Top level: `schema` (`"ekpi-data-map-v1"`), `governance` (9 entries — one per `platform::governance::EventPayload` variant), `approvals` (5 entries — one per `ekp_domain::workflow::ApprovalEventPayload` variant).
+- Each entry: `event` (snake_case tag, matches the chain JSON event type), `fields` (domain struct field names), `write_surfaces` (form/API routes that can produce the event), `pages` (workbench pages that render it).
+- **No timestamps and no paths.** The table is a compile-time constant: byte-identical across runs (locked by `data_map_export_is_deterministic`).
+- **Coverage lock:** `governance_lineage_for`/`approval_lineage_for` are wildcard-free exhaustive matches — adding an event variant breaks the compile until the lineage table is updated. Table-size drift is locked by `lineage_table_sizes_match_the_event_enums` (9/5).
+- Note: `platform::governance::EventPayload` (the ledger's live type) and `ekp_domain::governance::EventPayload` are two independent enums today; the data map targets the live ledger type. Consolidation is tracked as refactor candidate C6 (see `docs/development/refactor-criteria.md`).
+- Exit codes: `0` on success; `2` for usage errors (conflicting modes).
+
 ## Compatibility and change rules
 
 - Adding an optional JSON field is backward-compatible; update the schema/doc and tests.

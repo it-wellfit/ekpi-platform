@@ -52,6 +52,7 @@ else:                     NEXT SLICE（附量測或覆蓋前提）
 | C3 | `governance_web.rs` 拆分為模組（3246 行） | — | **19 引用** | 部分 | **21** | 3246 行 | **DEFER** | 並行開發期碰撞面最大；前提：模組拆分設計文件＋表徵套件＋單寫者窗口 |
 | C4 | TODO/FIXME 19＋`allow(too_many_arguments)` 1 | — | 0 | — | — | — | **分級** | postgres 骨架 9 筆＝已聲明 fail-closed（可接受，IMP 追蹤）；其餘為語義註記；`approvals_content` 參數列 → NEXT SLICE 以參數結構體收斂 |
 | C5 | 核准三個 handler 的重複「讀 body＋解析失敗分支」 | ✅（已抽 `read_limited_body`；剩錯誤分支樣式） | 0（檔內） | ✅（route 測試） | 3 | ~24 行 | **NEXT SLICE** | 與 C4 的參數結構體同一微切片處理，避免為小收益頻繁觸碰高扇出檔 |
+| C6 | **兩個獨立的 `EventPayload` enum**：`platform::governance::EventPayload`（治理帳鏈在用，S11 發現）與 `ekp_domain::governance::EventPayload`（領域層同名同構） | — | 44 引用（platform 版） | 平台版由帳鏈測試覆蓋 | — | 兩份 9 變體定義 | **NEXT SLICE** | 去重方向：platform 版改為 re-export domain 版（或反之），需先驗證 serde 序列化輸出逐位元組一致（帳鏈相容性）；S11 資料地圖已對準**在用**的 platform 版 |
 
 ## 5. 整體優構次序（不可調換）
 

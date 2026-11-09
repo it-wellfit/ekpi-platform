@@ -34,7 +34,7 @@
 | `/settings` | 靜態資訊（版本/儲存模式） | N/A | N/A（無資料依賴） | |
 | `/api-docs` | 端點狀態表（誠實 501 標注） | N/A | 端點本身一律 501 結構化錯誤 | `unwired_api_endpoints_return_honest_501_never_fabricated_data` |
 | `/search`（S7 新增） | 檢索頁＋`doc@version§section` 引用卡＋分數計＋快速查詢 chips＋索引統計 | 空查詢引導狀態；無命中誠實空結果（「找不到相符條款」）；無假結果 | 文件庫載入失敗 notice-red；未登入 401；`search_page_renders_honest_states_and_index_counts`、`search_page_requires_session` | |
-| `/ready` `/healthz` `/metrics` | 探針輸出 | — | readiness 檢查失敗回非 200 | |
+| `/data-map`（S11 新增） | 雙鏈血緣表（治理 9＋核准 5：事件/欄位/寫入面/頁面）＋**現況事件數**欄 | 血緣表為常數（無空狀態語義）；頁面本身唯讀 | 未登入 401；`data_map_page_requires_session_and_renders` | |
 
 ### S7 視覺化元件與其狀態（2026-11-06 十維躍升層）
 
