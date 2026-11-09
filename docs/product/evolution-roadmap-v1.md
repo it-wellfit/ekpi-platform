@@ -54,6 +54,8 @@
 
 ## 4. 快速迭代切片（S8–S15；每片 canonical 收口 + register 證據列）
 
+> 詳細執行計畫（交付物/DoD/canonical 檢查/相依/順序）見 [execution-plan-s11-s15](../operations/execution-plan-s11-s15.md)（2026-11-09，基線 503 測試 @`680aacf`）。
+
 | 切片 | 內容 | 驗收 |
 |---|---|---|
 | S8 | 佇列視圖：「我的待簽核 / 我送出的」兩個檢視（無新資料模型） | e2e 兩檢視正確過濾 |
