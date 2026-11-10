@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! R2-6嚗ecision snapshot manifest + ?銝?湔改?蝖祇?瑼?H-6嚗?//!
-//! manifest ??蝬?嚗摰撓?伐?獢辣鈭辣??????隞嗥?摰摰寥?皝??具摰?
-//! ?????蝣箏??扯楝敺?閬?撘? + token replay + 瑼Ｙ揣嚗?
-//! **銝??思遙雿??芋??*嚗ddendum A6嚗LM ??????瘙綽???
+//! R2-6：決策快照清單（manifest）與重放一致性（H-6）。
+//! manifest 承載案例識別碼、結論、引用與事件血緣；全部欄位可由治理帳鏈與核准帳鏈推導。
+//! 匯出決定論：同語料同參數 → manifest 雜湊相同（token replay + 版本綁定）。
+//! **正式匯出格式參照**（Addendum A6：LegalRuleML 匯出共用同一雜湊）。
 use serde::Serialize;
 
 use crate::docs::sha256_hex;

@@ -1,12 +1,12 @@
 #![forbid(unsafe_code)]
 
 //! ???函?????芋蝯?Master Prompt Phase 5, Addendum A11嚗?//!
-//! ?詨???嚗?蝭?鞈湛?required_before嚗? 瘚??? ???祕????//! ??閬?撘???蝔芋??鞎穿??祆芋蝯???撖血??蜓撘萸?//!
+//! 因果推理引擎（Master Prompt Phase 5, Addendum A11）。
 //! 瘥??????恐??
 //! - ???身皜
-//! - 鞈?靘?
-//! - 霅蝑
-//! - 瘛瑟???
+//! - 識別策略為 InsufficientData → CannotIdentify
+//! - 資料不足 → InsufficientData 或 CannotIdentify
+//! - 反面證據存在 → Contradicted
 //! - ????蝯?
 // (indented to avoid clippy doc-lazy-continuation)
 use serde::{Deserialize, Serialize};
@@ -82,20 +82,25 @@ pub struct CausalAnalysisResult {
     pub alternative_causes: Vec<String>,
 }
 
-/// CausalAnalyzer: causal reasoning engine
+    /// CausalAnalyzer: causal reasoning engine
+    ///
+    /// 判定順序（先到先決；G11）：證據不足的策略 → CannotIdentify；
+    /// 混淆未處理 → CannotIdentify；反面證據 → Contradicted；
+    /// 資料不足 → InsufficientData 或 CannotIdentify。
+    /// 任何確定識別（Identified）都必須先通過反事實與混淆檢查。
 pub struct CausalAnalyzer;
 impl CausalAnalyzer {
-    /// ??銝????閮准?    ///
+/// 判定順序（先到先決；G11）：證據不足 → CannotIdentify；
     /// 閬?嚗11嚗?
-    /// - 鞈?銝雲隞亥?????CannotIdentify嚗?甇Ｙ??Ⅱ摰批???隢?
-    /// - 瘛瑟????芾?????CannotIdentify
+/// - 反面證據 → Contradicted；
+/// - 資料不足 → InsufficientData 或 CannotIdentify。
     /// - ?????潛? ??Contradicted
-    /// - 霅蝑??InsufficientData ??CannotIdentify
+/// - 資料不足 → InsufficientData 或 CannotIdentify
     pub fn analyze(hypothesis: &CausalHypothesis) -> CausalAnalysisResult {
         let mut notes = Vec::new();
         let mut alternative_causes = Vec::new();
 
-        // 瑼Ｘ霅蝑
+// 資料不足的策略 → CannotIdentify
         if hypothesis.identification_strategy == IdentificationStrategy::InsufficientData {
             notes.push("identification strategy is insufficient_data".to_string());
             return CausalAnalysisResult {
@@ -121,7 +126,7 @@ impl CausalAnalyzer {
             };
         }
 
-        // 瑼Ｘ瘛瑟???
+// 混淆因子未處理 → CannotIdentify
         let confounders_addressed = hypothesis.confounders.is_empty()
             || hypothesis
                 .evidence_for
@@ -131,7 +136,7 @@ impl CausalAnalyzer {
         // 瑼Ｘ??
         let has_contradiction = !hypothesis.evidence_against.is_empty();
 
-        // 瑼Ｘ鞈?靘?
+// 反面證據存在 → Contradicted
         if hypothesis.data_sources.is_empty() {
             notes.push("no data sources declared".to_string());
             return CausalAnalysisResult {
@@ -176,7 +181,7 @@ impl CausalAnalyzer {
             };
         }
 
-        // 霅蝑?箏?摰嗅?????典?霅
+// 專家判斷：僅專家判斷不構成統計識別（PartiallyIdentified）
         if hypothesis.identification_strategy == IdentificationStrategy::ExpertJudgment {
             notes.push("expert judgment only; not statistically identified".to_string());
             return CausalAnalysisResult {
@@ -189,7 +194,7 @@ impl CausalAnalyzer {
             };
         }
 
-        // ?雲憭?????Identified
+// 證據支持且混淆已處理 → Identified
         if !hypothesis.evidence_for.is_empty() && confounders_addressed {
             notes.push("causal hypothesis supported by evidence".to_string());
             return CausalAnalysisResult {
@@ -370,7 +375,7 @@ mod tests {
 
     #[test]
     fn normative_dependency_is_not_true_causation() {
-        // A11 ?詨???嚗?蝭?鞈????祕??
+// A11 邊界測試：規範依賴不是真因果（normative dependency）
         let h = CausalHypothesis {
             id: "CA-008".to_string(),
             claim: "must approve before execute".to_string(),
@@ -384,7 +389,7 @@ mod tests {
             evidence_against: vec![],
             data_sources: vec!["SOP".to_string()],
         };
-        // 閬?靘陷?梯???????銝??勗??芋蝯摰 Identified
+// 反面：時間順序未先建立卻已執行 → Identified 不可得，改判 CannotIdentify
         assert_eq!(h.relation_type, CausalRelationType::NormativeDependency);
         assert_ne!(h.relation_type, CausalRelationType::TrueCausation);
     }
