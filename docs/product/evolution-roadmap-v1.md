@@ -61,7 +61,7 @@
 | S8 | 佇列視圖：「我的待簽核 / 我送出的」兩個檢視（無新資料模型） | e2e 兩檢視正確過濾 |
 | S9 | 證據包匯出：`--export-evidence-pack DIR`（manifest+decisions+雙鏈快照） | 重放一致＋schema 鎖 | ✅ 完成：`CTR-EXP-003`；501 測試；canonical `CHECK_EXITCODE=0`；雙跑逐位元組一致、損毀鏈誠實 exit 1 |
 | S10 | API 寫入契約 v2（冪等鍵）＋ `POST /api/v1/approvals` 真接線 | 契約測試＋重放防護測試 |
-| S11 | 資料地圖頁（欄位→事件→頁面血緣；實作演進為**型別系統驅動**——窮舉 match 編譯級覆蓋鎖，取代文字掃描以杜絕漂移） | 血緣與程式一致（編譯器強制） |
+| S11 | 資料地圖頁（欄位→事件→頁面血緣；實作演進為**型別系統驅動**——窮舉 match 編譯級覆蓋鎖，取代文字掃描以杜絕漂移） | 血緣與程式一致（編譯器強制） | ✅＋S12 批次延伸：`/events?type=` 瀏覽器、`/audit/chains` 雙鏈狀態、`/role-matrix`、glossary/help/about（`4179817`；524 測試；canonical exit 0） |
 | S12 | SLA 行事曆檢視（CSS grid 月曆，逾期日紅點） | 逾期資料驅動正確 |
 | S13 | 合規報告產生器（控制矩陣 + 證據連結 + 缺口清單） | 報告可從 register 推導 |
 | S14 | 稽核包（bundle+manifest+雙鏈 verify 腳本） | 還原演練擴充涵蓋 runtime 資料（IMP-021） |
