@@ -26,7 +26,7 @@ fn platform_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "project_created".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::ProjectCreated(
+        serde_json::to_value(ekp_platform::governance::EventPayload::ProjectCreated(
             project,
         ))
         .expect("serialize"),
@@ -44,7 +44,7 @@ fn platform_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "evidence_linked".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::EvidenceLinked(
+        serde_json::to_value(ekp_platform::governance::EventPayload::EvidenceLinked(
             evidence,
         ))
         .expect("serialize"),
@@ -58,7 +58,7 @@ fn platform_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "evidence_reviewed".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::EvidenceReviewed(
+        serde_json::to_value(ekp_platform::governance::EventPayload::EvidenceReviewed(
             review,
         ))
         .expect("serialize"),
@@ -78,14 +78,14 @@ fn platform_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "workflow_saved".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::WorkflowSaved(
+        serde_json::to_value(ekp_platform::governance::EventPayload::WorkflowSaved(
             workflow,
         ))
         .expect("serialize"),
     ));
     samples.push((
         "workflow_published".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::WorkflowPublished(
+        serde_json::to_value(ekp_platform::governance::EventPayload::WorkflowPublished(
             ekp_platform::governance::WorkflowPublication {
                 id: "WF-000001".into(),
                 version: 1,
@@ -110,14 +110,14 @@ fn platform_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "quality_case_created".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::QualityCaseCreated(
+        serde_json::to_value(ekp_platform::governance::EventPayload::QualityCaseCreated(
             case,
         ))
         .expect("serialize"),
     ));
     samples.push((
         "quality_case_updated".into(),
-        serde_json::to_value(&ekp_platform::governance::EventPayload::QualityCaseUpdated(
+        serde_json::to_value(ekp_platform::governance::EventPayload::QualityCaseUpdated(
             ekp_platform::governance::QualityCaseUpdate {
                 id: "QMS-000001".into(),
                 status: "in_progress".into(),
@@ -131,7 +131,7 @@ fn platform_samples() -> Vec<(String, Value)> {
     samples.push((
         "quality_inspection_recorded".into(),
         serde_json::to_value(
-            &ekp_platform::governance::EventPayload::QualityInspectionRecorded(
+            ekp_platform::governance::EventPayload::QualityInspectionRecorded(
                 ekp_platform::governance::QualityInspection {
                     id: "INS-000001".into(),
                     project_id: "PRJ-000001".into(),
@@ -146,7 +146,7 @@ fn platform_samples() -> Vec<(String, Value)> {
     samples.push((
         "gate_decision_recorded".into(),
         serde_json::to_value(
-            &ekp_platform::governance::EventPayload::GateDecisionRecorded(
+            ekp_platform::governance::EventPayload::GateDecisionRecorded(
                 ekp_platform::governance::GateDecision {
                     id: "GATE-000001".into(),
                     project_id: "PRJ-000001".into(),
@@ -181,8 +181,7 @@ fn domain_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "project_created".into(),
-        serde_json::to_value(&domain_gov::EventPayload::ProjectCreated(project))
-            .expect("serialize"),
+        serde_json::to_value(domain_gov::EventPayload::ProjectCreated(project)).expect("serialize"),
     ));
     let evidence = domain_gov::Evidence {
         id: "EVD-000001".into(),
@@ -197,7 +196,7 @@ fn domain_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "evidence_linked".into(),
-        serde_json::to_value(&domain_gov::EventPayload::EvidenceLinked(evidence))
+        serde_json::to_value(domain_gov::EventPayload::EvidenceLinked(evidence))
             .expect("serialize"),
     ));
     let review = domain_gov::EvidenceReview {
@@ -209,7 +208,7 @@ fn domain_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "evidence_reviewed".into(),
-        serde_json::to_value(&domain_gov::EventPayload::EvidenceReviewed(review))
+        serde_json::to_value(domain_gov::EventPayload::EvidenceReviewed(review))
             .expect("serialize"),
     ));
     let workflow = domain_gov::Workflow {
@@ -227,12 +226,11 @@ fn domain_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "workflow_saved".into(),
-        serde_json::to_value(&domain_gov::EventPayload::WorkflowSaved(workflow))
-            .expect("serialize"),
+        serde_json::to_value(domain_gov::EventPayload::WorkflowSaved(workflow)).expect("serialize"),
     ));
     samples.push((
         "workflow_published".into(),
-        serde_json::to_value(&domain_gov::EventPayload::WorkflowPublished(
+        serde_json::to_value(domain_gov::EventPayload::WorkflowPublished(
             domain_gov::WorkflowPublication {
                 id: "WF-000001".into(),
                 version: 1,
@@ -257,12 +255,12 @@ fn domain_samples() -> Vec<(String, Value)> {
     };
     samples.push((
         "quality_case_created".into(),
-        serde_json::to_value(&domain_gov::EventPayload::QualityCaseCreated(case))
+        serde_json::to_value(domain_gov::EventPayload::QualityCaseCreated(case))
             .expect("serialize"),
     ));
     samples.push((
         "quality_case_updated".into(),
-        serde_json::to_value(&domain_gov::EventPayload::QualityCaseUpdated(
+        serde_json::to_value(domain_gov::EventPayload::QualityCaseUpdated(
             domain_gov::QualityCaseUpdate {
                 id: "QMS-000001".into(),
                 status: "in_progress".into(),
@@ -275,7 +273,7 @@ fn domain_samples() -> Vec<(String, Value)> {
     ));
     samples.push((
         "quality_inspection_recorded".into(),
-        serde_json::to_value(&domain_gov::EventPayload::QualityInspectionRecorded(
+        serde_json::to_value(domain_gov::EventPayload::QualityInspectionRecorded(
             domain_gov::QualityInspection {
                 id: "INS-000001".into(),
                 project_id: "PRJ-000001".into(),
@@ -288,7 +286,7 @@ fn domain_samples() -> Vec<(String, Value)> {
     ));
     samples.push((
         "gate_decision_recorded".into(),
-        serde_json::to_value(&domain_gov::EventPayload::GateDecisionRecorded(
+        serde_json::to_value(domain_gov::EventPayload::GateDecisionRecorded(
             domain_gov::GateDecision {
                 id: "GATE-000001".into(),
                 project_id: "PRJ-000001".into(),
