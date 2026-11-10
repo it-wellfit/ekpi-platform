@@ -4,7 +4,7 @@
 
 ## Bootstrap status
 
-This checkout has no Git remote, and the existing GitHub repository URL has not been supplied. Git for Windows and GitHub CLI are installed, but gh auth status reports no authenticated GitHub host. Connect the intended existing repository as origin and authenticate with gh auth login before creating issues, linking tickets, opening PRs, or provisioning labels. Do not create a new repository or fall back to local markdown tickets.
+A Git remote (`origin`, `https://github.com/it-wellfit/ekpi-platform.git`) is now configured, but `gh` authentication status, push authorization and label provisioning are unverified. Authenticate with `gh auth login` and confirm push access before creating issues, linking tickets, opening PRs or provisioning labels. Do not create a new repository or fall back to local markdown tickets.
 
 ## Conventions
 

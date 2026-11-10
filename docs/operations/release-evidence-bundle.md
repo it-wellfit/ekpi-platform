@@ -11,13 +11,13 @@
 - **Last reviewed:** 2026-10-30
 - **Verification revision:** `279c919` (current hardening revision: release-profile 345 tests pass, two canonical `scripts/check.ps1` runs exit 0, E-034; not yet bundled); `b2bae3e` (last canonical `gate.ps1 -IncludeSmoke` PASS); `23b8996` (historical code delivery revision: release-profile suite, blocked canonical check); `3ee2ee2` (documentation re-check and restore drill); `c77fec4` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `bc7671a` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `28b68cc` (evidence bundle; clone and docs/secrets checks passed, restore check Blocked by host policy); `6ae6134` (assurance baseline: release-profile suite PASS, canonical check Blocked by host policy, docs/secrets PASS); `41beaea` (assurance bundle: clean-clone canonical PASS, automatic restore PASS); `6ed236d` (final evidence bundle: documentation reconciliation, clean-clone canonical PASS, automatic restore PASS); `718db57` (session-derived actors + JSONL audit; working-tree canonical PASS, platform 277); `32f2b36` (evidence-document reconciliation; working-tree canonical PASS, docs 660 links); `604a2a5` (last working-tree canonical PASS; docs 660 links, platform 277); `499e0d1` (current evidence bundle: automatic restore PASS, docs 657/105, platform 277); `c827351` (earlier hardening revision: canonical `Blocked` at `edge_cases`; 312 other platform tests pass, 2 edge tests NOT RUN; not yet bundled); `bbe49eb` (earlier hardening revision: release-profile 325 platform tests pass; canonical at docs HEAD `17df06a` Blocked at the debug CLI binary, all 30 CLI contract spawns; not yet bundled); `b2d8afc` (preceding hardening revision: release-profile 329 executed platform tests pass, 2 edge tests Blocked at spawn; canonical `Blocked` on two same-command attempts at the debug lib and `cli_contract` harnesses, E-032; not yet bundled); `21e23d6` (preceding hardening revision: release-profile 308 executed platform tests pass, 27 tests Blocked at spawn across three harnesses; canonical `Blocked` on two same-command attempts at the debug lib harness, E-033; not yet bundled)**
 - **Environment:** One managed Windows host, Windows PowerShell 5.1, Rust stable from `rust-toolchain.toml`; local loopback only
-- **Repository state:** `main`, no remote, no CI execution
+- **Repository state:** `main`; `origin` configured; no CI workflow file tracked at HEAD; no CI execution
 - **Phase gates:** [phase-gates.md](../quality/phase-gates.md)
 - **Production readiness:** [production-readiness.md](production-readiness.md)
 
 ## Release identity
 
-- Scope: both independent crates (`eval/`, `platform/`); no root workspace.
+- Scope: the root Cargo workspace (`apps/web`, `crates/domain`, `crates/application`, `crates/adapters`, `eval`, `platform`) with one root manifest and lockfile.
 - Served surfaces: `ekp_platform` CLI and `governance_web` on `127.0.0.1:3000`.
 - Not served: `platform/src/api.rs` (fixed `comply` placeholder) and every library-only module.
 - Data: synthetic or authorized non-sensitive fixtures only; no real customer, personal or regulated data.
@@ -111,7 +111,7 @@ This is a one-host regression observation, not a capacity model, soak test or SL
 - CycloneDX SBOMs regenerated at `a826472`: `ekp_platform` 67 components, SHA-256 `5fdc80974503dcddd28ad8a73fb44877a5fc36144424f9acdbbf3699379f9478`; `ekp_eval` 11 components, SHA-256 `3a486a469b8b1976f18dd45d35218128881afe6134d057d4cb7f74015a405c04`.
 - `artifacts/sbom/SHA256SUMS` records both hashes. No dependency changed between `a826472` and `b2bae3e`.
 - The documents contain only the repository-relative `file://.` locator, not the local absolute path or user name.
-- Actions remain tag-pinned, not SHA-pinned; the CI security job has never run because there is no remote.
+- Any restored workflow must pin actions by commit SHA; none is tracked at HEAD, and the CI security job has never run.
 
 ## Local authentication boundary (A-06)
 

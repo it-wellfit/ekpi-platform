@@ -149,7 +149,9 @@ pub fn router_with_approvals(
         .route("/login", get(login_page).post(login_post))
         .route("/logout", post(logout_post))
         .route("/projects", get(projects_page).post(create_project))
+        .route("/projects/{id}", get(project_detail_page))
         .route("/evidence", get(evidence_page).post(link_evidence))
+        .route("/evidence/{id}", get(evidence_detail_page))
         .route("/evidence/{id}/review", post(review_evidence))
         .route(
             "/inspections",
@@ -158,6 +160,7 @@ pub fn router_with_approvals(
         .route("/workflows", get(workflows_page).post(save_workflow))
         .route("/workflows/{id}/{version}/publish", post(publish_workflow))
         .route("/controls", get(controls_page).post(create_quality_case))
+        .route("/controls/{id}", get(controls_detail_page))
         .route("/controls/{id}/status", post(update_quality_case))
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
@@ -1316,8 +1319,105 @@ async fn dashboard(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) ->
 
 async fn projects_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("專案登錄", "projects", projects_content(&data, None)),
+        Ok(data) => page_response("專案", "projects", projects_content(&data, None)),
         Err(error) => page_error_response("projects", &error),
+    }
+}
+
+/// GET /projects/{id} — 專案詳情：欄位＋該專案的證據/個案/檢驗/關卡
+/// （全部自 snapshot 依 project_id 過濾；零虛構）。查無 → 誠實 404。
+async fn project_detail_page(
+    State((ledger, _auth)): State<(SharedLedger, SharedAuth)>,
+    Path(project_id): Path<String>,
+) -> Response {
+    let data = match snapshot(&ledger) {
+        Ok(data) => data,
+        Err(error) => return page_error_response("projects", &error),
+    };
+    let project = match data
+        .projects
+        .iter()
+        .find(|project| project.id == project_id)
+    {
+        Some(project) => project,
+        None => return page_not_found("projects", &format!("找不到專案 {project_id}")),
+    };
+    let evidence: Vec<&crate::governance::Evidence> = data
+        .evidence
+        .iter()
+        .filter(|item| item.project_id == project_id)
+        .collect();
+    let cases: Vec<&crate::governance::QualityCase> = data
+        .cases
+        .iter()
+        .filter(|case| case.project_id == project_id)
+        .collect();
+    let inspections: Vec<&crate::governance::QualityInspection> = data
+        .inspections
+        .iter()
+        .filter(|inspection| inspection.project_id == project_id)
+        .collect();
+    let gates: Vec<&crate::governance::GateDecision> = data
+        .gate_decisions
+        .iter()
+        .filter(|decision| decision.project_id == project_id)
+        .collect();
+    page_response(
+        "專案詳情",
+        "projects",
+        project_detail_content(project, &evidence, &cases, &inspections, &gates),
+    )
+}
+
+fn project_detail_content(
+    project: &crate::governance::Project,
+    evidence: &[&crate::governance::Evidence],
+    cases: &[&crate::governance::QualityCase],
+    inspections: &[&crate::governance::QualityInspection],
+    gates: &[&crate::governance::GateDecision],
+) -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "專案" } h1 { (project.name) } p class="page-subtitle" { (project.id) " · " (project.department) " · 負責人 " (project.owner) } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "專案欄位" } } }
+            table class="api-table" {
+                tbody {
+                    tr { th { "識別碼" } td { (project.id) } }
+                    tr { th { "名稱" } td { (project.name) } }
+                    tr { th { "部門" } td { (project.department) } }
+                    tr { th { "負責人" } td { (project.owner) } }
+                    tr { th { "風險等級" } td { (project.risk_tier) } }
+                    tr { th { "建立時間" } td class="num" { (project.created_at) } }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "證據（" (evidence.len()) "）" } } }
+            @if evidence.is_empty() {
+                p class="empty-inline" { "此專案尚無證據參照。" }
+            } @else {
+                ul { @for item in evidence { li { (item.id) " · " (item.title) " · " (item.evidence_type) } } }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "品質個案（" (cases.len()) "）" } } }
+            @if cases.is_empty() {
+                p class="empty-inline" { "此專案尚無品質個案。" }
+            } @else {
+                ul { @for case in cases { li { (case.id) " · " (case.title) " · " (case.status) } } }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "檢驗（" (inspections.len()) "）／關卡決策（" (gates.len()) "）" } } }
+            @if inspections.is_empty() && gates.is_empty() {
+                p class="empty-inline" { "此專案尚無檢驗與關卡決策。" }
+            } @else {
+                ul {
+                    @for inspection in inspections { li { "檢驗 " (inspection.id) " · " (inspection.reviewer) } }
+                    @for decision in gates { li { "關卡 " (decision.gate_id) " · " (decision.decision) } }
+                }
+            }
+        }
     }
 }
 
@@ -1370,6 +1470,70 @@ async fn evidence_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>
     match snapshot(&ledger) {
         Ok(data) => page_response("文件與證據", "evidence", evidence_content(&data, None)),
         Err(error) => page_error_response("evidence", &error),
+    }
+}
+
+/// GET /evidence/{id} — 證據詳情：欄位＋審查紀錄（查無 → 誠實 404）。
+async fn evidence_detail_page(
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    Path(evidence_id): Path<String>,
+    request: Request,
+) -> Response {
+    if let Err(response) = session_identity(&auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    let data = match snapshot(&ledger) {
+        Ok(data) => data,
+        Err(error) => return page_error_response("evidence", &error),
+    };
+    let evidence = match data.evidence.iter().find(|item| item.id == evidence_id) {
+        Some(item) => item,
+        None => return page_not_found("evidence", &format!("找不到證據 {evidence_id}")),
+    };
+    let review = data.reviews.get(&evidence_id);
+    page_response(
+        "證據詳情",
+        "evidence",
+        evidence_detail_content(evidence, review),
+    )
+}
+
+fn evidence_detail_content(
+    evidence: &crate::governance::Evidence,
+    review: Option<&crate::governance::EvidenceReview>,
+) -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "文件與證據" } h1 { (evidence.title) } p class="page-subtitle" { (evidence.id) " · " (evidence.source_system) " " (evidence.source_version) } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "證據欄位" } } }
+            table class="api-table" {
+                tbody {
+                    tr { th { "識別碼" } td { (evidence.id) } }
+                    tr { th { "所屬專案" } td { (evidence.project_id) } }
+                    tr { th { "標題" } td { (evidence.title) } }
+                    tr { th { "來源系統" } td { (evidence.source_system) } }
+                    tr { th { "來源 URL" } td { (evidence.source_url) } }
+                    tr { th { "來源版本" } td { (evidence.source_version) } }
+                    tr { th { "證據類型" } td { (evidence.evidence_type) } }
+                    tr { th { "負責人" } td { (evidence.owner) } }
+                    tr { th { "建立時間" } td class="num" { (evidence.created_at) } }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "審查紀錄" } } }
+            @match review {
+                Some(review) => {
+                    ul class="timeline" {
+                        li class="t-done" {
+                            div class="t-head" { strong { (review.result) } time { (review.reviewed_at) } }
+                            div class="t-body" { "審查者 " (review.reviewer) "；備註：" (review.note) }
+                        }
+                    }
+                }
+                None => p class="empty-inline" { "尚未留下人工審查紀錄。" }
+            }
+        }
     }
 }
 
@@ -1550,8 +1714,80 @@ async fn publish_workflow(
 
 async fn controls_page(State((ledger, _auth)): State<(SharedLedger, SharedAuth)>) -> Response {
     match snapshot(&ledger) {
-        Ok(data) => page_response("風險與品質事件", "controls", controls_content(&data, None)),
+        Ok(data) => page_response("風險與品質", "controls", controls_content(&data, None)),
         Err(error) => page_error_response("controls", &error),
+    }
+}
+
+/// GET /controls/{id} — 個案詳情：欄位＋更新事件（查無 → 誠實 404）。
+async fn controls_detail_page(
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    Path(case_id): Path<String>,
+    request: Request,
+) -> Response {
+    if let Err(response) = session_identity(&auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    let data = match snapshot(&ledger) {
+        Ok(data) => data,
+        Err(error) => return page_error_response("controls", &error),
+    };
+    let case = match data.cases.iter().find(|case| case.id == case_id) {
+        Some(case) => case,
+        None => return page_not_found("controls", &format!("找不到品質個案 {case_id}")),
+    };
+    let updates: Vec<&crate::governance::QualityCaseUpdate> = data
+        .events
+        .iter()
+        .filter_map(|event| match &event.payload {
+            crate::governance::EventPayload::QualityCaseUpdated(update) if update.id == case_id => {
+                Some(update)
+            }
+            _ => None,
+        })
+        .collect();
+    page_response(
+        "個案詳情",
+        "controls",
+        controls_detail_content(case, &updates),
+    )
+}
+
+fn controls_detail_content(
+    case: &crate::governance::QualityCase,
+    updates: &[&crate::governance::QualityCaseUpdate],
+) -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "風險與品質" } h1 { (case.title) } p class="page-subtitle" { (case.id) " · " (case.kind) " · 負責人 " (case.owner) } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "個案欄位" } } }
+            table class="api-table" {
+                tbody {
+                    tr { th { "識別碼" } td { (case.id) } }
+                    tr { th { "所屬專案" } td { (case.project_id) } }
+                    tr { th { "類型" } td { (case.kind) } }
+                    tr { th { "描述" } td { (case.description) } }
+                    tr { th { "到期日" } td { (case.due_date) } }
+                    tr { th { "狀態" } td { (case.status) } }
+                    tr { th { "結案說明" } td { (case.closure_note.clone().unwrap_or_else(|| "—".to_string())) } }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "更新歷史（" (updates.len()) "）" } } }
+            @if updates.is_empty() {
+                p class="empty-inline" { "尚無狀態更新。" }
+            } @else {
+                ul class="timeline" {
+                    @for update in updates {
+                        li {
+                            div class="t-head" { strong { (update.status) } time { (update.updated_at) } }
+                            div class="t-body" { "操作者 " (update.actor) "；備註：" (update.note) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2415,6 +2651,46 @@ fn snapshot(ledger: &SharedLedger) -> Result<GovernanceSnapshot, String> {
         .map_err(|_| "資料鎖定失敗，請重新啟動本機原型".to_string())
 }
 
+/// 頁面註冊表（單一事實來源）：GET 頁面的 route/標題/是否需登入。
+/// 覆蓋測試（tests/page_registry.rs）由此逐頁衍生；nav 繫結列為 C3 延後項
+/// （如實標注：本表尚未驅動 nav）。
+pub struct PageSpec {
+    pub path: &'static str,
+    pub title: &'static str,
+    pub requires_auth: bool,
+    /// 是否出現在側邊導航（子檢視如行事曆為 false）。
+    pub in_nav: bool,
+}
+
+macro_rules! page {
+    ($path:literal, $title:literal, $auth:literal, $nav:literal) => {
+        PageSpec {
+            path: $path,
+            title: $title,
+            requires_auth: $auth,
+            in_nav: $nav,
+        }
+    };
+}
+
+pub const PAGE_REGISTRY: &[PageSpec] = &[
+    page!("/", "工作總覽", true, true),
+    page!("/login", "登入", false, true),
+    page!("/projects", "專案", true, true),
+    page!("/evidence", "文件與證據", true, true),
+    page!("/inspections", "品質檢查", true, true),
+    page!("/workflows", "流程範本", true, true),
+    page!("/controls", "風險與品質", true, true),
+    page!("/lifecycle", "階段與關卡", true, true),
+    page!("/audit", "稽核紀錄", true, true),
+    page!("/approvals", "核准任務", true, true),
+    page!("/approvals/calendar", "SLA 行事曆", true, false),
+    page!("/search", "文件檢索", true, true),
+    page!("/data-map", "資料地圖", true, true),
+    page!("/settings", "系統設定", true, true),
+    page!("/api-docs", "API 文件", true, true),
+];
+
 fn page_response(title: &str, active: &str, content: Markup) -> Response {
     Html(layout(title, active, content).into_string()).into_response()
 }
@@ -2426,6 +2702,20 @@ fn page_error_response(active: &str, message: &str) -> Response {
         p { "請停止寫入，保留資料檔並聯絡管理者。原型不會自動修補不完整的稽核鏈。" }
     };
     page_response("資料錯誤", active, content)
+}
+
+/// 詳細頁查無資料的誠實 404（沿用工作台外殼；非 JSON）。
+fn page_not_found(active: &str, message: &str) -> Response {
+    let content = html! {
+        section class="page-heading" { p class="eyebrow" { "查無資料" } h1 { "找不到對應的記錄" } }
+        div class="alert alert-error" role="alert" { (message) }
+        p { "可能原因：識別碼輸入錯誤、資料尚未建立，或已被移除。請從清單頁重新導航。" }
+    };
+    (
+        StatusCode::NOT_FOUND,
+        Html(layout("查無資料", active, content).into_string()),
+    )
+        .into_response()
 }
 
 fn layout(title: &str, active: &str, content: Markup) -> Markup {
@@ -2472,6 +2762,9 @@ fn layout(title: &str, active: &str, content: Markup) -> Markup {
                             (nav_link("/lifecycle", "lifecycle", active, "階段與關卡", "▥"))
                             (nav_link("/audit", "audit", active, "稽核紀錄", "◷"))
                             (nav_link("/data-map", "data-map", active, "資料地圖", "⌗"))
+                            div class="nav-group-label" { "系統" }
+                            (nav_link("/settings", "settings", active, "系統設定", "⚙"))
+                            (nav_link("/api-docs", "api-docs", active, "API 文件", "❐"))
                         }
                         div class="sidebar-note" {
                             span class="status-dot" aria-hidden="true" {}

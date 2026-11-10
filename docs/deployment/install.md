@@ -15,31 +15,21 @@ PostgreSQL, pgvector, Tantivy, a message queue and a separate search service are
 
 ## Build
 
-Run each command from the crate directory. The two crates are independent; there is no root Cargo workspace.
+The repository is a single Cargo workspace with one root `Cargo.toml` and lockfile. Build and verify from the repository root; select a package with `-p` when needed.
 
 ```powershell
-cd platform
-cargo build --locked --release
-
-cd ..\eval
 cargo build --locked --release
 ```
 
 ## Verify
 
 ```powershell
-cd eval
 cargo fmt -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
-cargo run --locked -- --selftest
-
-cd ..\platform
-cargo fmt -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-cargo run --locked --bin ekp_platform -- --selftest
-cargo run --locked --bin ekp_platform -- --declared-rules-schema
+cargo run --locked -p ekp_eval -- --selftest
+cargo run --locked -p ekp_platform --bin ekp_platform -- --selftest
+cargo run --locked -p ekp_platform --bin ekp_platform -- --declared-rules-schema
 ```
 
 From the repository root, the fixed entry points are:

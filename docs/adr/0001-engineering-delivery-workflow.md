@@ -1,7 +1,9 @@
 # ADR-0001: GitHub Issues and reproducible Rust delivery checks
 
-- Status: Accepted
+- Status: Accepted; crate-layout and remote statements **SUPERSEDED 2026-11-10**
 - Date: 2026-10-25
+
+> **SUPERSEDED (2026-11-10):** The repository is now a single root Cargo workspace with one manifest and lockfile. The two-crate independence and "no root Cargo workspace" statements below are the historical context in which this ADR was accepted. The Issue-tracker and reproducible-check decisions remain in force; current commands are in [quality gates](../development/quality-gates.md). A Git remote (`origin`) now exists, but no CI workflow is tracked at HEAD and CI has never run.
 
 ## Context
 

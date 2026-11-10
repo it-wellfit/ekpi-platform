@@ -1,5 +1,5 @@
 # Local Check Script (PowerShell)
-# Runs the full quality-gates baseline for both independent crates.
+# Runs the full quality-gates baseline for the root Cargo workspace.
 # Executed from the repo root. Uses `;` between commands (no `&&`/`||`).
 
 $root = Resolve-Path "$PSScriptRoot\.."
@@ -24,20 +24,23 @@ Write-Host "scripts/check-secrets.ps1" -ForegroundColor Yellow
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\check-secrets.ps1"
 Check-Result "secret patterns"
 
+Write-Host "=== Workspace ===" -ForegroundColor Cyan
+Set-Location $root
+
+Write-Host "cargo fmt --all -- --check" -ForegroundColor Yellow
+cargo fmt --all -- --check
+Check-Result "workspace fmt"
+
+Write-Host "cargo clippy --locked --workspace --all-targets -- -D warnings" -ForegroundColor Yellow
+cargo clippy --locked --workspace --all-targets -- -D warnings
+Check-Result "workspace clippy"
+
+Write-Host "cargo test --locked --workspace" -ForegroundColor Yellow
+cargo test --locked --workspace
+Check-Result "workspace test"
+
 Write-Host "=== Eval Crate ===" -ForegroundColor Cyan
 Set-Location "$root\eval"
-
-Write-Host "cargo fmt -- --check" -ForegroundColor Yellow
-cargo fmt -- --check
-Check-Result "eval fmt"
-
-Write-Host "cargo clippy --locked --all-targets -- -D warnings" -ForegroundColor Yellow
-cargo clippy --locked --all-targets -- -D warnings
-Check-Result "eval clippy"
-
-Write-Host "cargo test --locked" -ForegroundColor Yellow
-cargo test --locked
-Check-Result "eval test"
 
 Write-Host "cargo run --locked -- --selftest" -ForegroundColor Yellow
 cargo run --locked -- --selftest
@@ -45,18 +48,6 @@ Check-Result "eval selftest"
 
 Write-Host "=== Platform Crate ===" -ForegroundColor Cyan
 Set-Location "$root\platform"
-
-Write-Host "cargo fmt -- --check" -ForegroundColor Yellow
-cargo fmt -- --check
-Check-Result "platform fmt"
-
-Write-Host "cargo clippy --locked --all-targets -- -D warnings" -ForegroundColor Yellow
-cargo clippy --locked --all-targets -- -D warnings
-Check-Result "platform clippy"
-
-Write-Host "cargo test --locked" -ForegroundColor Yellow
-cargo test --locked
-Check-Result "platform test"
 
 Write-Host "cargo run --locked --bin ekp_platform -- --selftest" -ForegroundColor Yellow
 cargo run --locked --bin ekp_platform -- --selftest

@@ -28,15 +28,15 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Field | Detail |
 | --- | --- |
 | Phase items | A4, A7, A11, B4 |
-| Missing resource | An authorized Git remote, a CI runner that can execute `.github/workflows/ci.yml`, branch protection/rulesets, required status checks and a reviewer. |
-| Why code cannot solve it | CI and branch protection are hosted-repository controls. A local workflow file is configuration, not an execution. |
+| Missing resource | A tracked CI workflow (`.github/workflows/ci.yml` is absent at HEAD; the last one was removed in `a697f47` because the OAuth token lacked workflow scope), a runner that can execute it, branch protection/rulesets, required status checks and a reviewer. The `origin` remote now exists, but push authorization and `gh` authentication are unverified. |
+| Why code cannot solve it | CI and branch protection are hosted-repository controls. A local workflow file is configuration, not an execution; the current absence of the file is also not an execution. |
 | Expected role | Repository administrator + engineering owner + security owner. |
-| What they must provide | Remote URL and push authorization, CI enablement, required-check names, branch protection for `main`, PR review requirement, action pinning policy. |
+| What they must provide | Push authorization for the configured `origin`, a tracked and approved CI workflow (restoring `.github/workflows/ci.yml` requires a token with workflow scope and an owner decision), CI enablement, required-check names, branch protection for `main`, PR review requirement, action pinning policy. |
 | Minimum access | Write access to a dedicated branch/PR; permission to read CI logs and branch-protection settings; no production deployment rights. |
-| Unlock steps | 1. Create/authorize the remote. 2. Push the current commit and open a PR. 3. Run CI and retain the run URL/logs. 4. Configure branch protection: PR review, required checks, no force-push/deletion, no bypass. 5. Pin actions by commit SHA. 6. Record the run and settings in [release evidence](../operations/release-evidence-bundle.md). |
+| Unlock steps | 1. Verify push authorization and `gh` authentication for `origin`. 2. Restore or add the CI workflow with owner approval and a workflow-scoped token. 3. Push the current commit and open a PR. 4. Run CI and retain the run URL/logs. 5. Configure branch protection: PR review, required checks, no force-push/deletion, no bypass. 6. Pin actions by commit SHA. 7. Record the run and settings in [release evidence](../operations/release-evidence-bundle.md). |
 | Acceptance criteria | CI green on the named commit; a failing required check blocks merge; branch protection settings visible; no direct push to `main`; reviewer approval recorded. |
-| Work that can continue now | Harden the workflow, pin actions, add local failure messages, keep `scripts/check` current. |
-| Status / evidence | `BLOCKED`; no remote (`git remote -v` empty), `gh` not authenticated, CI never ran. |
+| Work that can continue now | Harden the local canonical gate, pin actions when the workflow is restored, add local failure messages, keep `scripts/check` current. |
+| Status / evidence | `BLOCKED`; `origin` is configured (`https://github.com/it-wellfit/ekpi-platform.git`), but no CI workflow file is tracked at HEAD, `gh` authentication and push authorization are unverified, and CI has never run. |
 
 ## B-03 Enterprise identity, MFA and tenant model
 

@@ -3,10 +3,19 @@
 - **Status:** Final for the 2026-10-27 local evidence baseline, with [2026-10-29](#0-2026-10-29-addendum-current-revision) and [2026-10-30](#04-2026-10-30-multiline-bpmn-and-cookie-hardening-279c919) addenda; **Phase A not approved**, **Phase B blocked**
 - **Owner:** Engineering + QA; business, security, operations, data and independent-review roles `UNASSIGNED`
 - **Evidence revision:** `279c919` (current hardening revision; 345 release-profile tests PASS, canonical **PASS** on two same-command runs, E-034); `21e23d6` (preceding hardening revision; 308 executed release-profile tests PASS, 27 tests blocked, canonical **BLOCKED** at the debug lib harness, E-033); `b2d8afc` (earlier hardening revision; 329 executed tests PASS, 2 edge tests blocked, canonical **BLOCKED**, E-032); `bbe49eb` (earlier hardening revision; release profile 325 tests, canonical **BLOCKED** at the debug CLI binary, E-031); `c827351` (earlier hardening revision; canonical **BLOCKED** at `edge_cases`); `604a2a5` (preceding working-tree canonical PASS); `32f2b36` (preceding canonical PASS); `718db57` (code change and earlier canonical PASS); `499e0d1` (current evidence bundle: automatic restore PASS); `6ed236d` (final evidence bundle clean-clone canonical PASS and automatic restore PASS); previous assurance bundle `41beaea`; code baseline `6ae6134`; release-profile and canonical checks re-run 2026-10-30
-- **Environment:** Single managed Windows 11 host; Windows PowerShell 5.1; Rust 1.99.1; local loopback only; no remote, CI, staging or production
+- **Environment:** Single managed Windows 11 host; Windows PowerShell 5.1; Rust 1.99.1; local loopback only; no CI execution, staging or production; the 2026-10-27 baseline had no remote, and an `origin` remote now exists (see §0.0)
 - **Matrix:** [phase-a-b-matrix.md](phase-a-b-matrix.md)
 - **Test evidence:** [test-evidence.md](test-evidence.md)
 - **Blockers:** [external-blockers.md](external-blockers.md)
+
+## 0.0 2026-11-10 truth-restoration addendum
+
+This addendum corrects repository-state statements that were true for the 2026-10-27/10-30 evidence baseline but are no longer true. The historical sections below are retained; conflicting rows are marked `SUPERSEDED` in place.
+
+- **Code baseline:** HEAD `58c39d8`; the traceability register records a 519-test workspace census at that revision (`R17`). This addendum does not claim a fresh canonical run.
+- **Remote:** `origin` now exists (`https://github.com/it-wellfit/ekpi-platform.git`). Statements below that say "no remote" are historical.
+- **CI:** `.github/workflows/ci.yml` is **not tracked at HEAD**; it was removed in `a697f47` because the OAuth token lacked workflow scope. CI has never run. Statements below that say the workflow file exists are superseded.
+- **Phase status:** unchanged — Phase A **not approved**, Phase B **blocked**.
 
 ## 0. 2026-10-29 addendum (current revision)
 
@@ -134,7 +143,7 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | Earlier final bundle | `28b68cc` bundle verify/clone/restore | verify 0; restore 1 | Bundle verifies/clones; restore **BLOCKED** at `eval` Clippy (historical, not counted) |
 | Last restore | `499e0d1` fresh clone + `scripts/check.ps1` | 0 | PASS (local); previous verified restores `6ed236d` and `41beaea` |
 | Off-host drill | `scripts/backup-offhost.ps1 -Drill` | 0 | PASS for encryption/decryption; `SIMULATED`, not off-host |
-| CI / PR / branch protection | n/a | n/a | **NOT RUN / BLOCKED**: no remote, no CI, no protection |
+| CI / PR / branch protection | n/a | n/a | **NOT RUN / BLOCKED**; SUPERSEDED (2026-11-10): no CI workflow is tracked at HEAD (removed in `a697f47`), CI never ran, and no branch protection exists; `origin` is configured but authentication and required checks are unverified (see §0.0) |
 | Staging / production | n/a | n/a | **NOT RUN / BLOCKED**: no target |
 | Real pilot / independent review | n/a | n/a | **NOT RUN / BLOCKED**: no named participants |
 
@@ -171,7 +180,7 @@ All results below are `LOCAL` unless marked `SIMULATED` or `HISTORICAL`. Full co
 | B1 Security/governance | **BLOCKED** | No security owner, IdP/MFA, tenant model, data policy or production target. |
 | B2 Reliability/observability | **PARTIAL** | Liveness/metrics/logs/correlation/timeout exist; no SLO, traces, alerting, retry/backoff, circuit breaker or fault drill. |
 | B3 Performance/scale | **PARTIAL** | One-host benchmark only; no approved workload, soak, bottleneck analysis or capacity model. |
-| B4 Delivery/change governance | **BLOCKED** | Workflow file exists but no remote, CI run, branch protection, required checks or PR review. |
+| B4 Delivery/change governance | **BLOCKED** | SUPERSEDED (2026-11-10): the workflow file is absent at HEAD (removed in `a697f47`); `origin` exists, but CI has never run and branch protection/required checks/PR review are unverified (see §0.0). |
 | B5 AI/agent quality | **BLOCKED** | No provider/data policy or model/tool path; mock only. |
 | B6 Operations/support | **BLOCKED** | No named service/operations/support owner, on-call or escalation drill. |
 | B7 Backup/DR | **PARTIAL** | Local bundle/restore and simulated `age` drill only; no off-host copy, key custody, approved RPO/RTO or DR exercise. |

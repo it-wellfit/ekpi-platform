@@ -64,7 +64,7 @@ The integration suite exercises governance web routes and main lifecycle paths. 
 
 The repository-root `.cargo/config.toml` contains narrow codegen overrides for packages that Windows Application Control has blocked by hash on this managed host. Cargo applies them automatically, so the commands above remain canonical and were executed without extra flags at `7f6ab97` (2026-10-26). The overrides do not change program semantics or disable debug assertions. If a host still blocks a harness, follow [troubleshooting](../deployment/troubleshooting.md#windows-application-control-blocks-target-binaries) and record `Blocked` rather than weakening the gate.
 
-CI calls the same `scripts/check` entry point on Ubuntu and Windows, and a separate security job runs the high-signal secret scan plus `cargo audit` on both lockfiles. CI has not executed yet because this checkout has no remote; do not claim a green CI run until it exists.
+No CI workflow file is tracked at HEAD: `.github/workflows/ci.yml` was removed in `a697f47` because the available OAuth token lacked workflow scope. A Git remote (`origin`) is configured, but CI has never run, and no branch protection, required check or pull-request review is evidenced. `scripts/check` (with the secret scan and `cargo audit`) remains the canonical local entry point; do not claim a green CI run until a tracked workflow and an executed run exist.
 
 ## Local pre-PR gate
 

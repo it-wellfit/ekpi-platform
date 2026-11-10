@@ -10,6 +10,9 @@ Read [README.md](README.md) for the system map and run commands. Start documenta
 - Infrastructure: crates/adapters implements Application ports and Domain traits
 
 ### Technology Stack (Strict Zero-JS)
+
+> **Implementation note (2026-11-10):** The rows below describe the target stack. The currently served local workbench uses the JSONL ledger and PBKDF2-HMAC-SHA256 local sessions; SQLx/PostgreSQL/Argon2id code is present as fail-closed adapter skeletons or target-state declarations, not as the served datastore or identity path.
+
 - Rust 2024 Edition, Cargo Resolver 3
 - Axum 0.8.9 (web framework)
 - Askama 0.16.1 (HTML templates, server-side rendering)
@@ -26,7 +29,9 @@ Read [README.md](README.md) for the system map and run commands. Start documenta
 
 ## Architecture and invariants
 
-- The eval/ and platform/ directories are independent Rust crates; platform depends on eval. There is no root Cargo workspace. In each crate run cargo fmt -- --check, cargo clippy --locked --all-targets -- -D warnings, and cargo test --locked. Also run `cargo run --locked -- --selftest` in eval/ and `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` plus `--eval --test-set data/eval/search_eval.json` in platform/. See docs/development/quality-gates.md for exact working directories; preserve docs/development/regression-checklist.md.
+> **SUPERSEDED (2026-11-10):** This legacy block described the pre-workspace layout. It is retained for history only. Current facts: the root `Cargo.toml` is a workspace (resolver 3) with members `apps/web`, `crates/domain`, `crates/application`, `crates/adapters`, `eval`, `platform`; run the canonical checks once from the repository root. The current ledger is local JSONL and the current login is PBKDF2-HMAC-SHA256, not PostgreSQL/SQLx/Argon2id. The zero-JS, fail-closed, local-only and evidence rules below remain in force.
+
+- The eval/ and platform/ directories are independent Rust crates; platform depends on eval. There is no root Cargo workspace. **[SUPERSEDED 2026-11-10: a root workspace now exists; see the note above.]** In each crate run cargo fmt -- --check, cargo clippy --locked --all-targets -- -D warnings, and cargo test --locked. Also run `cargo run --locked -- --selftest` in eval/ and `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` plus `--eval --test-set data/eval/search_eval.json` in platform/. See docs/development/quality-gates.md for exact working directories; preserve docs/development/regression-checklist.md.
 - Rust code forbids unsafe; Clippy must pass with warnings denied. The platform presentation layer stays semantic HTML and CSS-first with zero JavaScript.
 - Treat source evidence and test results as observed facts: do not fabricate integrations, permissions, approvals, scan results, or compliance claims. The governance web prototype is local-only and has no enterprise authentication.
 - Only the CLI and `governance_web` are served surfaces. `platform/src/api.rs` is an unwired placeholder that returns a fixed `comply`; never expose it or call it a contract. `local_auth` is wired into `governance_web` as a local-only session/role check; `tenant`, `audit`, `worm`, `agents`, `formal_verification`, `runtime_verification` and similar modules remain library-only unless the [architecture map](docs/architecture/README.md) says otherwise.

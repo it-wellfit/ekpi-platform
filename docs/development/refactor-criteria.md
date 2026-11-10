@@ -43,16 +43,16 @@ else:                     NEXT SLICE（附量測或覆蓋前提）
 
 門檻（B>10、H≥10）非神聖數字：調整需 ADR；門檻只升不降的精神同品質標準。
 
-## 4. 實測裁決表（2026-11-09 掃描；數字來自當日指令輸出）
+## 4. 實測裁決表（2026-11-09 首次掃描；2026-11-10 重測 C3/C6）
 
 | 案 | 候選 | P | B | C | H | S | 裁決 | 證據/理由 |
 |---|---|---|---|---|---|---|---|---|
 | C1 | `platform::governance::default_ledger_path` 與 `adapters::configuration::default_ledger_path` 邏輯重複 | ✅（僅差 `PathBuf::from` vs `Path::new`，語義相同） | 2（bin、main） | ✅（configuration 單元測試＋編譯） | 6＋1 | 12 行 | **DO NOW → 已執行** | 單一事實來源：platform 委派 adapters；消費者面名保持穩定（Hyrum） |
 | C2 | `adapters::jsonl_ledger::default_ledger_path` 與 C1 同名但回傳**目錄** | 語義不同，非重複 | 1（內部） | ✅ | 3 | 10 行 | **DO NOW → 已執行** | 改名 `default_data_dir`＋文檔區辨；編譯器保證零外部影響 |
-| C3 | `governance_web.rs` 拆分為模組（3246 行） | — | **19 引用** | 部分 | **21** | 3246 行 | **DEFER** | 並行開發期碰撞面最大；前提：模組拆分設計文件＋表徵套件＋單寫者窗口 |
+| C3 | `governance_web.rs` 拆分為模組（2026-11-10 重測：**4025 行**，含未提交 detail pages） | ❌（`page_registry` 表徵套件剛補齊 2 個測試；golden HTML、完整角色矩陣與 mutation 契約仍缺） | **7 個檔案引用**（含 bin/tests） | 部分（頁面 auth/zero-JS/title 契約；未涵蓋所有 mutation） | **24** | 4025 行（未提交工作 +289 行） | **DEFER** | 2026-11-09 舊值 3246 行／19 引用／21 提交已漂移；重測後碰撞面更大。前提不變：模組設計文件＋完整表徵套件＋單寫者窗口 |
 | C4 | TODO/FIXME 19＋`allow(too_many_arguments)` 1 | — | 0 | — | — | — | **分級** | postgres 骨架 9 筆＝已聲明 fail-closed（可接受，IMP 追蹤）；其餘為語義註記；`approvals_content` 參數列 → NEXT SLICE 以參數結構體收斂 |
 | C5 | 核准三個 handler 的重複「讀 body＋解析失敗分支」 | ✅（已抽 `read_limited_body`；剩錯誤分支樣式） | 0（檔內） | ✅（route 測試） | 3 | ~24 行 | **NEXT SLICE** | 與 C4 的參數結構體同一微切片處理，避免為小收益頻繁觸碰高扇出檔 |
-| C6 | **兩個獨立的 `EventPayload` enum**：`platform::governance::EventPayload`（治理帳鏈在用，S11 發現）與 `ekp_domain::governance::EventPayload`（領域層同名同構） | — | 44 引用（platform 版） | 平台版由帳鏈測試覆蓋 | — | 兩份 9 變體定義 | **NEXT SLICE** | 去重方向：platform 版改為 re-export domain 版（或反之），需先驗證 serde 序列化輸出逐位元組一致（帳鏈相容性）；S11 資料地圖已對準**在用**的 platform 版 |
+| C6 | **兩個獨立的 `EventPayload` enum**：`platform::governance::EventPayload`（治理帳鏈在用）與 `ekp_domain::governance::EventPayload`（9 變體同名同序） | ❌（尚無逐位元組 serde 等價測試） | **80 引用**（2026-11-10 重測）；9 個 payload struct 亦為兩份獨立定義 | 平台版由帳鏈測試覆蓋；無跨型別等價測試 | 2 個定義提交 | 兩份 9 變體＋9 組 payload struct | **NEXT SLICE（需型別遷移，非一行 re-export）** | 2026-11-10 重測：兩 enum 變體相同，但 `Project`／`Evidence`／… 等 payload struct 是 platform 與 domain 各自的獨立型別，直接 `pub use` 不會編譯。需先做 serde 輸出逐位元組等價測試，再以專用遷移切片（或 ADR）收斂；S11 資料地圖對準**在用**的 platform 版 |
 
 ## 5. 整體優構次序（不可調換）
 

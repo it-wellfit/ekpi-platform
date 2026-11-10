@@ -4,7 +4,7 @@ This checklist records the behavior already present in the local prototype. It i
 
 ## 1. Required automated baseline
 
-Run the exact commands in [quality gates](quality-gates.md) from each independent crate directory. The GitHub Actions workflow is defined for Ubuntu and Windows, but it has never run because this checkout has no remote; local runs are the only executed evidence. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest`, the schema check and `platform/tests/cli_contract.rs`.
+Run the canonical commands in [quality gates](quality-gates.md) once from the repository root (single Cargo workspace). No CI workflow file is tracked at HEAD — `.github/workflows/ci.yml` was removed in `a697f47` because the OAuth token lacked workflow scope — and CI has never run; a Git remote exists but branch protection and required checks are not evidenced. Local runs are the only executed evidence. The `platform` binary has `test = false`; its command-line behavior is additionally covered by `--selftest`, the schema check and `platform/tests/cli_contract.rs`.
 
 The full local baseline and representative CLI paths were rerun for this audit (Rust 1.99.1, 2026-10-25):
 

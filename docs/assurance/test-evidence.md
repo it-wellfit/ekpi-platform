@@ -26,7 +26,7 @@
 | E-010 | HISTORICAL LOCAL | SBOM generation | `a826472` | 0 | platform 67 components; eval 11 components; hashes recorded |
 | E-011 | HISTORICAL LOCAL | Full gate `gate.ps1 -IncludeSmoke` | `b2bae3e` | 0 | 13/13 PASS (historical; not current) |
 | E-012 | HISTORICAL LOCAL | Release benchmark | `56a944f` / `b2bae3e` | 0 | eval p50/p95 17.432/23.319 ms; loopback p50/p95 19.010/24.069 ms; 5,369.21 req/s |
-| E-013 | NOT RUN | CI, PR, branch protection | n/a | n/a | `BLOCKED`: no remote, no CI execution, no branch protection |
+| E-013 | NOT RUN | CI, PR, branch protection | n/a | n/a | `BLOCKED`; SUPERSEDED (2026-11-10): `origin` is configured, but no CI workflow is tracked at HEAD, CI never ran, and no branch protection exists |
 | E-014 | NOT RUN | Staging/production deployment | n/a | n/a | `BLOCKED`: no approved environment or deployment target |
 | E-015 | NOT RUN | Independent review / pilot | n/a | n/a | `BLOCKED`: no independent reviewer, pilot owner or representative user |
 | E-016 | LOCAL | Documentation check (assurance commit) | `947cd27` | 0 | PASS: 53 required documents, 652 links in 115 files |

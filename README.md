@@ -14,13 +14,13 @@ Mojo 列為前沿方法軌道（research-only）；Python 降為參考實作與�
 
 The canonical documentation index is [docs/README.md](docs/README.md). It names the owner and update trigger for each topic, and points to the product, architecture, backend, frontend, contract, quality, operations, decision, review and traceability documents. Do not treat a summary or a historical report as the current source of truth. The cross-phase acceptance evidence is in [docs/assurance/](docs/assurance/README.md).
 
-**Phase status:** Phase A is **not approved**; Phase B is **blocked**. The latest documented canonical local evidence is for `279c919` (E-034); it is revision-bound and does **not** verify the current dirty checkout (`c0c0e33`). See the [documentation index](docs/README.md) and [assurance evidence](docs/assurance/README.md), including the [final report](docs/assurance/final-report.md) and [test evidence](docs/assurance/test-evidence.md). The repository is a local prototype, not a production service. The last working-tree canonical PASS is `604a2a5` and the last clean-clone canonical PASS is `6ed236d`; both are historical and revision-bound. The repository is a tested local prototype, not a production service. It has no approved deployment target, enterprise identity, tenant isolation, off-host backup, operational telemetry or named operations owner. See [phase gates](docs/quality/phase-gates.md), [assurance final report](docs/assurance/final-report.md) and [production readiness](docs/operations/production-readiness.md).
+**Phase status:** Phase A is **not approved**; Phase B is **blocked**. The current code baseline is `58c39d8`, where the traceability register records a 519-test workspace census (`R17`); that number is revision-bound and does **not** verify the present working tree. See the [documentation index](docs/README.md) and [assurance evidence](docs/assurance/README.md), including the [final report](docs/assurance/final-report.md) and [test evidence](docs/assurance/test-evidence.md). The repository is a tested local prototype, not a production service. It has no approved deployment target, enterprise identity, tenant isolation, off-host backup, operational telemetry or named operations owner. See [phase gates](docs/quality/phase-gates.md), [assurance final report](docs/assurance/final-report.md) and [production readiness](docs/operations/production-readiness.md).
 
 ## Development workflow and CI
 
-This repository uses a work-type-specific engineering workflow, GitHub issue/spec templates, risk-based validation, and Linux/Windows CI. Start with [AGENTS.md](AGENTS.md) and [the engineering workflow](docs/development/README.md). The exact commands, risk gates, existing-feature [regression checklist](docs/development/regression-checklist.md), and release/retro checks are in [quality gates](docs/development/quality-gates.md) and [release guidance](docs/development/release-and-retro.md).
+This repository uses a work-type-specific engineering workflow, GitHub issue/spec templates, risk-based validation, and a documented local canonical gate. Start with [AGENTS.md](AGENTS.md) and [the engineering workflow](docs/development/README.md). The exact commands, risk gates, existing-feature [regression checklist](docs/development/regression-checklist.md), and release/retro checks are in [quality gates](docs/development/quality-gates.md) and [release guidance](docs/development/release-and-retro.md).
 
-The two Cargo crates have separate manifests and lockfiles. Run checks from each crate directory. The workflow file defines the same fixed entry point contributors run locally (`scripts/check.sh` / `scripts/check.ps1`) on Ubuntu and Windows, plus a separate security job, but it has **never run**: this checkout has no remote and no CI execution. Local runs are the only executed evidence. Do not treat a README test count as current evidence unless those commands were run for the revision being delivered.
+The repository is a single Cargo workspace with one root `Cargo.toml` and lockfile; run the canonical checks once from the repository root. **No CI workflow file is tracked at HEAD:** `.github/workflows/ci.yml` was removed in `a697f47` because the available OAuth token lacked workflow scope. A Git remote (`origin`) is configured, but no CI run, branch protection, required status check or pull-request review is evidenced. Local runs are the only executed evidence. Do not treat a README test count as current evidence unless those commands were run for the revision being delivered.
 
 ## 目錄結構
 
@@ -30,7 +30,7 @@ ekpi-platform/
 ├── AGENTS.md                                ← Agent 開發規範與路由
 ├── GLOSSARY.md                              ← 專案領域詞彙索引
 ├── rust-toolchain.toml                      ← 固定 Rust 工具鏈
-├── .github/                                 ← CI、Issue／PR 範本與 Dependabot
+├── .github/                                 ← Issue／PR 範本與 Dependabot（HEAD 無 CI workflow）
 ├── docs/
 │   ├── README.md                            ← canonical documentation map（owner／更新條件）
 │   ├── product/                              ← 產品問題、角色、MVP 範圍與非目標

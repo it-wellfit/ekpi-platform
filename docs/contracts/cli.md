@@ -5,7 +5,7 @@
 - **Last reviewed:** 2026-10-29
 - **Contract IDs:** `CTR-CLI-001` (`ekp_platform`), `CTR-CLI-002` (`ekp_eval`)
 
-Both CLIs are local, offline tools. Commands must be run from the crate directory because relative data paths resolve from the process working directory or the crate manifest, and the crates are independent (no root Cargo workspace).
+Both CLIs are local, offline tools. The repository is a single Cargo workspace with one root manifest and lockfile; run canonical workspace checks from the repository root. Relative data paths resolve from the process working directory or the crate manifest, so the examples below name the working directory where that distinction matters.
 
 ## `ekp_platform`
 

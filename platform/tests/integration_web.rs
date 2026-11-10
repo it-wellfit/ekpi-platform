@@ -11,6 +11,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tower::ServiceExt;
 
+/// Route-contract fixture: keep the 3,600-second session TTL but lower the
+/// PBKDF2 work factor. The production default (600,000 iterations) is asserted
+/// by local_auth unit tests; using it in every parallel login test pushed
+/// requests past the 15-second timeout on this host.
+fn test_auth_store() -> AuthStore {
+    AuthStore::with_iterations(3600, 1_000)
+}
+
 /// Unique per-run ledger path: a shared fixed name would collide across
 /// parallel test runs and could pick up events from a previous run.
 fn test_ledger_path(label: &str) -> std::path::PathBuf {
@@ -29,7 +37,7 @@ fn app_with_user(
 ) -> (axum::Router, std::path::PathBuf) {
     let path = test_ledger_path(label);
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let mut store = AuthStore::default();
+    let mut store = test_auth_store();
     store
         .register(username, password, ekp_platform::local_auth::Role::Editor)
         .unwrap();
@@ -131,7 +139,7 @@ async fn health_endpoint_returns_200() {
     }
     let path = test_ledger_path("health");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     let response = app
@@ -149,7 +157,7 @@ async fn metrics_endpoint_returns_prometheus_format() {
     }
     let path = test_ledger_path("metrics");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     let response = app
@@ -169,7 +177,7 @@ async fn unauthenticated_request_to_data_page_returns_401() {
     }
     let path = test_ledger_path("unauth");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     let response = app
@@ -216,7 +224,7 @@ async fn oversized_form_body_is_rejected() {
     }
     let path = test_ledger_path("oversized");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     let large_body = "a".repeat(65 * 1024); // 65KB, exceeds 64KB limit
@@ -245,7 +253,7 @@ async fn security_headers_are_present() {
     }
     let path = test_ledger_path("sec-headers-1");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     let response = app
@@ -267,7 +275,7 @@ async fn security_headers_validation() {
     }
     let path = test_ledger_path("sec-headers-2");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     let response = app
@@ -292,7 +300,7 @@ async fn error_response_structure_validation() {
     }
     let path = test_ledger_path("err-struct");
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let auth = Arc::new(std::sync::Mutex::new(AuthStore::default()));
+    let auth = Arc::new(std::sync::Mutex::new(test_auth_store()));
     let app = governance_web::router(ledger, auth);
 
     // A client-supplied correlation id must come back in both the response
@@ -491,7 +499,7 @@ fn app_with_approval_users(
 ) {
     let path = test_ledger_path(label);
     let ledger = Arc::new(std::sync::Mutex::new(Ledger::open(&path).unwrap()));
-    let mut store = AuthStore::default();
+    let mut store = test_auth_store();
     store
         .register(
             "approver-a",
