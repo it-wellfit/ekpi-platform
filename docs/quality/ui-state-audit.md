@@ -33,6 +33,12 @@
 | `/approvals/calendar`（S12 新增） | 月曆格（`?month=YYYY-MM` 伺服器渲染）＋到期任務連結＋逾期紅格＋「已逾時」文字（顏色非唯一傳達）＋前/後月 chips | 空月→「0 筆」誠實計數；任務不在本月→outside 計數說明 | 未登入 401；無效月份（`2026-13`/`not-a-month`）→ 400 fail-closed（不靜默回退當月）；`sla_calendar_navigation_and_validation` |
 | `/settings` | 靜態資訊（版本/儲存模式） | N/A | N/A（無資料依賴） | |
 | `/api-docs` | 端點狀態表（誠實 501 標注） | N/A | 端點本身一律 501 結構化錯誤 | `unwired_api_endpoints_return_honest_501_never_fabricated_data` |
+| `/events`（S12 批次） | 事件表（序號/標籤/操作者/時間/雜湊膠囊）＋標籤過濾 chips＋分頁 | 過濾無命中→誠實空狀態；鏈空→同 | 401；`events_browser_filters_by_type`（鏈事實渲染、誠實省略 payload 內文） |
+| `/audit/chains`（S12 批次） | 雙鏈 KPI 卡＋各類事件計數表 | 鏈空→「尚無事件」 | 鏈驗證徽章（綠/紅）；401 |
+| `/role-matrix`（S12 批次） | 角色 × 能力表＋「鏡像程式碼」聲明 | N/A（常數表） | 401；`role_matrix_renders_role_capability_table` |
+| `/glossary`（批次 3） | 領域字彙表（核准工作流＋資料與鏈） | N/A（常數表） | 401；`info_pages_render_glossary_help_about` |
+| `/help`（批次 3） | 操作說明（登入/角色/匯出/疑難排解表） | N/A | 401；同上 |
+| `/about`（批次 3） | 誠實邊界（是什麼/明確不是什麼） | N/A | 401；同上 |
 | `/search`（S7 新增） | 檢索頁＋`doc@version§section` 引用卡＋分數計＋快速查詢 chips＋索引統計 | 空查詢引導狀態；無命中誠實空結果（「找不到相符條款」）；無假結果 | 文件庫載入失敗 notice-red；未登入 401；`search_page_renders_honest_states_and_index_counts`、`search_page_requires_session` | |
 | `/data-map`（S11 新增） | 雙鏈血緣表（治理 9＋核准 5：事件/欄位/寫入面/頁面）＋**現況事件數**欄 | 血緣表為常數（無空狀態語義）；頁面本身唯讀 | 未登入 401；`data_map_page_requires_session_and_renders` | |
 

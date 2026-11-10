@@ -60,12 +60,12 @@
 |---|---|---|
 | S8 | 佇列視圖：「我的待簽核 / 我送出的」兩個檢視（無新資料模型） | e2e 兩檢視正確過濾 |
 | S9 | 證據包匯出：`--export-evidence-pack DIR`（manifest+decisions+雙鏈快照） | 重放一致＋schema 鎖 | ✅ 完成：`CTR-EXP-003`；501 測試；canonical `CHECK_EXITCODE=0`；雙跑逐位元組一致、損毀鏈誠實 exit 1 |
-| S10 | API 寫入契約 v2（冪等鍵）＋ `POST /api/v1/approvals` 真接線 | 契約測試＋重放防護測試 |
+| S10 | API 寫入契約 v2（冪等鍵）＋ `POST /api/v1/approvals` 真接線 | 契約測試＋重放防護測試 | ✅ 完成：`680aacf`（CTR-API-001 §POST；503 測試；canonical exit 0；重放不追加事件） |
 | S11 | 資料地圖頁（欄位→事件→頁面血緣；實作演進為**型別系統驅動**——窮舉 match 編譯級覆蓋鎖，取代文字掃描以杜絕漂移） | 血緣與程式一致（編譯器強制） | ✅＋S12 批次延伸：`/events?type=` 瀏覽器、`/audit/chains` 雙鏈狀態、`/role-matrix`、glossary/help/about（`4179817`；524 測試；canonical exit 0） |
-| S12 | SLA 行事曆檢視（CSS grid 月曆，逾期日紅點） | 逾期資料驅動正確 |
-| S13 | 合規報告產生器（控制矩陣 + 證據連結 + 缺口清單） | 報告可從 register 推導 |
-| S14 | 稽核包（bundle+manifest+雙鏈 verify 腳本） | 還原演練擴充涵蓋 runtime 資料（IMP-021） |
-| S15 | 效能與可用性複核（量測制；reduced-motion/對比度終檢） | benchmark 前後並列 |
+| S12 | SLA 行事曆檢視（CSS grid 月曆，逾期日紅點） | 逾期資料驅動正確 | ✅ 完成：`d681ce1`（R15；516 測試；civil-date 4 條自證測試——紅測試抓出 Hinnant 紀元平移缺失並修復） |
+| S13 | 合規報告產生器（控制矩陣 + 證據連結 + 缺口清單） | 報告可從 register 推導 | ✅ 完成：`CTR-EXP-004`（R16；519 測試；JSON+MD 單一事實、雙跑逐位元組一致；程式碼被並行 `okk` 提交收走——provenance 註記於 R16） |
+| S14 | 稽核包（bundle+manifest+雙鏈 verify 腳本） | 還原演練擴充涵蓋 runtime 資料（IMP-021） | ✅ 完成：`60a2d6c`（CTR-EXP-005；R17；IMP-021 drill PASS——合成資料如實標注；AUDIT-0004） |
+| S15 | 效能與可用性複核（量測制；reduced-motion/對比度終檢） | benchmark 前後並列 | ✅ 完成：`58c39d8`（R17；重新基線化 519、雙跑 benchmark、Workflow B 否證四項成立、gate.ps1 13/13） |
 
 ## 5. 「超越」的量測語言（不宣稱打敗任何產品）
 
