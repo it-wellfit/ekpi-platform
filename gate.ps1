@@ -155,28 +155,19 @@ foreach ($crateDir in @($evalDir, $platformDir)) {
 Invoke-DocsStep
 Invoke-SecretsStep
 
-Invoke-CargoStep -Name 'eval fmt' -WorkingDirectory $evalDir -Arguments @(
-    'fmt', '--', '--check'
+Invoke-CargoStep -Name 'workspace fmt' -WorkingDirectory $repoRoot -Arguments @(
+    'fmt', '--all', '--', '--check'
 )
-Invoke-CargoStep -Name 'eval clippy' -WorkingDirectory $evalDir -Arguments @(
-    'clippy', '--locked', '--all-targets', '--', '-D', 'warnings'
+Invoke-CargoStep -Name 'workspace clippy' -WorkingDirectory $repoRoot -Arguments @(
+    'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'
 )
-Invoke-CargoStep -Name 'eval tests' -WorkingDirectory $evalDir -Arguments @(
-    'test', '--locked'
+Invoke-CargoStep -Name 'workspace tests' -WorkingDirectory $repoRoot -Arguments @(
+    'test', '--locked', '--workspace'
 )
 Invoke-CargoStep -Name 'eval selftest' -WorkingDirectory $evalDir -Arguments @(
     'run', '--locked', '--', '--selftest'
 )
 
-Invoke-CargoStep -Name 'platform fmt' -WorkingDirectory $platformDir -Arguments @(
-    'fmt', '--', '--check'
-)
-Invoke-CargoStep -Name 'platform clippy' -WorkingDirectory $platformDir -Arguments @(
-    'clippy', '--locked', '--all-targets', '--', '-D', 'warnings'
-)
-Invoke-CargoStep -Name 'platform tests' -WorkingDirectory $platformDir -Arguments @(
-    'test', '--locked'
-)
 Invoke-CargoStep -Name 'platform selftest' -WorkingDirectory $platformDir -Arguments @(
     'run', '--locked', '--bin', 'ekp_platform', '--', '--selftest'
 )

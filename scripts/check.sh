@@ -1,6 +1,6 @@
 #!/bin/bash
 # Local Check Script (POSIX shell)
-# Runs the full quality-gates baseline for both independent crates.
+# Runs the full quality-gates baseline for the root Cargo workspace.
 # Executed from the repo root.
 
 set -e
@@ -20,20 +20,23 @@ echo "=== Secret Patterns ==="
 "$root/scripts/check-secrets.sh"
 check "secret patterns"
 
+echo "=== Workspace ==="
+cd "$root"
+
+echo "cargo fmt --all -- --check"
+cargo fmt --all -- --check
+check "workspace fmt"
+
+echo "cargo clippy --locked --workspace --all-targets -- -D warnings"
+cargo clippy --locked --workspace --all-targets -- -D warnings
+check "workspace clippy"
+
+echo "cargo test --locked --workspace"
+cargo test --locked --workspace
+check "workspace test"
+
 echo "=== Eval Crate ==="
 cd "$root/eval"
-
-echo "cargo fmt -- --check"
-cargo fmt -- --check
-check "eval fmt"
-
-echo "cargo clippy --locked --all-targets -- -D warnings"
-cargo clippy --locked --all-targets -- -D warnings
-check "eval clippy"
-
-echo "cargo test --locked"
-cargo test --locked
-check "eval test"
 
 echo "cargo run --locked -- --selftest"
 cargo run --locked -- --selftest
@@ -41,18 +44,6 @@ check "eval selftest"
 
 echo "=== Platform Crate ==="
 cd "$root/platform"
-
-echo "cargo fmt -- --check"
-cargo fmt -- --check
-check "platform fmt"
-
-echo "cargo clippy --locked --all-targets -- -D warnings"
-cargo clippy --locked --all-targets -- -D warnings
-check "platform clippy"
-
-echo "cargo test --locked"
-cargo test --locked
-check "platform test"
 
 echo "cargo run --locked --bin ekp_platform -- --selftest"
 cargo run --locked --bin ekp_platform -- --selftest

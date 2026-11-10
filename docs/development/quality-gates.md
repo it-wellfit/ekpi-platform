@@ -2,7 +2,7 @@
 
 - **Status:** Active
 - **Owner:** Engineering + QA
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-11-10
 - **Phase gates:** [Phase A/B](../quality/phase-gates.md)
 - **Traceability:** [Register](../traceability/register.md)
 - **DoD:** [Engineering workflow](README.md#definition-of-done)
@@ -23,7 +23,7 @@ Use [the existing-functionality regression inventory](regression-checklist.md) t
 
 ## Required baseline
 
-The crates are independent, so run commands in each package directory rather than assuming a root Cargo workspace. The fixed entry point is:
+The repository is a single Cargo workspace with one root `Cargo.toml` and lockfile. Run the canonical gate once from the repository root. The fixed entry point is:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
@@ -37,23 +37,21 @@ It runs, in order:
 
 1. Documentation required-file and relative-link check (`scripts/check-docs`).
 2. High-signal secret-pattern scan (`scripts/check-secrets`). This is a limited scan, not a full secret scanner.
-3. `eval`: `cargo fmt -- --check`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`, `cargo run --locked -- --selftest`.
-4. `platform`: the same format/Clippy/test steps, plus `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json`.
+3. Workspace: `cargo fmt --all -- --check`, `cargo clippy --locked --workspace --all-targets -- -D warnings`, `cargo test --locked --workspace`.
+4. `eval`: `cargo run --locked -- --selftest`.
+5. `platform`: `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json`.
 
-The equivalent per-crate commands are:
+The workspace step must execute every member (`apps/web`, `crates/domain`, `crates/application`, `crates/adapters`, `eval`, `platform`). Until 2026-11-10 the script ran `cargo test --locked` separately inside `eval/` and `platform/`, which silently omitted the `crates/*` and `apps/web` tests; the gate now uses `--workspace` and must not be narrowed back. The widened gate is recorded in the traceability register as `R18`.
+
+The equivalent commands, run from the repository root, are:
 
 ```powershell
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
 Set-Location eval
-cargo fmt -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
 cargo run --locked -- --selftest
-Set-Location ..
-
-Set-Location platform
-cargo fmt -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+Set-Location ..\platform
 cargo run --locked --bin ekp_platform -- --selftest
 cargo run --locked --bin ekp_platform -- --declared-rules-schema
 cargo run --locked --bin ekp_platform -- --eval --test-set data/eval/search_eval.json
@@ -74,7 +72,7 @@ From the repository root:
 powershell -ExecutionPolicy Bypass -File gate.ps1
 ```
 
-Add `-IncludeSmoke` to also run the platform report/schema/coverage/LegalRuleML/HTML path and verify its artifacts, including the zero-script check on `report.html` and structural checks on the LegalRuleML export (10 KB minimum, official root and namespace, at least 19 `PrescriptiveStatement`, 19 `PenaltyStatement`, 19 `Reparation`, and 16 `LegalSource` elements). The gate includes the documentation and secret-pattern steps, mirrors the baseline commands with `--locked` in both crates, stops at the first failure, and prints a pass/fail summary.
+Add `-IncludeSmoke` to also run the platform report/schema/coverage/LegalRuleML/HTML path and verify its artifacts, including the zero-script check on `report.html` and structural checks on the LegalRuleML export (10 KB minimum, official root and namespace, at least 19 `PrescriptiveStatement`, 19 `PenaltyStatement`, 19 `Reparation`, and 16 `LegalSource` elements). The gate includes the documentation and secret-pattern steps, mirrors the workspace-wide baseline commands (`fmt --all`, `clippy --workspace`, `test --workspace` with `--locked`) plus the per-crate self-tests, stops at the first failure, and prints a pass/fail summary.
 
 Use `-IncludeSmoke` for changes to reports, exports, coverage, HTML, data fixtures or CLI output. A pure documentation change still runs the full baseline per the Low tier, but does not need the smoke path unless it changes a reported number or contract.
 
