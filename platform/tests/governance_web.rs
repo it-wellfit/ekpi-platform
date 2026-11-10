@@ -1129,3 +1129,83 @@ async fn data_map_counts_reflect_live_ledger() {
         std::fs::remove_file(path).expect("test ledger removed");
     }
 }
+
+/// S12 批次：事件瀏覽器——標籤過濾與誠實空狀態。
+#[tokio::test]
+async fn events_browser_filters_by_type() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    // 建立一個專案 → 治理鏈出現一筆 project_created。
+    let form = "name=瀏覽器測試&department=PMO&owner=Alex&risk_tier=low";
+    let created = post_form_with_cookie(&app, "/projects", form, Some(&cookie)).await;
+    assert_eq!(created.status(), StatusCode::SEE_OTHER);
+
+    // 全部視圖：事件存在。
+    let page = get_with_cookie(&app, "/events", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("project_created"), "event tag rendered");
+
+    // 過濾到不存在的事件類型 → 誠實空狀態。
+    let page = get_with_cookie(&app, "/events?type=workflow_published", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("沒有符合的事件"), "honest empty state");
+
+    // 過濾 project_created → 1 筆（表渲染鏈事實：標籤/操作者，非 payload 內文）。
+    let page = get_with_cookie(&app, "/events?type=project_created", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("project_created"), "filtered tag rendered");
+    assert!(html.contains("tester"), "event actor rendered");
+    assert!(
+        !html.contains("瀏覽器測試"),
+        "payload contents are not part of the chain-facts table"
+    );
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// S12 批次：權限矩陣渲染角色×能力，並聲明與程式碼同步。
+#[tokio::test]
+async fn role_matrix_renders_role_capability_table() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let page = get_with_cookie(&app, "/role-matrix", Some(&cookie)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = response_text(page).await;
+    assert!(html.contains("Approver 專屬"), "decision row present");
+    assert!(html.contains("is_public_path"), "mirrors-code disclaimer");
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// 批次 3：字彙／說明／關於三頁。
+#[tokio::test]
+async fn info_pages_render_glossary_help_about() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    for (route, marker) in [
+        ("/glossary", "Ubiquitous Language"),
+        ("/help", "疑難排解"),
+        ("/about", "明確不是什麼"),
+    ] {
+        let page = get_with_cookie(&app, route, Some(&cookie)).await;
+        assert_eq!(page.status(), StatusCode::OK, "{route} status");
+        let html = response_text(page).await;
+        assert!(html.contains(marker), "{route} must contain `{marker}`");
+        assert!(!html.contains("<script"), "{route} zero-JS");
+    }
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}

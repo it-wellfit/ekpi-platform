@@ -138,6 +138,7 @@ pub fn router_with_approvals(
     let auth_for_csrf = auth.clone();
     let auth_for_approvals = auth.clone();
     let auth_for_map = auth.clone();
+    let auth_for_pages = auth.clone();
     let ledger_for_map = ledger.clone();
     let approvals_for_map = approvals.clone();
 
@@ -164,6 +165,7 @@ pub fn router_with_approvals(
         .route("/controls/{id}/status", post(update_quality_case))
         .route("/lifecycle", get(lifecycle_page).post(record_gate_decision))
         .route("/audit", get(audit_page))
+        .route("/events", get(events_page))
         .route("/search", get(search_page))
         .route("/settings", get(settings_page))
         .route("/api-docs", get(api_docs_page))
@@ -204,10 +206,19 @@ pub fn router_with_approvals(
 
     let data_map_routes = Router::new()
         .route("/data-map", get(data_map_page))
+        .route("/audit/chains", get(chains_summary_page))
         .with_state((ledger_for_map, auth_for_map, approvals_for_map));
+
+    let info_routes = Router::new()
+        .route("/role-matrix", get(role_matrix_page))
+        .route("/glossary", get(glossary_page))
+        .route("/help", get(help_page))
+        .route("/about", get(about_page))
+        .with_state((auth_for_pages.clone(),));
 
     core.merge(approval_routes)
         .merge(data_map_routes)
+        .merge(info_routes)
         .layer(middleware::from_fn_with_state(
             auth_for_guard,
             require_session,
@@ -2683,10 +2694,16 @@ pub const PAGE_REGISTRY: &[PageSpec] = &[
     page!("/controls", "風險與品質", true, true),
     page!("/lifecycle", "階段與關卡", true, true),
     page!("/audit", "稽核紀錄", true, true),
+    page!("/events", "事件瀏覽器", true, true),
+    page!("/audit/chains", "鏈狀態", true, true),
     page!("/approvals", "核准任務", true, true),
     page!("/approvals/calendar", "SLA 行事曆", true, false),
     page!("/search", "文件檢索", true, true),
     page!("/data-map", "資料地圖", true, true),
+    page!("/role-matrix", "權限矩陣", true, true),
+    page!("/glossary", "領域字彙", true, true),
+    page!("/help", "操作說明", true, true),
+    page!("/about", "關於", true, true),
     page!("/settings", "系統設定", true, true),
     page!("/api-docs", "API 文件", true, true),
 ];
@@ -2761,7 +2778,17 @@ fn layout(title: &str, active: &str, content: Markup) -> Markup {
                             (nav_link("/controls", "controls", active, "風險與品質", "◇"))
                             (nav_link("/lifecycle", "lifecycle", active, "階段與關卡", "▥"))
                             (nav_link("/audit", "audit", active, "稽核紀錄", "◷"))
+                            (nav_link("/events", "events", active, "事件瀏覽器", "≡"))
+                            (nav_link("/audit/chains", "chains", active, "鏈狀態", "⛓"))
                             (nav_link("/data-map", "data-map", active, "資料地圖", "⌗"))
+                            (nav_link("/role-matrix", "role-matrix", active, "權限矩陣", "⛨"))
+                            div class="nav-group-label" { "系統" }
+                            (nav_link("/settings", "settings", active, "系統設定", "⚙"))
+                            (nav_link("/api-docs", "api-docs", active, "API 文件", "❐"))
+                            div class="nav-group-label" { "說明" }
+                            (nav_link("/glossary", "glossary", active, "字彙", "〔"))
+                            (nav_link("/help", "help", active, "操作說明", "?"))
+                            (nav_link("/about", "about", active, "關於", "ⓘ"))
                             div class="nav-group-label" { "系統" }
                             (nav_link("/settings", "settings", active, "系統設定", "⚙"))
                             (nav_link("/api-docs", "api-docs", active, "API 文件", "❐"))
@@ -2969,6 +2996,513 @@ fn calendar_content(
                 "本月到期任務 " (due_by_day.values().map(Vec::len).sum::<usize>()) " 筆；到期日在本月任務之外 " (outside) " 筆（見佇列檢視）。時區語義：UTC。"
             }
         }
+    }
+}
+
+// ── S12 頁面批次：事件瀏覽器／鏈狀態／權限矩陣 ──
+// ── 批次 3：glossary／help／about ──
+
+const EVENTS_PAGE_SIZE: usize = 50;
+
+#[derive(Deserialize)]
+struct EventsQuery {
+    #[serde(rename = "type")]
+    event_type: Option<String>,
+    page: Option<usize>,
+}
+
+/// GET /events — 治理帳鏈瀏覽器：全部事件（新→舊），`?type=` 過濾、
+/// `?page=` 分頁（50/頁）。標籤由血緣表窮舉 match 提供（單一事實）。
+async fn events_page(
+    State((ledger, auth)): State<(SharedLedger, SharedAuth)>,
+    Query(params): Query<EventsQuery>,
+    request: Request,
+) -> Response {
+    if let Err(response) = session_identity(&auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    let snapshot = match ledger.lock() {
+        Ok(ledger) => ledger.snapshot(),
+        Err(_) => return page_error_response("data-map", "治理資料鎖定失敗"),
+    };
+    let filter = params.event_type.as_deref().unwrap_or("all");
+    let mut matching: Vec<&crate::governance::LedgerEvent> = snapshot
+        .events
+        .iter()
+        .filter(|event| {
+            filter == "all" || crate::data_map::governance_payload_tag(&event.payload) == filter
+        })
+        .collect();
+    matching.reverse(); // 新→舊
+    let total_pages = (matching.len() + EVENTS_PAGE_SIZE)
+        .div_ceil(EVENTS_PAGE_SIZE)
+        .max(1);
+    let page_index = params.page.unwrap_or(1).max(1);
+    if page_index > total_pages && !matching.is_empty() {
+        return crate::errors::error_response(
+            format!("page {page_index} 超出範圍（共 {total_pages} 頁）"),
+            StatusCode::BAD_REQUEST,
+            None,
+        )
+        .into_response();
+    }
+    let start = (page_index - 1) * EVENTS_PAGE_SIZE;
+    let page_slice: Vec<&crate::governance::LedgerEvent> = matching
+        .iter()
+        .skip(start)
+        .take(EVENTS_PAGE_SIZE)
+        .copied()
+        .collect();
+    page_response(
+        "事件瀏覽器",
+        "data-map",
+        events_content(
+            &page_slice,
+            filter,
+            page_index,
+            total_pages,
+            matching.len(),
+            snapshot.events.len(),
+        ),
+    )
+}
+
+fn events_content(
+    events: &[&crate::governance::LedgerEvent],
+    filter: &str,
+    page_index: usize,
+    total_pages: usize,
+    matching_count: usize,
+    total_events: usize,
+) -> Markup {
+    let tags: Vec<&str> = crate::data_map::GOVERNANCE_LINEAGE
+        .iter()
+        .map(|entry| entry.event)
+        .collect();
+    html! {
+        section class="page-heading" {
+            div { p class="eyebrow" { "治理稽核" } h1 { "事件瀏覽器" } p class="page-subtitle" { "治理帳鏈全部事件（新→舊）；可依事件類型過濾。" } }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "事件類型過濾" } } }
+            div class="chip-row" {
+                a class=(if filter == "all" { "chip chip-active" } else { "chip" }) href="/events" { "全部 · " (total_events) }
+                @for tag in tags {
+                    a class=(if filter == tag { "chip chip-active" } else { "chip" }) href={ "/events?type=" (tag) } { (tag) }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "事件（" (matching_count) " 筆符合）" } p { "第 " (page_index) " / " (total_pages) " 頁" } } }
+            @if events.is_empty() {
+                (empty_state("沒有符合的事件", "過濾條件下無事件，或帳鏈尚為空。", "/events", "清除過濾"))
+            } @else {
+                table class="api-table" {
+                    thead { tr { th { "序號" } th { "事件" } th { "操作者" } th { "時間 (Unix)" } th { "雜湊" } } }
+                    tbody {
+                        @for event in events {
+                            tr {
+                                td class="num" { (event.sequence) }
+                                td { span class="result-cite" { (crate::data_map::governance_payload_tag(&event.payload)) } }
+                                td { (event.actor) }
+                                td class="num" { (event.timestamp_unix) }
+                                td { span class="hash-chip" { (short_hash(&event.sha256)) } }
+                            }
+                        }
+                    }
+                }
+                div class="chip-row" {
+                    @if page_index > 1 {
+                        a class="chip" href={ "/events?type=" (filter) "&page=" (page_index - 1) } { "← 上一頁" }
+                    }
+                    @if page_index < total_pages {
+                        a class="chip" href={ "/events?type=" (filter) "&page=" (page_index + 1) } { "下一頁 →" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// GET /audit/chains — 雙鏈狀態摘要：長度、鏈頭、驗證、各類事件計數。
+async fn chains_summary_page(
+    State((ledger, auth, approvals)): State<(SharedLedger, SharedAuth, SharedApprovals)>,
+    request: Request,
+) -> Response {
+    if let Err(response) = session_identity(&auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    let (gov_verified, gov_count, gov_head, gov_counts) = match ledger.lock() {
+        Ok(ledger) => {
+            let verified = ledger.verify().is_ok();
+            let snapshot = ledger.snapshot();
+            let mut counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+            for event in &snapshot.events {
+                let tag = crate::data_map::governance_payload_tag(&event.payload);
+                *counts.entry(tag).or_insert(0) += 1;
+            }
+            (
+                verified,
+                snapshot.events.len(),
+                snapshot
+                    .events
+                    .last()
+                    .map(|event| event.sha256.clone())
+                    .unwrap_or_default(),
+                counts,
+            )
+        }
+        Err(_) => return page_error_response("data-map", "治理資料鎖定失敗"),
+    };
+    let (appr_verified, appr_count, appr_head, appr_counts) = match approvals.lock() {
+        Ok(store) => {
+            let verified = store.verify().is_ok();
+            let string_counts = store.event_type_counts();
+            let mut counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+            for entry in crate::data_map::APPROVAL_LINEAGE {
+                counts.insert(
+                    entry.event,
+                    string_counts.get(entry.event).copied().unwrap_or(0),
+                );
+            }
+            (
+                verified,
+                store.event_count(),
+                store.head_sha256().unwrap_or_default(),
+                counts,
+            )
+        }
+        Err(_) => return page_error_response("data-map", "核准資料鎖定失敗"),
+    };
+    page_response(
+        "鏈狀態",
+        "audit",
+        chains_content(ChainsView {
+            gov_verified,
+            gov_count,
+            gov_head: &gov_head,
+            gov_counts: &gov_counts,
+            appr_verified,
+            appr_count,
+            appr_head: &appr_head,
+            appr_counts: &appr_counts,
+        }),
+    )
+}
+
+fn chain_panel(
+    title: &str,
+    verified: bool,
+    count: usize,
+    head: &str,
+    counts: &BTreeMap<&'static str, usize>,
+) -> Markup {
+    html! {
+        div class="panel" {
+            div class="panel-heading" { div { h2 { (title) } }
+                span class="badge" class=(if verified { "badge-green" } else { "badge-red" }) { (if verified { "鏈已驗證" } else { "鏈驗證失敗" }) }
+            }
+            p { "事件數 " (count) "；鏈頭 " span class="hash-chip" { (short_hash(head)) } }
+            @if counts.is_empty() {
+                p class="empty-inline" { "尚無事件。" }
+            } @else {
+                table class="api-table" {
+                    thead { tr { th { "事件類型" } th { "數量" } } }
+                    tbody {
+                        @for (tag, count) in counts {
+                            tr { td { (tag) } td class="num" { (count) } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn chains_content(view: ChainsView) -> Markup {
+    let ChainsView {
+        gov_verified,
+        gov_count,
+        gov_head,
+        gov_counts,
+        appr_verified,
+        appr_count,
+        appr_head,
+        appr_counts,
+    } = view;
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "治理稽核" } h1 { "雙鏈狀態" } p class="page-subtitle" { "治理帳鏈與核准帳鏈為兩個獨立的雜湊鏈；本頁彙整長度、鏈頭與驗證狀態。" } } }
+        div class="kpi-grid" {
+            (kpi("治理事件", &gov_count.to_string(), if gov_verified { "鏈已驗證" } else { "鏈驗證失敗" }, if gov_verified { "good" } else { "alert" }))
+            (kpi("核准事件", &appr_count.to_string(), if appr_verified { "鏈已驗證" } else { "鏈驗證失敗" }, if appr_verified { "good" } else { "alert" }))
+        }
+        section class="content-grid" {
+            (chain_panel("治理帳鏈", gov_verified, gov_count, gov_head, gov_counts))
+            (chain_panel("核准帳鏈", appr_verified, appr_count, appr_head, appr_counts))
+        }
+        p class="data-note" { "兩條鏈皆為追加式 JSONL 雜湊鏈（非 WORM）；驗證為全鏈重算。任何不符即本頁紅標，且啟動時 fail-closed。" }
+    }
+}
+
+/// 權限矩陣列（與路由/中介層行為對照；變更程式碼時須同步本表——
+/// 由 page_registry 覆蓋測試與角色測試把關）。
+const ROLE_MATRIX: &[RoleMatrixRow] = &[
+    RoleMatrixRow {
+        area: "健康探針（/healthz /ready /metrics）",
+        viewer: "✓",
+        editor: "✓",
+        approver: "✓",
+        note: "公開；無敏感資料",
+    },
+    RoleMatrixRow {
+        area: "登入 / 靜態資產",
+        viewer: "✓",
+        editor: "✓",
+        approver: "✓",
+        note: "登入本身不需 session",
+    },
+    RoleMatrixRow {
+        area: "資料頁（總覽/專案/證據/檢驗/流程/控制/關卡/稽核/核准/搜尋/資料地圖/系統設定/說明/事件瀏覽器/鏈狀態/權限矩陣/字彙）",
+        viewer: "✓ 唯讀",
+        editor: "✓ 唯讀＋可建立",
+        approver: "✓",
+        note: "GET 唯讀",
+    },
+    RoleMatrixRow {
+        area: "建立與更新（專案/證據/檢驗/流程/個案/關卡/送出簽核）",
+        viewer: "✗",
+        editor: "✓",
+        approver: "✓",
+        note: "POST 需 Editor 以上；actor 取自 session",
+    },
+    RoleMatrixRow {
+        area: "決策（核准/駁回/升級）",
+        viewer: "✗",
+        editor: "✗",
+        approver: "✓",
+        note: "Approver 專屬；workflow_published 同級",
+    },
+    RoleMatrixRow {
+        area: "API v1 唯讀端點（workflows/approvals 清單）",
+        viewer: "✓ (session)",
+        editor: "✓",
+        approver: "✓",
+        note: "GET 需 session",
+    },
+    RoleMatrixRow {
+        area: "API v1 寫入端點",
+        viewer: "501",
+        editor: "501",
+        approver: "501",
+        note: "未接線，誠實 501（非 403）",
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+/// 雙鏈狀態摘要的視圖輸入（C4 同款：避免長參數列）。
+struct ChainsView<'a> {
+    gov_verified: bool,
+    gov_count: usize,
+    gov_head: &'a str,
+    gov_counts: &'a BTreeMap<&'static str, usize>,
+    appr_verified: bool,
+    appr_count: usize,
+    appr_head: &'a str,
+    appr_counts: &'a BTreeMap<&'static str, usize>,
+}
+struct RoleMatrixRow {
+    area: &'static str,
+    viewer: &'static str,
+    editor: &'static str,
+    approver: &'static str,
+    note: &'static str,
+}
+
+async fn role_matrix_page(State((_auth,)): State<(SharedAuth,)>, request: Request) -> Response {
+    if let Err(response) = session_identity(&_auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    page_response("權限矩陣", "role-matrix", role_matrix_content())
+}
+
+fn role_matrix_content() -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "治理稽核" } h1 { "權限矩陣" } p class="page-subtitle" { "角色 × 能力對照；本表鏡像程式碼行為（is_public_path／session_identity 角色檢查），變更行為時須同步本表。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "角色 × 能力" } } }
+            table class="api-table" {
+                thead { tr { th { "能力區塊" } th { "Viewer" } th { "Editor" } th { "Approver" } th { "備註" } } }
+                tbody {
+                    @for row in ROLE_MATRIX {
+                        tr {
+                            td { (row.area) }
+                            td { (row.viewer) }
+                            td { (row.editor) }
+                            td { (row.approver) }
+                            td { (row.note) }
+                        }
+                    }
+                }
+            }
+        }
+        p class="data-note" { "來源：is_public_path／session_identity／approval 子路由的角色檢查。企業 IdP/SSO/MFA 未接線（DEC-12 未決）。" }
+    }
+}
+
+const GLOSSARY: &[(&str, &str)] = &[
+    (
+        "工作流定義（WorkflowDefinition）",
+        "版本化的簽核流程；含有序階段，建立後不可變，發布後才可被任務引用",
+    ),
+    (
+        "階段（Stage）",
+        "簽核的一站；有識別碼、名稱、SLA 秒數、升級路徑與逾時動作",
+    ),
+    (
+        "任務（ApprovalTask）",
+        "一筆待簽核事項；綁定定義＋版本＋目前階段，狀態機為 Pending→Approved/Rejected/Escalated/Expired/Cancelled",
+    ),
+    (
+        "升級（Escalate）",
+        "任務停在同階段但記錄升級對象並累計次數；不推進階段",
+    ),
+    (
+        "逾時（Expire）",
+        "due_at 已過且未決策；由 cleanup 標記為 Expired（終態）",
+    ),
+    (
+        "決策者（Approver）",
+        "可核准/駁回/升級的角色；來自 session，不接受表單指定",
+    ),
+    (
+        "冪等鍵（Idempotency-Key）",
+        "送出簽核時的選填鍵；同鍵重送回原任務且不追加事件",
+    ),
+    (
+        "治理帳鏈",
+        "專案/證據/檢驗/流程/個案/關卡的追加式 JSONL 雜湊鏈",
+    ),
+    (
+        "核准帳鏈",
+        "工作流與簽核任務的追加式 JSONL 雜湊鏈（與治理帳鏈獨立）",
+    ),
+    (
+        "血緣（Lineage）",
+        "欄位 → 事件 → 寫入面 → 呈現頁的對照；由型別系統窮舉鎖定",
+    ),
+];
+
+async fn glossary_page(State((_auth,)): State<(SharedAuth,)>, request: Request) -> Response {
+    if let Err(response) = session_identity(&_auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    page_response("領域字彙", "glossary", glossary_content())
+}
+
+fn glossary_content() -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "說明" } h1 { "領域字彙" } p class="page-subtitle" { "Ubiquitous Language——本工作台全部頁面與 API 使用同一套術語。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "核准工作流" } } }
+            table class="api-table" {
+                thead { tr { th { "詞彙" } th { "定義" } } }
+                tbody {
+                    @for (term, definition) in GLOSSARY.iter().take(7) {
+                        tr { td { (term) } td { (definition) } }
+                    }
+                }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "資料與鏈" } } }
+            table class="api-table" {
+                tbody {
+                    @for (term, definition) in GLOSSARY.iter().skip(7) {
+                        tr { td { (term) } td { (definition) } }
+                    }
+                }
+            }
+        }
+        p class="data-note" { "本表為單一事實來源；變更術語須同步 BDD 場景與本表。" }
+    }
+}
+
+async fn help_page(State((_auth,)): State<(SharedAuth,)>, request: Request) -> Response {
+    if let Err(response) = session_identity(&_auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    page_response("操作說明", "help", help_content())
+}
+
+fn help_content() -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "說明" } h1 { "操作說明" } p class="page-subtitle" { "本機工作台的日常操作與疑難排解；全部流程零 JavaScript。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "登入" } } }
+            ul {
+                li { "以環境變數 EKPI_LOCAL_AUTH_USER／EKPI_LOCAL_AUTH_PASSWORD 設定帳號後，於 /login 登入。" }
+                li { "登入流程為雙重提交：先 GET 取得一次性 token（隱藏欄位＋ekpi_csrf cookie），再 POST 回帶。" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "角色" } } }
+            ul {
+                li { strong { "Viewer" } "：唯讀所有資料頁。" }
+                li { strong { "Editor" } "：可建立專案/證據/檢驗/流程/個案，並送出簽核。" }
+                li { strong { "Approver" } "：可核准/駁回/升級簽核任務。" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "匯出（CLI）" } } }
+            ul {
+                li { code { "--export-evidence-pack DIR" } "：雙鏈摘要證據包。" }
+                li { code { "--export-compliance-report DIR" } "：合規狀態報告（JSON＋MD）。" }
+                li { code { "--data-map DIR" } "：資料血緣地圖。" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "疑難排解" } } }
+            table class="api-table" {
+                thead { tr { th { "癥狀" } th { "可能原因" } th { "處理" } } }
+                tbody {
+                    tr { td { "401" } td { "未登入或工作階段過期" } td { "重新登入；檢查 cookie 是否被清除" } }
+                    tr { td { "403" } td { "角色不足或跨站請求" } td { "確認角色（見權限矩陣）；勿跨站張貼表單" } }
+                    tr { td { "404" } td { "識別碼不存在" } td { "從清單頁重新導航" } }
+                    tr { td { "鏈驗證失敗（紅徽章）" } td { "資料檔被改動或不完整" } td { "立即停止寫入、保留檔案並聯絡管理者；原型不會自動修補鏈" } }
+                }
+            }
+        }
+    }
+}
+
+async fn about_page(State((_auth,)): State<(SharedAuth,)>, request: Request) -> Response {
+    if let Err(response) = session_identity(&_auth, request.headers(), Role::Viewer) {
+        return *response;
+    }
+    page_response("關於", "help", about_content())
+}
+
+fn about_content() -> Markup {
+    html! {
+        section class="page-heading" { div { p class="eyebrow" { "說明" } h1 { "關於本工作台" } p class="page-subtitle" { "誠實邊界——本頁說明本系統「是什麼」與「明確不是什麼」。" } } }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "是什麼" } } }
+            ul {
+                li { "本機（127.0.0.1）治理與簽核試點工作台；資料為追加式 JSONL 雜湊鏈。" }
+                li { "零 JavaScript：全部互動為伺服器渲染 HTML＋CSS。" }
+                li { "全部寫入以 session 使用者歸因，並記錄於雜湊鏈。" }
+            }
+        }
+        section class="panel" {
+            div class="panel-heading" { div { h2 { "明確不是什麼" } } }
+            ul {
+                li { "不是企業身分系統：本機 session 認證，無 IdP/SSO/MFA（DEC-12 未決）。" }
+                li { "不是 WORM 儲存：JSONL 鏈可被具權限者改動，驗證僅能偵測（Phase B）。" }
+                li { "非多租戶、非高可用部署；尚未通過 Phase A 全部關卡。" }
+                li { "Agent 僅能 advisory（建議），永不自動核准。" }
+            }
+        }
+        p class="data-note" { "完整邊界與證據：docs/quality/phase-gates.md、docs/traceability/register.md。本頁與 AGENTS.md 的誠實規則同步。" }
     }
 }
 
