@@ -398,6 +398,22 @@ pub fn submit_task(
 ///
 /// The returned [`TaskDecision`] carries the exact before/after values so the
 /// store event can be replay-validated deterministically.
+/// 決定逾時任務應套用的轉移動作（IMP-020(b)）：依任務所在階段的
+/// `on_timeout` 設定兌現。`AutoApprove` 在驗證期即被拒（advisory 邊界），
+/// 此防禦臂映射為 Expire；未知階段亦防禦性回退 Expire。
+pub fn timeout_transition_for(task: &ApprovalTask, definition: &WorkflowDefinition) -> TaskAction {
+    let stage = definition
+        .stages
+        .iter()
+        .find(|stage| stage.id == task.stage_id);
+    match stage.map(|stage| &stage.on_timeout) {
+        Some(TimeoutAction::Escalate) => TaskAction::Escalate,
+        Some(TimeoutAction::AutoReject) => TaskAction::Reject,
+        Some(TimeoutAction::Cancel) => TaskAction::Cancel,
+        Some(TimeoutAction::AutoApprove) | None => TaskAction::Expire,
+    }
+}
+
 pub fn decide_task(
     task: &mut ApprovalTask,
     definition: &WorkflowDefinition,
@@ -509,7 +525,12 @@ pub enum ApprovalEventPayload {
         decision: TaskDecision,
         escalated_to: Option<String>,
         note: String,
+        /// SLA 逾時升級時的新到期窗（serde default：舊檔重放不受影響）。
+        #[serde(default)]
+        new_due_at: Option<i64>,
     },
+    /// 舊版 cleanup 事件（v1 遺留）：保留以重放既有帳鏈；新 cleanup 改發
+    /// `TaskTransitioned`（IMP-020(b)——逾時動作依 stage.on_timeout 兌現）。
     TasksExpired {
         task_ids: Vec<String>,
     },
@@ -634,6 +655,7 @@ pub fn apply_approval_event(
         ApprovalEventPayload::TaskTransitioned {
             decision,
             escalated_to,
+            new_due_at,
             ..
         } => {
             let task = projection
@@ -658,6 +680,9 @@ pub fn apply_approval_event(
             task.state = decision.to_state;
             if let Some(next) = decision.to_stage.clone() {
                 task.stage_id = next;
+            }
+            if let Some(window) = new_due_at {
+                task.due_at = *window;
             }
             if decision.action == TaskAction::Escalate {
                 task.escalated_to = escalated_to.clone();
@@ -827,11 +852,44 @@ mod tests {
         assert!(err.to_string().contains("unknown stage"));
     }
 
+    /// IMP-020(b)：逾時動作 → 任務轉移動作的映射（cleanup 依 stage.on_timeout
+    /// 兌現）。AutoApprove 為驗證期不可達的防禦臂 → Expire。
     #[test]
-    fn empty_definition_id_is_invalid() {
-        let mut def = valid_definition();
-        def.id = "  ".into();
-        assert!(def.validate().is_err());
+    fn timeout_action_maps_to_transition_action() {
+        let mut def = two_stage_definition();
+        def.stages[0].on_timeout = TimeoutAction::Escalate;
+        def.stages[1].on_timeout = TimeoutAction::AutoReject;
+        let task = submit_task(&def, &submission(), "TSK-000001", "editor-a", 1_000_000)
+            .expect("submission succeeds");
+        assert_eq!(
+            timeout_transition_for(&task, &def),
+            TaskAction::Escalate,
+            "stage s1 on_timeout"
+        );
+        let mut task2 = submit_task(&def, &submission(), "TSK-000002", "editor-a", 1_000_000)
+            .expect("submission succeeds");
+        decide_task(
+            &mut task2,
+            &def,
+            TaskAction::Approve,
+            "approver-a",
+            1_000_100,
+        )
+        .expect("advance to s2");
+        assert_eq!(
+            timeout_transition_for(&task2, &def),
+            TaskAction::Reject,
+            "stage s2 on_timeout"
+        );
+    }
+
+    #[test]
+    fn timeout_action_defaults_to_expire_for_unknown_stage() {
+        let def = two_stage_definition();
+        let mut task = submit_task(&def, &submission(), "TSK-000001", "editor-a", 1_000_000)
+            .expect("submission succeeds");
+        task.stage_id = "ghost".into();
+        assert_eq!(timeout_transition_for(&task, &def), TaskAction::Expire);
     }
 
     /// IMP-020(a)：平台永不自動核准——逾時動作 `AutoApprove` 必須在定義

@@ -331,37 +331,101 @@ impl ApprovalStore {
                 decision: decision.clone(),
                 escalated_to,
                 note: note.trim().to_string(),
+                // 事件攜帶 domain 計算後的到期窗：Approve 推進階段時為新階段
+                // SLA；投影重放據此同步 due_at（若為 None 則停留舊值——S13 前
+                // 的資料完整性缺陷，已修）。
+                new_due_at: Some(task.due_at),
             },
         )?;
         Ok(decision)
     }
 
-    /// Mark overdue open tasks `Expired`; returns how many changed.
-    ///
-    /// Semantics note (IMP-020): this marks every overdue open task `Expired`
-    /// and does **not** yet honor the stage's configured `TimeoutAction`
-    /// (`Escalate`/`AutoReject`/`Cancel` are accepted by the model but await
-    /// the scheduler slice; `AutoApprove` is refused at definition validation
-    /// because ekpi-platform never auto-approves). Until then, "timeout means
-    /// Expired" is the documented behavior — do not present it as SLA-action
-    /// honoring.
+    /// SLA cleanup（IMP-020(b)）：對每筆逾期未決任務，依其所在階段的
+    /// `on_timeout` 設定兌現動作——`Escalate`（開新 SLA 窗，防重複觸發）、
+    /// `AutoReject`、`Cancel`；無路徑可升級時回退 Expire。每筆動作以
+    /// `TaskTransitioned` 事件記錄（含新到期窗，重放決定論）。
+    /// `AutoApprove` 在定義驗證期即被拒，此處不可達。
     pub fn cleanup_expired(&mut self, now_unix: i64) -> Result<u64, GovernanceError> {
-        let mut overdue: Vec<String> = self
+        let overdue_ids: Vec<String> = self
             .projection
             .tasks
             .iter()
             .filter(|task| task.is_overdue(now_unix))
             .map(|task| task.id.clone())
             .collect();
-        overdue.sort();
-        if overdue.is_empty() {
+        if overdue_ids.is_empty() {
             return Ok(0);
         }
-        let count = overdue.len() as u64;
-        self.append(
-            actor_for_cleanup(),
-            ApprovalEventPayload::TasksExpired { task_ids: overdue },
-        )?;
+        let count = overdue_ids.len() as u64;
+        for task_id in overdue_ids {
+            let mut task = self
+                .projection
+                .tasks
+                .iter()
+                .find(|task| task.id == task_id)
+                .ok_or_else(|| GovernanceError::validation(format!("unknown task {task_id}")))?
+                .clone();
+            let definition = self
+                .projection
+                .definitions
+                .iter()
+                .find(|d| d.id == task.workflow_id && d.version == task.workflow_version)
+                .ok_or_else(|| {
+                    GovernanceError::validation(format!(
+                        "task {task_id} references unknown workflow"
+                    ))
+                })?
+                .clone();
+            let action = ekp_domain::workflow::timeout_transition_for(&task, &definition);
+            let decision = ekp_domain::workflow::decide_task(
+                &mut task,
+                &definition,
+                action,
+                "approval-cleanup",
+                now_unix,
+            )
+            .or_else(|error| {
+                // Escalate 而無升級路徑 → 回退 Expire（逾時的誠實終態）。
+                if matches!(
+                    error,
+                    ekp_domain::workflow::WorkflowError::NoEscalationPath { .. }
+                ) {
+                    ekp_domain::workflow::decide_task(
+                        &mut task,
+                        &definition,
+                        ekp_domain::workflow::TaskAction::Expire,
+                        "approval-cleanup",
+                        now_unix,
+                    )
+                } else {
+                    Err(error)
+                }
+            })
+            .map_err(|e| GovernanceError::validation(e.to_string()))?;
+            let escalated_to = task.escalated_to.clone();
+            // 升級開新 SLA 窗：現階段 SLA 自 cleanup 時點重新起算（避免每次
+            // cleanup 重複觸發同一逾期窗）；終態不需新窗（None＝不變更）。
+            let new_due_at = if decision.action == TaskAction::Escalate {
+                let sla = definition
+                    .stages
+                    .iter()
+                    .find(|stage| stage.id == decision.from_stage)
+                    .map(|stage| stage.sla_seconds as i64)
+                    .unwrap_or(3600);
+                Some(now_unix + sla)
+            } else {
+                None
+            };
+            self.append(
+                "approval-cleanup",
+                ApprovalEventPayload::TaskTransitioned {
+                    decision: decision.clone(),
+                    escalated_to,
+                    note: "SLA timeout (cleanup)".into(),
+                    new_due_at,
+                },
+            )?;
+        }
         Ok(count)
     }
 
@@ -527,10 +591,6 @@ fn now_i64() -> Result<i64, GovernanceError> {
 }
 
 /// The system actor for automatic expiry transitions.
-fn actor_for_cleanup() -> &'static str {
-    "approval-cleanup"
-}
-
 /// Default approval store path, colocated with the governance ledger.
 pub fn default_approval_path() -> PathBuf {
     if let Some(path) = std::env::var_os("EKP_APPROVAL_DATA") {
@@ -755,5 +815,125 @@ mod tests {
         // After the first store is dropped the lock is released.
         ApprovalStore::open(&path).expect("open after release");
         let _ = fs::remove_file(&path);
+    }
+
+    /// IMP-020(b) 測試輔助：Escalate（有路徑）/ AutoReject 兩階段定義，
+    /// 自包含（不依賴模組內其他 helper）。
+    fn timeout_two_stage_definition() -> WorkflowDefinition {
+        WorkflowDefinition {
+            id: "wf-to".into(),
+            name: "Drill-Flow".into(),
+            version: 1,
+            stages: vec![
+                Stage {
+                    id: "s1".into(),
+                    name: "主管複核".into(),
+                    approver_rule: "role:approver".into(),
+                    sla_seconds: 3600,
+                    urgency: ekp_domain::workflow::Urgency::Normal,
+                    conditions: vec![],
+                    escalation_path: vec!["s2".into()],
+                    on_timeout: ekp_domain::workflow::TimeoutAction::Escalate,
+                },
+                Stage {
+                    id: "s2".into(),
+                    name: "部門核准".into(),
+                    approver_rule: "role:approver".into(),
+                    sla_seconds: 86400,
+                    urgency: ekp_domain::workflow::Urgency::Normal,
+                    conditions: vec![],
+                    escalation_path: vec![],
+                    on_timeout: ekp_domain::workflow::TimeoutAction::AutoReject,
+                },
+            ],
+            active: false,
+        }
+    }
+
+    fn timeout_submission() -> TaskSubmission {
+        TaskSubmission {
+            workflow_id: "wf-to".into(),
+            workflow_version: 1,
+            amount_cents: 1,
+            platform: "drill".into(),
+            classification: "drill".into(),
+            risk_score: 0,
+            urgency: ekp_domain::workflow::Urgency::Normal,
+        }
+    }
+
+    /// IMP-020(b)：cleanup 依 stage.on_timeout 兌現動作。
+    /// AutoReject → Rejected（終態）；Escalate → 升級＋新 SLA 窗；
+    /// 無升級路徑 → 回退 Expire。重放（重開）後狀態一致。
+    #[test]
+    fn cleanup_honors_on_timeout_actions() {
+        let dir = std::env::temp_dir().join(format!(
+            "ekpi-timeout-{}-{}.jsonl",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut store = ApprovalStore::open(&dir).expect("store opens");
+        let definition = timeout_two_stage_definition();
+        store.create_workflow(definition, "approver-a").unwrap();
+        store.publish_workflow("wf-to", 1, "approver-a").unwrap();
+
+        let now = 1_000_000;
+        let input = timeout_submission();
+        let (t1, _) = store.submit_task(&input, "editor-a", now, None).unwrap();
+        let (t2, _) = store.submit_task(&input, "editor-a", now, None).unwrap();
+
+        // t2 核准推進到 s2（AutoReject 階段）。
+        store
+            .decide_task(
+                &t2,
+                ekp_domain::workflow::TaskAction::Approve,
+                "approver-a",
+                "",
+                now + 10,
+            )
+            .unwrap();
+
+        // 兩筆任務在此時點皆已逾期：t1（s1，Escalate）與 t2（s2，AutoReject）。
+        let cleanup_at = now + 90_000;
+
+        let expired = store.cleanup_expired(cleanup_at).unwrap();
+        assert_eq!(expired, 2, "both overdue tasks are processed");
+        let tasks = store.list_tasks();
+        let escalated = tasks.iter().find(|task| task.id == t1).unwrap();
+        assert_eq!(
+            escalated.state,
+            ekp_domain::workflow::TaskState::Escalated,
+            "s1 escalates on timeout"
+        );
+        assert!(
+            escalated.due_at > cleanup_at,
+            "escalation opens a fresh SLA window"
+        );
+        let rejected = tasks.iter().find(|task| task.id == t2).unwrap();
+        assert_eq!(
+            rejected.state,
+            ekp_domain::workflow::TaskState::Rejected,
+            "s2 auto-rejects"
+        );
+        drop(store);
+
+        // 重放：還原後狀態一致。
+        let reopened = ApprovalStore::open(&dir).unwrap();
+        let tasks = reopened.list_tasks();
+        assert_eq!(
+            tasks.iter().find(|task| task.id == t1).unwrap().state,
+            ekp_domain::workflow::TaskState::Escalated
+        );
+        assert_eq!(
+            tasks.iter().find(|task| task.id == t2).unwrap().state,
+            ekp_domain::workflow::TaskState::Rejected
+        );
+        reopened
+            .verify()
+            .expect("chain verifies after timeout actions");
+        std::fs::remove_file(&dir).ok();
     }
 }
