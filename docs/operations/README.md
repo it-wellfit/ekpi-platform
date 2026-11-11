@@ -27,6 +27,7 @@ There is no approved deployment target. The supported mode is a single local ope
 | [Secrets policy](secrets-policy.md) | No-secrets rule, `.env` handling and incident response | Current |
 | [Incident log](incident-log.md) | Operational/security incident record | Empty until an incident is recorded |
 | [Production readiness](production-readiness.md) | Phase B readiness checklist and blockers | Blocked |
+| [Staging checklist draft](staging-checklist-draft.md) | First-step checklist for the internal single-host direction (PR-02 / B-10) | Draft; not approved or executed |
 | [Final validation report](final-validation-report.md) | Dated 2026-10-25 validation snapshot | Historical; not current evidence |
 | [Remote collaboration criteria](../remote-collaboration-criteria.md) | When to add a remote and CI | Current |
 

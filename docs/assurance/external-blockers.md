@@ -155,8 +155,8 @@ These blockers cannot be resolved by changing source code alone. Each entry name
 | Minimum access | A non-production/staging environment first; production access only after approval. |
 | Unlock steps | 1. Approve the target and data policy. 2. Build deployment config and health checks. 3. Deploy to staging and run the gate. 4. Exercise rollback and restore. 5. Obtain change approval. 6. Deploy progressively with post-release verification. |
 | Acceptance criteria | Staging gate passes; rollback and restore drills pass; production change approved; post-release checks pass. |
-| Work that can continue now | Deployment manifests, health checks, rollback/runbook drafts, staging checklist. |
-| Status / evidence | `BLOCKED` / `UNASSIGNED`; no target or credentials exist. |
+| Work that can continue now | Deployment manifests, health checks, rollback/runbook drafts, staging checklist — first draft created: [staging-checklist-draft.md](../operations/staging-checklist-draft.md). |
+| Status / evidence | `BLOCKED` / `UNASSIGNED`; no target or credentials exist. **2026-11-10 update:** target *direction* chosen by owner — internal single Windows host, native binary (session `20261110-dev-blockers`); remaining fields (host name, network/TLS boundary, hardening, capacity, cost owner, change approval) still pending. |
 
 ## B-11 Host Application Control policy
 
