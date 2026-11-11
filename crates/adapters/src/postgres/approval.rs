@@ -72,7 +72,9 @@ fn urgency_text(urgency: Urgency) -> &'static str {
 /// u32 → i32 for the INTEGER columns, fail-closed instead of wrapping.
 fn int32(value: u32, field: &str) -> Result<i32, GovernanceError> {
     i32::try_from(value).map_err(|_| {
-        GovernanceError::storage(format!("{field} value {value} does not fit a 32-bit column"))
+        GovernanceError::storage(format!(
+            "{field} value {value} does not fit a 32-bit column"
+        ))
     })
 }
 
@@ -241,19 +243,21 @@ impl PgApprovalRepository {
         let mut next_projection = self.projection.clone();
         apply_approval_event(&mut next_projection, &event)
             .map_err(|error| GovernanceError::validation(error.to_string()))?;
-        let payload_value = serde_json::to_value(&event.payload)
-            .map_err(|error| GovernanceError::storage(format!("encode approval payload: {error}")))?;
+        let payload_value = serde_json::to_value(&event.payload).map_err(|error| {
+            GovernanceError::storage(format!("encode approval payload: {error}"))
+        })?;
 
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|error| GovernanceError::storage(format!("begin approval append: {error}")))?;
+        let mut tx =
+            self.pool.begin().await.map_err(|error| {
+                GovernanceError::storage(format!("begin approval append: {error}"))
+            })?;
         sqlx::query("SELECT pg_advisory_xact_lock($1)")
             .bind(APPROVAL_ADVISORY_KEY)
             .execute(&mut *tx)
             .await
-            .map_err(|error| GovernanceError::storage(format!("approval advisory lock: {error}")))?;
+            .map_err(|error| {
+                GovernanceError::storage(format!("approval advisory lock: {error}"))
+            })?;
         let head = sqlx::query!(
             "SELECT sequence, sha256 FROM approval_events ORDER BY sequence DESC LIMIT 1"
         )
@@ -278,7 +282,8 @@ impl PgApprovalRepository {
                     .to_string(),
             ));
         }
-        self.project_tasks(&mut tx, &next_projection, &event).await?;
+        self.project_tasks(&mut tx, &next_projection, &event)
+            .await?;
         sqlx::query!(
             r#"INSERT INTO approval_events
                    (sequence, occurred_at, actor, payload_jsonb, previous_sha256, sha256)
@@ -293,9 +298,9 @@ impl PgApprovalRepository {
         .execute(&mut *tx)
         .await
         .map_err(|error| GovernanceError::storage(format!("insert approval event: {error}")))?;
-        tx.commit()
-            .await
-            .map_err(|error| GovernanceError::storage(format!("commit approval append: {error}")))?;
+        tx.commit().await.map_err(|error| {
+            GovernanceError::storage(format!("commit approval append: {error}"))
+        })?;
         self.projection = next_projection;
         self.events.push(event);
         Ok(())
@@ -464,11 +469,10 @@ impl ApprovalRepository for PgApprovalRepository {
         version: u32,
         actor: &str,
     ) -> Result<(), GovernanceError> {
-        let known = self
-            .projection
-            .definitions
-            .iter()
-            .any(|stored| stored.id == workflow_id && stored.version == version && !stored.active);
+        let known =
+            self.projection.definitions.iter().any(|stored| {
+                stored.id == workflow_id && stored.version == version && !stored.active
+            });
         if !known {
             return Err(GovernanceError::validation(format!(
                 "cannot publish workflow {workflow_id}@{version}: not found or already published"
@@ -561,9 +565,7 @@ impl ApprovalRepository for PgApprovalRepository {
             .projection
             .definitions
             .iter()
-            .find(|stored| {
-                stored.id == task.workflow_id && stored.version == task.workflow_version
-            })
+            .find(|stored| stored.id == task.workflow_id && stored.version == task.workflow_version)
             .ok_or_else(|| {
                 GovernanceError::validation(format!("task {task_id} references unknown workflow"))
             })?
@@ -632,7 +634,10 @@ impl ApprovalRepository for PgApprovalRepository {
                 now_unix,
             )
             .or_else(|error| {
-                if matches!(error, ekp_domain::workflow::WorkflowError::NoEscalationPath { .. }) {
+                if matches!(
+                    error,
+                    ekp_domain::workflow::WorkflowError::NoEscalationPath { .. }
+                ) {
                     ekp_domain::workflow::decide_task(
                         &mut task,
                         &definition,
