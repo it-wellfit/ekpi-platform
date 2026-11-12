@@ -38,7 +38,8 @@
 
 | 技術 | 來源 | 決定 |
 |---|---|---|
-| 規則衝突偵測（shadowing/contradiction；SAT 可編碼） | 傳統 expert systems；SAT/SMT 文獻 | CANDIDATE（下一刀；純演算法） |
+| **規則衝突偵測（參照完整性＋宣告一致性）** | 傳統 expert systems；SAT/SMT 文獻 | 已實作（`rule_conflicts.rs`；RC-01..09 保守結構檢查；真實語料守衛測試） | **ADOPTED（library）** |
+| 條件樹可滿足性推理（SAT/SMT full subsumption） | SAT/SMT 文獻 | 成本高於現階段需求；先以結構等值保守檢查 | LATER |
 | LegalRuleML 1.0 匯出 | OASIS | ADOPTED（既有 CTR-EXP-001） |
 
 ## 4. 治理／評測層（G）

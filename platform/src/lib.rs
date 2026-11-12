@@ -40,6 +40,7 @@ pub mod ready;
 pub mod reranker;
 pub mod retrieval;
 pub mod retrieval_v2;
+pub mod rule_conflicts;
 pub mod rules;
 pub mod runtime_verification;
 pub mod session;
