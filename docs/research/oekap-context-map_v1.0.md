@@ -47,7 +47,7 @@
 |---|---|---|---|---|
 | **K 知識層** | 7 文件／10 版本＋條款錨點＋SHA-256；KEM 20 claims | 版本→條款→主張→證據可解析鏈 | `knowledge_graph`／`ocr`／`multimodal` **library-only**；SoA／93 控制**未定位（UNKNOWN）**；KEM 與判定層未接線 | 錨點解析測試；claim→citation 正／負例 |
 | **R 規則層** | 19 active＋1 draft；schema fail-closed；LegalRuleML 匯出 | 規則版本化、衝突偵測、生效／失效邊界 | 規則變更遷移與衝突檢測未實作 | `--declared-rules-schema`；draft 不可消費測試 |
-| **P 流程層** | replay：禁止配對／期限／迴圈；`violate`／`insufficient_evidence`／`escalate` | BPMN 2.0／OCEL 匯入＋conformance（fitness／precision） | `bpmn`／`xes_import` **library-only**；無 conformance 指標 | 種子＋邊界案例；BPMN 往返測試（待建） |
+| **P 流程層** | replay：禁止配對／期限／迴圈；`violate`／`insufficient_evidence`／`escalate`；**conformance 指標（fitness／precision，exact rational）已實作** | BPMN 2.0／OCEL 匯入＋conformance（fitness／precision） | `bpmn`／`xes_import` **library-only**；`conformance.rs` 為 library-only（未接 CLI／報告）；BPMN 往返測試待建 | 種子＋邊界案例；BPMN 往返測試（待建）；`cargo test -p ekp_platform conformance`（8 測試） |
 | **E 證據層** | lexical retrieval（threshold 0.42；28 案；4 角色案）；引用或拒答；hash 鏈帳本 | 混合檢索（向量／全文／rerank）＋角色／租戶邊界 | `retrieval_v2`／`fulltext`／`reranker`／`vector_search` **未接線**；角色為 library 證據非強制 | `--eval` 硬閘 H-1..H-6；28 案不退化 |
 | **D 決策層** | 決定性快照＋重播；decisions export v2；審批工作流（7 態稽核、冪等、PG-A 已實作） | 跨資產決策鏈：claim→evidence→decision→approval 可重播 | 跨資產（KEM↔判定↔批次）未接線 | snapshot 重播一致；export 結構驗證 |
 | **G 治理／評測層** | eval harness（67 案；eval 自檢 12；self-test 49；硬閘 H-1..H-6）；traceability；phase gates | 需求→測試→證據→判定全鏈可查 | A1 真實試點未做；B 系（B1/B4/B5/B6/B8）需外部決策 | register 完整性；閘門證據標準 |
@@ -59,7 +59,7 @@
 | 1 | 跨資產決策鏈（KEM↔判定↔批次）未接線 | D／K | Phase A 價值證明 | 高（正／負例可測） | P0 |
 | 2 | SoA／93 控制位置未定位 | K／G | 合規評測 | 中（需 KB 定位） | P0（先定位） |
 | 3 | 規則變更遷移與衝突檢測 | R | 規則治理 | 高 | P1 |
-| 4 | 流程 conformance 指標（BPMN／OCEL） | P | 流程智慧 | 中（需 import 實作） | P1 |
+| 4 | 流程 conformance 指標（BPMN／OCEL） | P | 指標已實作（`conformance.rs`，exact rational、8 測試）；import 未實作 | 高（純演算法、無新依賴） | P1 |
 | 5 | 混合檢索（向量／全文／rerank） | E | 召回品質 | 中（需 28 案不退化） | P2 |
 | 6 | 角色／租戶強制（非 library） | E／D | 企業邊界 | 低（需 IdP；DEC-12） | BLOCKED |
 | 7 | 真實試點（A1） | G | Phase A | — | BLOCKED（DEC-01） |

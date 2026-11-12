@@ -2,7 +2,7 @@
 
 - **Status:** Active
 - **Owner:** Engineering
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-11-12
 
 A contract is any interface another person, process or test depends on. This repository has CLI, HTML-form, JSON-data and XML-export contracts. It does **not** have an approved production JSON API.
 
@@ -20,7 +20,13 @@ A contract is any interface another person, process or test depends on. This rep
 | CTR-DATA-005 | Report and snapshot artifacts | [Data formats](data-formats.md#report-and-snapshot-artifacts) | De facto v1 | Operators, release evidence | Smoke gate; derivation rule |
 | CTR-DATA-006 | Governance ledger JSONL | [Data formats](data-formats.md#governance-ledger) | Local v1 | `governance_web`, audit view | Hash-chain verification; route tests |
 | CTR-DATA-007 | Search evaluation set | [Data formats](data-formats.md#search-evaluation-set) | 1.0 | `--eval`, integration tests | Loader validation; fixed-set gate; `platform/tests/search_eval.rs` |
+| CTR-DATA-008 | Data map lineage export (`--data-map DIR`) | [Data formats](data-formats.md#data-map-export) | 1.0 | Operators, audit | Byte-identical dual-run export; web lineage tests |
+| CTR-DATA-009 | Process conformance report (library) | [Data formats](data-formats.md#process-conformance-report-library) | Library v1 | Future CLI/report consumers | `cargo test -p ekp_platform conformance` (12 tests); exact rational arithmetic |
 | CTR-EXP-001 | LegalRuleML 1.0 compact export | [Data formats](data-formats.md#legalruleml-export) | 1.0 | External legal-rule consumers | Smoke gate structural checks; exporter self-check |
+| CTR-EXP-002 | Engine decisions export (v2) | [Data formats](data-formats.md#decisions-export-v2) | 2 | Operators, release evidence | Two-run byte-identical replay lock (`cli_contract`) |
+| CTR-EXP-003 | Evidence pack export | [Data formats](data-formats.md#evidence-pack-export) | 1.0 | Audit, release evidence | Dual-run byte-identical; corrupt chain exits 1 |
+| CTR-EXP-004 | Compliance report export | [Data formats](data-formats.md#compliance-report-export) | 1.0 | Audit, compliance | Dual-run byte-identical; mandatory disclaimer in the MD twin |
+| CTR-EXP-005 | Audit package script | [Data formats](data-formats.md#audit-package-manifest) | 1.0 | Audit | `scripts/audit-package.ps1` package + manifest |
 | — | JSON HTTP API | Not applicable | — | — | `platform/src/api.rs` is an unwired placeholder; see [backend](../backend/README.md#api-surface) |
 
 ## Compatibility policy

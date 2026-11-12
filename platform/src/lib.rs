@@ -11,6 +11,7 @@ pub mod benchmark;
 pub mod bpmn;
 pub mod causal;
 pub mod config;
+pub mod conformance;
 pub mod coverage_report;
 pub mod data_map;
 pub mod docs;

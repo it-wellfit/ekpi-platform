@@ -2,8 +2,8 @@
 
 - **Status:** Active
 - **Owner:** Engineering
-- **Last reviewed:** 2026-10-26
-- **Contract IDs:** `CTR-DATA-001`–`CTR-DATA-007`, `CTR-EXP-001`
+- **Last reviewed:** 2026-11-12
+- **Contract IDs:** `CTR-DATA-001`–`CTR-DATA-009`, `CTR-EXP-001`–`CTR-EXP-005`
 
 These are the current local formats. They are file contracts, not a production API. All files are UTF-8. Counts and byte sizes below are observations on 2026-10-26 and must be rechecked after data changes.
 
@@ -283,6 +283,18 @@ Contract:
 ## Audit package manifest
 
 `CTR-EXP-005`. `scripts/audit-package.ps1` produces an auditable package: git bundle (full history), runtime chain copies (governance/approvals), `evidence_pack.json` (CTR-EXP-003), `data_map.json` (CTR-DATA-008), and `manifest.json` (`ekpi-audit-manifest-v1`: `head_commit` + sorted `files[{name, sha256, bytes}]`). The manifest content is deterministic given the same packaged bytes (no timestamps inside the file; the output directory name carries the wall-clock stamp). Self-verification re-hashes every manifest entry. The operational restore drill (`scripts/drill-runtime-data.ps1`, IMP-021) is packaged alongside the evidence.
+
+## Process conformance report (library)
+
+`CTR-DATA-009`. `platform::conformance` computes fitness and precision for one process model and one case event log. It is a **library-only** contract: no CLI flag or report field consumes it yet; wiring it to a served surface is a later slice.
+
+- `Metric` is an exact rational (`u128` numerator/denominator, gcd-reduced) — no floating point anywhere. Fractions compare structurally (`3/3 == 1/1`); denominators are never 0.
+- `fitness`: `1 − (missing + remaining) / total`, where `missing` counts log tokens whose required predecessor never occurred, `remaining` counts model activities never observed, and `total` is observed model-activity events plus `remaining`. `None` only when the model is empty and the log has no model activities (nothing measurable — never reported as 0 or 1).
+- `precision`: `1 − escaping / observed_pairs` over adjacent event pairs whose ends are both model activities. Allowed edges: directional `precedence`, **symmetric** `parallel_pairs` (both orders), and self-loops only when `repeatable`, or when the activity is in `repeat_parties` and the two observations come from **different actors** (multi-party double-sign). Adjacency is never fabricated across unknown events — pairs touching an unknown activity are skipped, and `Unconfirmed` remains the replay layer's concern. `None` when no pair is evaluable.
+- `ConformanceReport` keeps every raw count (`missing_tokens`, `remaining_tokens`, `observed_pairs`, `escaping_pairs`, `log_events`, `model_activities`) so every ratio is derivable from named inputs.
+- Determinism: same model + same events → identical report (BTreeMap iteration; pure function).
+
+Verification: `cargo test --locked -p ekp_platform conformance` — 12 unit tests including exact-rational equality, empty-input non-measurement, parallel symmetry and multi-actor self-loops.
 
 ## Compatibility and change rules
 
