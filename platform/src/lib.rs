@@ -35,6 +35,7 @@ pub mod params;
 pub mod pm4py_sidecar;
 pub mod process;
 pub mod rag;
+pub mod ranking;
 pub mod ready;
 pub mod reranker;
 pub mod retrieval;
