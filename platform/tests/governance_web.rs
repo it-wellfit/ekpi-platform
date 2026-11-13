@@ -1210,6 +1210,54 @@ async fn info_pages_render_glossary_help_about() {
     }
 }
 
+/// 突變邊界：不存在的目標 ID 必須被拒絕，且不得追加任何事件。
+#[tokio::test]
+async fn mutations_for_unknown_records_are_refused_without_appending_events() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    for (route, body, expected_error) in [
+        (
+            "/evidence/EVD-999999/review",
+            "result=accepted&note=unknown",
+            "找不到此證據項目",
+        ),
+        ("/workflows/TPL-999999/1/publish", "", "找不到此流程版本"),
+        (
+            "/controls/QMS-999999/status",
+            "status=closed&note=unknown",
+            "找不到此品質事件",
+        ),
+        (
+            "/lifecycle",
+            "project_id=PRJ-999999&gate_id=G1&decision=go&reason=&evidence_reference=&risk_acceptor=&remediation_due=&non_waivable=no",
+            "請先選擇有效的專案",
+        ),
+    ] {
+        let response = post_authed(&app, &cookie, route, body).await;
+        assert_eq!(response.status(), StatusCode::OK, "refusal via {route}");
+        let html = response_text(response).await;
+        assert!(
+            html.contains(expected_error),
+            "route {route} must show `{expected_error}`"
+        );
+        assert!(html.contains("alert-error"), "route {route} error notice");
+    }
+
+    let events = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    assert_eq!(events, 0, "refused mutations must not append an event");
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
 /// 詳情頁邊界：不存在的 ID 必須回誠實 404（不得 200 空頁、不得捏造資料）。
 #[tokio::test]
 async fn detail_pages_return_honest_404_for_unknown_ids() {
