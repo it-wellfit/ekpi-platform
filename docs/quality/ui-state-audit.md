@@ -44,6 +44,7 @@
 | `/about`（批次 3） | 誠實邊界（是什麼/明確不是什麼） | N/A | 401；同上 |
 | `/search`（S7 新增） | 檢索頁＋`doc@version§section` 引用卡＋分數計＋快速查詢 chips＋索引統計 | 空查詢引導狀態；無命中誠實空結果（「找不到相符條款」）；無假結果 | 文件庫載入失敗 notice-red；未登入 401；`search_page_renders_honest_states_and_index_counts`、`search_page_requires_session` | |
 | `/data-map`（S11 新增） | 雙鏈血緣表（治理 9＋核准 5：事件/欄位/寫入面/頁面）＋**現況事件數**欄 | 血緣表為常數（無空狀態語義）；頁面本身唯讀 | 未登入 401；`data_map_page_requires_session_and_renders` | |
+| 未知路徑（fallback） | 一致的 404 殼層（與詳情頁同一 `page_not_found`），顯示原始路徑 | N/A | 未登入 401（不揭露路由存在）；已登入 404；CSP／`no-store` 齊備；`unknown_paths_render_the_styled_404_with_security_headers` | |
 
 ### S7 視覺化元件與其狀態（2026-11-06 十維躍升層）
 

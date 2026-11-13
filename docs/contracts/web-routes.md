@@ -107,6 +107,7 @@ The field list is the current HTML form contract. Server-side validation is auth
 - The login form accepts at most 64 KiB. Oversized or malformed login bodies return `400` without setting a cookie. Failed credentials return `401` with the same `invalid username or password` message whether the username is unknown, the password is wrong, or the account is temporarily locked; there is no response difference that confirms account existence or lockout state.
 - Duplicate session-cookie headers, empty tokens or cookies that are not valid visible ASCII are treated as unauthenticated; the server never chooses one of several tokens.
 - Ledger read/validation errors render an error page; they do not expose secrets or stack traces.
+- An unknown path requires a session and then renders the same styled 404 shell; unauthenticated requests return `401` before routing. This is presentation consistency, not a guarantee about which routes exist.
 - There is no JSON response mode for domain data, pagination, filtering API, ETag or versioned public API. `/healthz` is a liveness JSON document; `/metrics` is aggregate Prometheus text. Neither exposes ledger content or identity.
 - The concurrency bound is a local overload guard, not an identity-aware rate limit.
 - The access log and metrics are correlation/aggregate signals, not an audit of authenticated identity or an SLO.

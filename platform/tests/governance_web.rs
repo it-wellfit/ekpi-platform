@@ -1400,6 +1400,40 @@ async fn detail_pages_return_honest_404_for_unknown_ids() {
     }
 }
 
+/// 未知路徑：需登入；已登入時回傳一致的 404 殼層與安全標頭，不是裸 404。
+#[tokio::test]
+async fn unknown_paths_render_the_styled_404_with_security_headers() {
+    let path = test_path();
+    let app = test_app(&path);
+    let response = get_with_cookie(&app, "/no-such-page", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    let response = get_with_cookie(&app, "/no-such-page", Some(&cookie)).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert!(
+        response
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .is_some(),
+        "the 404 page carries the CSP header"
+    );
+    assert_eq!(
+        response.headers().get(header::CACHE_CONTROL).unwrap(),
+        "no-store",
+        "the 404 page must not be cached"
+    );
+    let html = response_text(response).await;
+    assert!(html.contains("找不到頁面"), "styled not-found heading");
+    assert!(html.contains("/no-such-page"), "the path is named");
+    assert!(!html.contains("<script"), "the 404 page stays zero-JS");
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
 /// 詳情頁：需登入；Viewer 可讀；列表頁必須連到詳情頁（避免孤島頁面）。
 #[tokio::test]
 async fn detail_pages_require_session_are_readable_by_viewer_and_linked() {

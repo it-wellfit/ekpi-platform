@@ -219,6 +219,7 @@ pub fn router_with_approvals(
     core.merge(approval_routes)
         .merge(data_map_routes)
         .merge(info_routes)
+        .fallback(fallback_page)
         .layer(middleware::from_fn_with_state(
             auth_for_guard,
             require_session,
@@ -2733,6 +2734,12 @@ fn page_not_found(active: &str, message: &str) -> Response {
         Html(layout("查無資料", active, content).into_string()),
     )
         .into_response()
+}
+
+/// 未知路徑的統一 404：與詳情頁相同的錯誤殼層，避免裸 404 破壞零 JS 介面一致性。
+async fn fallback_page(request: Request) -> Response {
+    let path = request.uri().path();
+    page_not_found("", &format!("找不到頁面 {path}。"))
 }
 
 fn layout(title: &str, active: &str, content: Markup) -> Markup {
