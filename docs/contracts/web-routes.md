@@ -51,22 +51,34 @@ This matrix is an application-level local authorization check. It is not tenant 
 
 ## Read routes
 
-All routes in this table require a `viewer` session and return `401` without one.
+All ledger-backed routes in this table require a `viewer` session and return `401` without one; the stylesheet is public.
 
 | Method | Path | Purpose | Response | Test evidence |
 | --- | --- | --- | --- | --- |
-| GET | `/` | Work overview/dashboard | HTML | Route test |
-| GET | `/projects` | Project list and create form | HTML | Route test |
-| GET | `/projects/{id}` | Project detail: project fields plus its evidence, cases, inspections and gate decisions filtered from the snapshot; unknown ID returns an honest `404` | HTML | Route test |
-| GET | `/evidence` | Evidence references and review state | HTML | Route test |
-| GET | `/evidence/{id}` | Evidence detail: evidence fields plus the human review when one exists; unknown ID returns `404` | HTML | Route test |
-| GET | `/inspections` | 29-item quality inspection form | HTML | Route test |
-| GET | `/workflows` | Workflow drafts and publish actions | HTML | Route test |
-| GET | `/controls` | Risk/change/defect/CAPA cases | HTML | Route test |
-| GET | `/controls/{id}` | Quality-case detail: case fields plus its status-update events; unknown ID returns `404` | HTML | Route test |
-| GET | `/lifecycle` | Lifecycle gate decisions | HTML | Route test |
-| GET | `/audit` | Ledger events and chain verification | HTML | Route test |
-| GET | `/assets/governance.css` | Stylesheet (public) | `text/css; charset=utf-8` | Route test |
+| GET | `/` | Work overview/dashboard | HTML | `page_registry.rs`; `dashboard_renders_kpi_cards_and_grouped_nav` |
+| GET | `/projects` | Project list and create form | HTML | `page_registry.rs` |
+| GET | `/projects/{id}` | Project detail: project fields plus its evidence, cases, inspections and gate decisions filtered from the snapshot; unknown ID returns an honest `404` | HTML | `detail_pages_return_honest_404_for_unknown_ids`; `detail_pages_require_session_are_readable_by_viewer_and_linked`; `detail_pages_isolate_records_between_projects` |
+| GET | `/evidence` | Evidence references and review state | HTML | `page_registry.rs` |
+| GET | `/evidence/{id}` | Evidence detail: evidence fields plus the human review when one exists; unknown ID returns `404` | HTML | `detail_pages_return_honest_404_for_unknown_ids`; `detail_pages_require_session_are_readable_by_viewer_and_linked` |
+| GET | `/inspections` | 29-item quality inspection form | HTML | `page_registry.rs` |
+| GET | `/workflows` | Workflow drafts and publish actions | HTML | `page_registry.rs` |
+| GET | `/controls` | Risk/change/finding/CAPA cases | HTML | `page_registry.rs` |
+| GET | `/controls/{id}` | Quality-case detail: case fields plus its status-update events; unknown ID returns `404` | HTML | `detail_pages_return_honest_404_for_unknown_ids`; `detail_pages_require_session_are_readable_by_viewer_and_linked` |
+| GET | `/lifecycle` | Lifecycle gate decisions | HTML | `page_registry.rs` |
+| GET | `/audit` | Ledger events and chain verification | HTML | `page_registry.rs` |
+| GET | `/events` | Event browser with tag filter and pagination; payload bodies are not rendered | HTML | `page_registry.rs`; `events_browser_filters_by_type` |
+| GET | `/audit/chains` | Dual-chain count and verification summary | HTML | `page_registry.rs` |
+| GET | `/approvals` | Approval task inbox and workflow publication actions | HTML | `page_registry.rs`; `approvals_page_renders_submitted_task` |
+| GET | `/approvals/calendar` | SLA calendar for approval due dates (`?month=YYYY-MM`); invalid month returns `400` | HTML | `page_registry.rs`; `sla_calendar_navigation_and_validation` |
+| GET | `/search` | Read-only ranked document search with citations and honest empty states | HTML | `page_registry.rs`; `search_page_renders_honest_states_and_index_counts` |
+| GET | `/data-map` | Static lineage map for both event chains with live per-tag counts | HTML | `page_registry.rs`; `data_map_page_requires_session_and_renders`; `data_map_counts_reflect_live_ledger` |
+| GET | `/role-matrix` | Role × capability matrix; mirrors code and is not an access-review control | HTML | `page_registry.rs`; `role_matrix_renders_role_capability_table` |
+| GET | `/glossary` | Ubiquitous-language glossary | HTML | `page_registry.rs`; `info_pages_render_glossary_help_about` |
+| GET | `/help` | Operator guide and troubleshooting | HTML | `page_registry.rs`; `info_pages_render_glossary_help_about` |
+| GET | `/about` | Honest scope and boundaries of the local prototype | HTML | `page_registry.rs`; `info_pages_render_glossary_help_about` |
+| GET | `/settings` | Static runtime and storage information | HTML | `page_registry.rs` |
+| GET | `/api-docs` | Endpoint status table; unwired endpoints return honest `501` | HTML | `page_registry.rs`; `unwired_api_endpoints_return_honest_501_never_fabricated_data` |
+| GET | `/assets/governance.css` | Stylesheet (public) | `text/css; charset=utf-8` | `workbench_renders_accessible_shell_and_local_stylesheet` |
 
 ## Mutation routes
 
