@@ -25,19 +25,12 @@ fn sha256_file(path: &std::path::Path) -> Result<String, String> {
     Ok(crate::docs::sha256_hex(&content))
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum EventPayload {
-    ProjectCreated(Project),
-    EvidenceLinked(Evidence),
-    EvidenceReviewed(EvidenceReview),
-    WorkflowSaved(Workflow),
-    WorkflowPublished(WorkflowPublication),
-    QualityCaseCreated(QualityCase),
-    QualityCaseUpdated(QualityCaseUpdate),
-    QualityInspectionRecorded(QualityInspection),
-    GateDecisionRecorded(GateDecision),
-}
+// ADR-0004: single source of truth for the governance event payload types.
+// The JSONL wire format is locked by platform/tests/governance_type_compat.rs.
+pub use ekp_domain::governance::{
+    EventPayload, Evidence, EvidenceReview, GateDecision, Project, QualityCase, QualityCaseUpdate,
+    QualityCheckResult, QualityInspection, Workflow, WorkflowPublication,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QualityCheckDefinition {
@@ -204,61 +197,6 @@ pub struct LedgerEvent {
     pub sha256: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Project {
-    pub id: String,
-    pub name: String,
-    pub department: String,
-    pub owner: String,
-    pub risk_tier: String,
-    pub created_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Evidence {
-    pub id: String,
-    pub project_id: String,
-    pub title: String,
-    pub source_system: String,
-    pub source_url: String,
-    pub source_version: String,
-    pub evidence_type: String,
-    pub owner: String,
-    pub created_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EvidenceReview {
-    pub evidence_id: String,
-    pub result: String,
-    pub reviewer: String,
-    pub note: String,
-    pub reviewed_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Workflow {
-    pub id: String,
-    pub version: u32,
-    pub title: String,
-    pub department: String,
-    pub owner: String,
-    pub description: String,
-    pub stages: Vec<String>,
-    pub status: String,
-    pub created_at: u64,
-    pub published_at: Option<u64>,
-    pub published_by: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WorkflowPublication {
-    pub id: String,
-    pub version: u32,
-    pub reviewer: String,
-    pub published_at: u64,
-}
-
 #[derive(Debug, Clone)]
 pub struct WorkflowDraftInput {
     pub base_id: Option<String>,
@@ -270,68 +208,11 @@ pub struct WorkflowDraftInput {
     pub actor: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct QualityCase {
-    pub id: String,
-    pub project_id: String,
-    pub kind: String,
-    pub title: String,
-    pub description: String,
-    pub owner: String,
-    pub due_date: String,
-    pub status: String,
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub closure_note: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct QualityCaseUpdate {
-    pub id: String,
-    pub status: String,
-    pub actor: String,
-    pub note: String,
-    pub updated_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct QualityCheckResult {
-    pub item_id: String,
-    pub result: String,
-    pub note: String,
-    pub evidence_reference: String,
-    pub issue_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct QualityInspection {
-    pub id: String,
-    pub project_id: String,
-    pub reviewer: String,
-    pub created_at: u64,
-    pub results: Vec<QualityCheckResult>,
-}
-
 #[derive(Debug, Clone)]
 pub struct QualityInspectionInput {
     pub project_id: String,
     pub reviewer: String,
     pub results: Vec<QualityCheckResult>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct GateDecision {
-    pub id: String,
-    pub project_id: String,
-    pub gate_id: String,
-    pub decision: String,
-    pub actor: String,
-    pub reason: String,
-    pub evidence_reference: String,
-    pub risk_acceptor: String,
-    pub remediation_due: String,
-    pub non_waivable: bool,
-    pub created_at: u64,
 }
 
 #[derive(Debug, Clone, Default)]

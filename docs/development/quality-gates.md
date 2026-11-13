@@ -41,7 +41,7 @@ It runs, in order:
 4. `eval`: `cargo run --locked -- --selftest`.
 5. `platform`: `cargo run --locked --bin ekp_platform -- --selftest`, `--declared-rules-schema` and `--eval --test-set data/eval/search_eval.json`.
 
-The workspace step must execute every member (`apps/web`, `crates/domain`, `crates/application`, `crates/adapters`, `eval`, `platform`). Until 2026-11-10 the script ran `cargo test --locked` separately inside `eval/` and `platform/`, which silently omitted the `crates/*` and `apps/web` tests; the gate now uses `--workspace` and must not be narrowed back. The widened gate is recorded in the traceability register as `R18`.
+The workspace step must execute every member (`apps/web`, `crates/domain`, `crates/application`, `crates/adapters`, `eval`, `platform`). Until 2026-11-10 the script ran `cargo test --locked` separately inside `eval/` and `platform/`, which silently omitted the `crates/*` and `apps/web` tests; the gate now uses `--workspace` and must not be narrowed back. The widened gate is recorded in the traceability register as `R26`.
 
 The equivalent commands, run from the repository root, are:
 

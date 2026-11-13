@@ -1,14 +1,9 @@
-// C6 同位性紅報告（refactor-criteria C6）：`platform::governance::EventPayload`
-// 與 `ekp_domain::governance::EventPayload` 是兩個獨立的同名 enum（S11 發現）。
-// 本測試以**邏輯相同**的承載在兩個型別間比對 serde 序列化輸出——
-// 預期**紅**（欄位差異實測），作為合併前置的量化證據。
+// C6 parity lock（refactor-criteria C6 → ADR-0004）：合併後 `platform::governance`
+// 與 `ekp_domain::governance` 共用同一組 EventPayload 型別，本測試以邏輯相同的
+// 承載逐一比對 serde 輸出，防止日後再度引入同名分歧型別。
+// 合併前此測試為 expected-red 並以 #[ignore] 隔離；ADR-0004 完成後改為常規綠燈。
 //
-// 執行方式：`cargo test -p ekp_platform --test c6_parity -- --ignored --nocapture`
-// 合併實作完成後：移除 `#[ignore]`，測試轉綠即為合併安全的證明。
-//
-// 為何 `#[ignore]` 而非常規失敗：canonical 門檻要求全綠；預期紅的測試
-// 若常規執行會破壞「測試全綠」的機械判定。ignore 標注讓差異報告
-// 可按需產生，同時不污染 canonical。
+// 執行方式：`cargo test -p ekp_platform --test c6_parity`
 
 use ekp_domain::governance as domain_gov;
 use serde_json::Value;
@@ -307,9 +302,8 @@ fn domain_samples() -> Vec<(String, Value)> {
 }
 
 /// 同位性主測試：九種事件逐一比對 platform 與 domain 的 serde 輸出。
-/// 預期紅（兩 enum 獨立定義，欄位差異實測）；合併後轉綠即為合併安全證明。
+/// 合併後兩側解析到同一型別；本測試同時鎖住合併前的 wire format。
 #[test]
-#[ignore = "C6 parity: expected-red until the dual EventPayload consolidation (refactor-criteria C6); run with --ignored to produce the diff report"]
 fn event_payloads_parity_platform_vs_domain() {
     let platform = platform_samples();
     let domain = domain_samples();

@@ -21,6 +21,7 @@ Do **not** use an ADR for:
 | ADR | Title | Status | Date | Area |
 | --- | --- | --- | --- | --- |
 | [0001](../adr/0001-engineering-delivery-workflow.md) | GitHub Issues and reproducible Rust delivery checks | Accepted | 2026-10-25 | Delivery / CI |
+| [0004](../adr/0004-governance-payload-type-consolidation.md) | Consolidate governance event payload types in the domain crate | Accepted | 2026-11-13 | Domain / ledger compatibility |
 
 New ADRs use the next four-digit number and the template below. Do not renumber existing records.
 

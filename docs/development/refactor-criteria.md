@@ -43,7 +43,7 @@ else:                     NEXT SLICE（附量測或覆蓋前提）
 
 門檻（B>10、H≥10）非神聖數字：調整需 ADR；門檻只升不降的精神同品質標準。
 
-## 4. 實測裁決表（2026-11-09 首次掃描；2026-11-10 重測 C3/C6）
+## 4. 實測裁決表（2026-11-09 首次掃描；2026-11-10 重測 C3/C6；2026-11-13 C6 執行完成）
 
 | 案 | 候選 | P | B | C | H | S | 裁決 | 證據/理由 |
 |---|---|---|---|---|---|---|---|---|
@@ -52,7 +52,7 @@ else:                     NEXT SLICE（附量測或覆蓋前提）
 | C3 | `governance_web.rs` 拆分為模組（2026-11-10 重測：**4025 行**，含未提交 detail pages） | ❌（`page_registry` 表徵套件剛補齊 2 個測試；golden HTML、完整角色矩陣與 mutation 契約仍缺） | **7 個檔案引用**（含 bin/tests） | 部分（頁面 auth/zero-JS/title 契約；未涵蓋所有 mutation） | **24** | 4025 行（未提交工作 +289 行） | **DEFER** | 2026-11-09 舊值 3246 行／19 引用／21 提交已漂移；重測後碰撞面更大。前提不變：模組設計文件＋完整表徵套件＋單寫者窗口 |
 | C4 | TODO/FIXME 19＋`allow(too_many_arguments)` 1 | — | 0 | — | — | — | **分級** | postgres 骨架 9 筆＝已聲明 fail-closed（可接受，IMP 追蹤）；其餘為語義註記；`approvals_content` 參數列 → NEXT SLICE 以參數結構體收斂 |
 | C5 | 核准三個 handler 的重複「讀 body＋解析失敗分支」 | ✅（已抽 `read_limited_body`；剩錯誤分支樣式） | 0（檔內） | ✅（route 測試） | 3 | ~24 行 | **NEXT SLICE** | 與 C4 的參數結構體同一微切片處理，避免為小收益頻繁觸碰高扇出檔 |
-| C6 | **兩個獨立的 `EventPayload` enum**：`platform::governance::EventPayload`（治理帳鏈在用）與 `ekp_domain::governance::EventPayload`（9 變體同名同序） | ❌（尚無逐位元組 serde 等價測試） | **80 引用**（2026-11-10 重測）；9 個 payload struct 亦為兩份獨立定義 | 平台版由帳鏈測試覆蓋；無跨型別等價測試 | 2 個定義提交 | 兩份 9 變體＋9 組 payload struct | **NEXT SLICE（需型別遷移，非一行 re-export）** | 2026-11-10 重測：兩 enum 變體相同，但 `Project`／`Evidence`／… 等 payload struct 是 platform 與 domain 各自的獨立型別，直接 `pub use` 不會編譯。需先做 serde 輸出逐位元組等價測試，再以專用遷移切片（或 ADR）收斂；S11 資料地圖對準**在用**的 platform 版 |
+| C6 | **兩個獨立的 `EventPayload` enum**：`platform::governance::EventPayload` 與 `ekp_domain::governance::EventPayload` | ✅（2026-11-13 實測：15/15 公開型別定義正規化後完全相同；9 個 payload struct 的 derive/serde 屬性相同；platform 對 payload 型別無固有 impl） | **80 引用**；因採 re-export，呼叫點 0 變更 | ✅ `governance_type_compat`（9 個 JSONL fixture 逐位元組 round-trip）＋解除 ignore 的 `c6_parity`（九種事件跨模組路徑比對） | 11 個型別 → 1 份定義；platform 刪 131 行、增 12 行 | 兩份 9 變體＋9 組 payload struct | **DO NOW → 已執行（ADR-0004）** | `platform::governance` 改為 `pub use ekp_domain::governance::{...}`（11 型別）；`Ledger`／`LedgerEvent`／驗證函式仍留 platform（非本次範圍）。wire format 由 `platform/tests/governance_type_compat.rs` 鎖定；canonical 與 570 測試全綠，證據見 register `R27` |
 
 ## 5. 整體優構次序（不可調換）
 
