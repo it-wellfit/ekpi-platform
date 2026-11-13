@@ -2,7 +2,7 @@
 
 - **Status:** Active; local prototype
 - **Owner:** Engineering
-- **Last reviewed:** 2026-10-29
+- **Last reviewed:** 2026-11-13
 - **Contract ID:** `CTR-WEB-001`
 - **Source:** `platform/src/governance_web.rs`
 - **Verification:** `platform/tests/governance_web.rs`, `platform/tests/web_health.rs`
@@ -57,10 +57,13 @@ All routes in this table require a `viewer` session and return `401` without one
 | --- | --- | --- | --- | --- |
 | GET | `/` | Work overview/dashboard | HTML | Route test |
 | GET | `/projects` | Project list and create form | HTML | Route test |
+| GET | `/projects/{id}` | Project detail: project fields plus its evidence, cases, inspections and gate decisions filtered from the snapshot; unknown ID returns an honest `404` | HTML | Route test |
 | GET | `/evidence` | Evidence references and review state | HTML | Route test |
+| GET | `/evidence/{id}` | Evidence detail: evidence fields plus the human review when one exists; unknown ID returns `404` | HTML | Route test |
 | GET | `/inspections` | 29-item quality inspection form | HTML | Route test |
 | GET | `/workflows` | Workflow drafts and publish actions | HTML | Route test |
 | GET | `/controls` | Risk/change/defect/CAPA cases | HTML | Route test |
+| GET | `/controls/{id}` | Quality-case detail: case fields plus its status-update events; unknown ID returns `404` | HTML | Route test |
 | GET | `/lifecycle` | Lifecycle gate decisions | HTML | Route test |
 | GET | `/audit` | Ledger events and chain verification | HTML | Route test |
 | GET | `/assets/governance.css` | Stylesheet (public) | `text/css; charset=utf-8` | Route test |

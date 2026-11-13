@@ -3948,7 +3948,7 @@ fn project_table(projects: &[Project], limit: usize) -> Markup {
                     thead { tr { th scope="col" { "專案" } th scope="col" { "部門" } th scope="col" { "負責人" } th scope="col" { "風險" } } }
                     tbody {
                         @for project in projects.iter().rev().take(limit) {
-                            tr { th scope="row" { strong { (project.name) } small class="row-id" { (project.id) } } td { (project.department) } td { (project.owner) } td { (risk_badge(&project.risk_tier)) } }
+                            tr { th scope="row" { a href=(format!("/projects/{}", project.id)) { strong { (project.name) } } small class="row-id" { (project.id) } } td { (project.department) } td { (project.owner) } td { (risk_badge(&project.risk_tier)) } }
                         }
                     }
                 }
@@ -4000,7 +4000,7 @@ fn evidence_table(data: &GovernanceSnapshot) -> Markup {
                             @let review = data.reviews.get(&item.id);
                             tr {
                                 th scope="row" {
-                                    strong { (item.title) }
+                                    a href=(format!("/evidence/{}", item.id)) { strong { (item.title) } }
                                     small class="row-id" { (item.id) " · " (item.source_system) " · " (item.source_version) }
                                     a class="source-link" href=(item.source_url) target="_blank" rel="noopener noreferrer" { "開啟來源連結 ↗" }
                                 }
@@ -4204,7 +4204,7 @@ fn quality_case_list(data: &GovernanceSnapshot) -> Markup {
             div class="case-list" {
                 @for case in data.cases.iter().rev() {
                     article class="case-card" {
-                        div class="workflow-title-row" { div { p class="row-id" { (case.id) " · " (kind_label(&case.kind)) " · " (case.project_id) } h3 { (case.title) } } (case_status_badge(&case.status)) }
+                        div class="workflow-title-row" { div { p class="row-id" { (case.id) " · " (kind_label(&case.kind)) " · " (case.project_id) } h3 { a href=(format!("/controls/{}", case.id)) { (case.title) } } } (case_status_badge(&case.status)) }
                         p class="multiline" { (case.description) }
                         p class="muted" { "負責人 " (case.owner) " · 到期 " (case.due_date) }
                         @if case.status != "closed" {

@@ -2,7 +2,7 @@
 
 - **狀態：** Active（S3 產物；每次新增/修改頁面後更新本表）
 - **Owner：** Engineering + QA
-- **最後審閱：** 2026-11-06
+- **最後審閱：** 2026-11-13
 - **準則：** [品質標準 Q-20…Q-26](quality-standards-v2.md)；樣式僅 Design Token（`platform/assets/governance.css`、`apps/web/static/css/design-system.css`）
 - **方法：** 每格標注證據（測試名稱或 CSS 選擇器）。`N/A（設計）` 表示該狀態在零 JS 同步伺服器渲染下不適用——記錄理由，不虛構。
 
@@ -24,10 +24,13 @@
 | `/` 儀表板 | 路由測試（governance_web suite） | inline「尚無活動記錄…」 | `page_error_response`；401/403 結構化 | |
 | `/login` | 表單＋本機提示 | N/A（表單頁） | 通用 401/403；CSRF 失敗訊息不揭露細節；鎖定不揭露 | `login_post_without_csrf_token_is_refused` 等 |
 | `/projects` | 路由測試 | `empty_state("尚無專案資料")` | 錯誤 re-render 帶 notice | |
+| `/projects/{id}` 專案詳情 | 專案欄位＋該專案的證據/個案/檢驗/關卡（全部由 snapshot 過濾） | 查無 → 誠實 404（`page_not_found`），不捏造資料 | 未登入 401；`detail_pages_return_honest_404_for_unknown_ids`、`detail_pages_require_session_are_readable_by_viewer_and_linked` | 列表頁專案名稱連結直達 |
 | `/evidence` | 路由測試 | `empty_state("尚無證據參照")` | 同上 | |
+| `/evidence/{id}` 證據詳情 | 證據欄位＋審查紀錄；尚無審查→「尚未留下人工審查紀錄。」 | 查無 → 誠實 404 | 未登入 401；同上兩測試 | 列表頁證據標題連結直達 |
 | `/inspections` | 路由測試 | inline「尚無檢驗」 | 同上 | |
 | `/workflows` | 路由測試 | `empty_state("尚無流程範本")` | 同上 | |
 | `/controls` | 路由測試 | `empty_state("尚無追蹤事項")` | 同上；CAPA 關閉需驗證訊息 | |
+| `/controls/{id}` 個案詳情 | 個案欄位＋狀態更新歷史（依 `QualityCaseUpdated` 事件過濾） | 尚無更新→「尚無狀態更新。」；查無 → 誠實 404 | 未登入 401；`detail_pages_return_honest_404_for_unknown_ids`、`detail_pages_require_session_are_readable_by_viewer_and_linked` | 列表頁個案標題連結直達 |
 | `/lifecycle` | 路由測試 | inline「尚無關卡決策」 | 同上；exception＋non-waivable 拒絕 | |
 | `/audit` | 路由測試 | `empty_state("尚無稽核事件")` | 鏈徽章（綠/紅） | |
 | `/approvals/calendar`（S12 新增） | 月曆格（`?month=YYYY-MM` 伺服器渲染）＋到期任務連結＋逾期紅格＋「已逾時」文字（顏色非唯一傳達）＋前/後月 chips | 空月→「0 筆」誠實計數；任務不在本月→outside 計數說明 | 未登入 401；無效月份（`2026-13`/`not-a-month`）→ 400 fail-closed（不靜默回退當月）；`sla_calendar_navigation_and_validation` |

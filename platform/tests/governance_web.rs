@@ -1209,3 +1209,102 @@ async fn info_pages_render_glossary_help_about() {
         std::fs::remove_file(path).expect("test ledger removed");
     }
 }
+
+/// 詳情頁邊界：不存在的 ID 必須回誠實 404（不得 200 空頁、不得捏造資料）。
+#[tokio::test]
+async fn detail_pages_return_honest_404_for_unknown_ids() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+    for (route, missing_id) in [
+        ("/projects/PRJ-999999", "PRJ-999999"),
+        ("/evidence/EVD-999999", "EVD-999999"),
+        ("/controls/QMS-999999", "QMS-999999"),
+    ] {
+        let response = get_with_cookie(&app, route, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "route {route}");
+        let html = response_text(response).await;
+        assert!(
+            html.contains("找不到"),
+            "route {route} renders the not-found heading"
+        );
+        assert!(
+            html.contains(missing_id),
+            "route {route} names the missing id"
+        );
+        assert!(!html.contains("<script"), "route {route} stays zero-JS");
+    }
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
+/// 詳情頁：需登入；Viewer 可讀；列表頁必須連到詳情頁（避免孤島頁面）。
+#[tokio::test]
+async fn detail_pages_require_session_are_readable_by_viewer_and_linked() {
+    let path = test_path();
+    let app = test_app(&path);
+
+    for route in [
+        "/projects/PRJ-000001",
+        "/evidence/EVD-000002",
+        "/controls/QMS-000003",
+    ] {
+        let response = get_with_cookie(&app, route, None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "route {route}");
+    }
+
+    let admin = login(&app, "tester", ADMIN_PASSWORD).await;
+    for (route, body) in [
+        (
+            "/projects",
+            "name=Detail+target&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+        ),
+        (
+            "/evidence",
+            "project_id=PRJ-000001&title=Traceable+record&source_system=Microsoft+365&source_url=https%3A%2F%2Fexample.test%2Frecord&source_version=v1&evidence_type=approval&owner=Alex&actor=Jordan",
+        ),
+        (
+            "/controls",
+            "project_id=PRJ-000001&kind=capa&title=Corrective+action&description=Verify+root+cause&owner=Alex&due_date=2026-12-31&actor=Jordan",
+        ),
+    ] {
+        let response = post_authed(&app, &admin, route, body).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::SEE_OTHER,
+            "create via {route}"
+        );
+    }
+
+    // 列表頁必須提供詳情連結，否則詳情頁無法從介面抵達。
+    for (route, link) in [
+        ("/projects", "href=\"/projects/PRJ-000001\""),
+        ("/evidence", "href=\"/evidence/EVD-000002\""),
+        ("/controls", "href=\"/controls/QMS-000003\""),
+    ] {
+        let page = get_with_cookie(&app, route, Some(&admin)).await;
+        assert_eq!(page.status(), StatusCode::OK, "list {route}");
+        let html = response_text(page).await;
+        assert!(html.contains(link), "list {route} links to {link}");
+    }
+
+    let viewer = login(&app, "viewer", VIEWER_PASSWORD).await;
+    for (route, marker) in [
+        ("/projects/PRJ-000001", "Detail target"),
+        ("/evidence/EVD-000002", "Traceable record"),
+        ("/controls/QMS-000003", "Corrective action"),
+    ] {
+        let page = get_with_cookie(&app, route, Some(&viewer)).await;
+        assert_eq!(page.status(), StatusCode::OK, "viewer detail {route}");
+        let html = response_text(page).await;
+        assert!(html.contains(marker), "detail {route} renders `{marker}`");
+        assert!(!html.contains("<script"), "detail {route} zero-JS");
+    }
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
