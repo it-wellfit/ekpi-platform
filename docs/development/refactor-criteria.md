@@ -43,13 +43,13 @@ else:                     NEXT SLICE（附量測或覆蓋前提）
 
 門檻（B>10、H≥10）非神聖數字：調整需 ADR；門檻只升不降的精神同品質標準。
 
-## 4. 實測裁決表（2026-11-09 首次掃描；2026-11-10 重測 C3/C6；2026-11-13 C6 執行完成、C3/C4/C5 重測）
+## 4. 實測裁決表（2026-11-09 首次掃描；2026-11-10 重測 C3/C6；2026-11-13 C6 執行完成、C3 Stage 0 完成、C4/C5 重測）
 
 | 案 | 候選 | P | B | C | H | S | 裁決 | 證據/理由 |
 |---|---|---|---|---|---|---|---|---|
 | C1 | `platform::governance::default_ledger_path` 與 `adapters::configuration::default_ledger_path` 邏輯重複 | ✅（僅差 `PathBuf::from` vs `Path::new`，語義相同） | 2（bin、main） | ✅（configuration 單元測試＋編譯） | 6＋1 | 12 行 | **DO NOW → 已執行** | 單一事實來源：platform 委派 adapters；消費者面名保持穩定（Hyrum） |
 | C2 | `adapters::jsonl_ledger::default_ledger_path` 與 C1 同名但回傳**目錄** | 語義不同，非重複 | 1（內部） | ✅ | 3 | 10 行 | **DO NOW → 已執行** | 改名 `default_data_dir`＋文檔區辨；編譯器保證零外部影響 |
-| C3 | `governance_web.rs` 拆分為模組（2026-11-13 重測：**4540 行**） | ❌（表徵套件現有 `governance_web` 33 個路由測試＋`page_registry` 2 個頁面契約測試；golden HTML、完整角色矩陣與 mutation 契約仍缺） | **7 個檔案引用**（含 bin/tests） | 部分（頁面 auth/zero-JS/title 契約；未涵蓋所有 mutation） | **26** | 4540 行 | **DEFER** | 2026-11-09 舊值 3246 行／19 引用／21 提交；2026-11-10 4025 行／24 提交；2026-11-13 4540 行／26 提交——碰撞面持續變大。前提不變：模組設計文件＋完整表徵套件＋單寫者窗口 |
+| C3 | `governance_web.rs` 拆分為模組（2026-11-13 重測：**4,816 實體行／4,545 非空行**；47 條 production route；12 個檔內測試） | ✅ **Stage 0 已補**：ADR-0005 模組設計＋`governance_web_route_inventory` 7 個表徵測試（47 路徑、方法護欄、mutation session/CSRF、公開介面、API v1）；既有 33 路由測試＋`page_registry` 2 測試維持 | **7 個檔案引用**（含 bin/tests；公開 API 不變） | ✅（新表徵套件覆蓋所有 production 路徑；golden HTML 仍非目標） | **28** | 4,816 行（實體） | **IN PROGRESS — Stage 0 完成** | 前置條件已滿足：模組設計文件（ADR-0005）＋完整表徵套件＋單寫者窗口；Stage 1–3 逐步搬遷，每階段 canonical 全綠。舊值：2026-11-09 3,246 行／21 提交；2026-11-10 4,025 行／24 提交；2026-11-13 4,540 非空行／26 提交 |
 | C4 | TODO/FIXME 與 `allow(too_many_arguments)` | ✅ **已解除**（2026-11-13 實測：`platform/src` TODO/FIXME **0**、`allow(too_many_arguments)` **0**） | 0 | — | — | — | **已執行** | 前一輪已把 `ApprovalsPageView` 參數結構體化並清除 allow；postgres 骨架維持已聲明 fail-closed |
 | C5 | 核准三個 handler 的重複「讀 body＋解析失敗分支」 | ✅（`read_limited_body` 已抽出，5 個呼叫點） | 0（檔內） | ✅（route 測試） | 4 處 3 行錯誤分支樣式 | ~12 行 | **DEFER（維持可接受）** | 2026-11-13 重測：剩餘重複僅 4 處 `match read_limited_body` 錯誤分支；檔案已 4540 行且並行開發中，收益低於碰撞成本。若未來再新增 handler 才一併收斂 |
 | C6 | **兩個獨立的 `EventPayload` enum**：`platform::governance::EventPayload` 與 `ekp_domain::governance::EventPayload` | ✅（2026-11-13 實測：15/15 公開型別定義正規化後完全相同；9 個 payload struct 的 derive/serde 屬性相同；platform 對 payload 型別無固有 impl） | **80 引用**；因採 re-export，呼叫點 0 變更 | ✅ `governance_type_compat`（9 個 JSONL fixture 逐位元組 round-trip）＋解除 ignore 的 `c6_parity`（九種事件跨模組路徑比對） | 11 個型別 → 1 份定義；platform 刪 131 行、增 12 行 | 兩份 9 變體＋9 組 payload struct | **DO NOW → 已執行（ADR-0004）** | `platform::governance` 改為 `pub use ekp_domain::governance::{...}`（11 型別）；`Ledger`／`LedgerEvent`／驗證函式仍留 platform（非本次範圍）。wire format 由 `platform/tests/governance_type_compat.rs` 鎖定；canonical 與 570 測試全綠，證據見 register `R27` |

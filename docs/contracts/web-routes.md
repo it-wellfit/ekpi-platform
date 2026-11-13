@@ -5,7 +5,7 @@
 - **Last reviewed:** 2026-11-13
 - **Contract ID:** `CTR-WEB-001`
 - **Source:** `platform/src/governance_web.rs`
-- **Verification:** `platform/tests/governance_web.rs`, `platform/tests/web_health.rs`
+- **Verification:** `platform/tests/governance_web.rs`, `platform/tests/web_health.rs`, `platform/tests/governance_web_route_inventory.rs`
 
 ## Server boundary
 
@@ -42,6 +42,7 @@ This matrix is an application-level local authorization check. It is not tenant 
 | Method | Path | Purpose | Response | Test evidence |
 | --- | --- | --- | --- | --- |
 | GET | `/healthz` | Liveness only; does not claim readiness or dependency health | JSON: status, service, version, `scope: local-only`, `readiness: liveness-only` | `web_health.rs` |
+| GET | `/ready` | Readiness report; **session-gated at this revision** (not in the public allowlist) | JSON readiness object; `401` without a session, `200` with one | `governance_web_route_inventory.rs` (`public_surface_is_the_documented_allowlist`) |
 | GET | `/metrics` | Prometheus text counters for requests, 4xx/5xx, in-flight, concurrency refusals and duration | `text/plain; version=0.0.4` | `web_health.rs` |
 | GET | `/login` | Login form | HTML | `governance_web.rs` |
 | POST | `/login` | `username`, `password`; max 64 KiB | `303` to `/` and `Set-Cookie: ekpi_session=…` on success; `401` and no cookie on failure | `governance_web.rs` |
@@ -130,10 +131,12 @@ The field list is the current HTML form contract. Server-side validation is auth
 
 ```powershell
 cd platform
-cargo test --locked --test governance_web --test web_health
+cargo test --locked --test governance_web --test web_health --test governance_web_route_inventory
 ```
 
-The route tests cover authenticated reads, unauthenticated `401`, viewer/editor/approver authorization, login/logout, oversized login bodies, mutation flows, audit chain, same-origin rejection, foreign/duplicate/non-loopback Host rejection, duplicate `Origin`/`Sec-Fetch-Site` rejection, the quality-case transition graph, duplicate session cookies and presentation constraints. Unit tests additionally cover the loopback Host parser, the single-header helper and malformed-cookie fail-closed behavior. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics. Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
+The route tests cover authenticated reads, unauthenticated `401`, viewer/editor/approver authorization, login/logout, oversized login bodies, mutation flows, audit chain, same-origin rejection, foreign/duplicate/non-loopback Host rejection, duplicate `Origin`/`Sec-Fetch-Site` rejection, the quality-case transition graph, duplicate session cookies and presentation constraints. Unit tests additionally cover the loopback Host parser, the single-header helper and malformed-cookie fail-closed behavior. The health tests cover liveness semantics, correlation-id validation, security headers and aggregate metrics.
+
+`governance_web_route_inventory.rs` is the complete front-door characterization added for C3: it locks all 47 production route declarations (unsupported `DELETE` → `405` with `Allow`), the styled `404` fallback, the session-then-CSRF gate on all 21 mutation paths (`/login` keeps its documented double-submit exemption), the empty-input first-validation statuses, the exact `PAGE_REGISTRY` page surface, the public allowlist and the API v1 `200`/`400`/`501` contract. It must pass before and after every module-movement stage of [ADR-0005](../adr/0005-governance-web-module-split.md). Manual browser checks are still required for keyboard, screen-reader, contrast and narrow-screen behavior; see [quality gates](../development/quality-gates.md).
 
 ## Update triggers
 
