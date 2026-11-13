@@ -1375,6 +1375,25 @@ async fn detail_pages_return_honest_404_for_unknown_ids() {
         );
         assert!(!html.contains("<script"), "route {route} stays zero-JS");
     }
+
+    // 反映式注入：路徑 ID 會出現在錯誤訊息中，必須由模板轉義。
+    for route in [
+        "/projects/%3Cimg%20src%3Dx%20onerror%3Dalert%281%29%3E",
+        "/evidence/%3Cimg%20src%3Dx%20onerror%3Dalert%281%29%3E",
+        "/controls/%3Cimg%20src%3Dx%20onerror%3Dalert%281%29%3E",
+    ] {
+        let response = get_with_cookie(&app, route, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "route {route}");
+        let html = response_text(response).await;
+        assert!(
+            html.contains("&lt;img"),
+            "route {route} escapes the path id"
+        );
+        assert!(
+            !html.contains("<img"),
+            "route {route} must not reflect raw markup"
+        );
+    }
     drop(app);
     if path.exists() {
         std::fs::remove_file(path).expect("test ledger removed");
