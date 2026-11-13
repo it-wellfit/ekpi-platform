@@ -1258,6 +1258,99 @@ async fn mutations_for_unknown_records_are_refused_without_appending_events() {
     }
 }
 
+/// 資料完整性：詳情頁只能呈現目標專案自己的證據、個案與關卡，不得跨專案洩漏。
+#[tokio::test]
+async fn detail_pages_isolate_records_between_projects() {
+    let path = test_path();
+    let app = test_app(&path);
+    let cookie = login(&app, "tester", ADMIN_PASSWORD).await;
+
+    for (route, body) in [
+        (
+            "/projects",
+            "name=Alpha+project&department=PMO&owner=Alex&risk_tier=medium&actor=Jordan",
+        ),
+        (
+            "/projects",
+            "name=Beta+project&department=QA&owner=Blair&risk_tier=high&actor=Jordan",
+        ),
+        (
+            "/evidence",
+            "project_id=PRJ-000001&title=Alpha+evidence&source_system=Microsoft+365&source_url=https%3A%2F%2Fexample.test%2Falpha&source_version=v1&evidence_type=approval&owner=Alex&actor=Jordan",
+        ),
+        (
+            "/evidence",
+            "project_id=PRJ-000002&title=Beta+evidence&source_system=Google+Workspace&source_url=https%3A%2F%2Fexample.test%2Fbeta&source_version=v1&evidence_type=record&owner=Blair&actor=Jordan",
+        ),
+        (
+            "/controls",
+            "project_id=PRJ-000001&kind=capa&title=Alpha+case&description=Alpha+corrective+action&owner=Alex&due_date=2026-12-31&actor=Jordan",
+        ),
+        (
+            "/controls",
+            "project_id=PRJ-000002&kind=finding&title=Beta+case&description=Beta+finding&owner=Blair&due_date=2026-12-31&actor=Jordan",
+        ),
+        (
+            "/lifecycle",
+            "project_id=PRJ-000001&gate_id=G1&decision=go&reason=&evidence_reference=&risk_acceptor=&remediation_due=&non_waivable=no",
+        ),
+        (
+            "/lifecycle",
+            "project_id=PRJ-000002&gate_id=G2&decision=hold&reason=Awaiting+evidence&evidence_reference=&risk_acceptor=&remediation_due=&non_waivable=no",
+        ),
+    ] {
+        let response = post_authed(&app, &cookie, route, body).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::SEE_OTHER,
+            "create via {route}"
+        );
+    }
+
+    let alpha = get_with_cookie(&app, "/projects/PRJ-000001", Some(&cookie)).await;
+    assert_eq!(alpha.status(), StatusCode::OK);
+    let alpha_html = response_text(alpha).await;
+    for marker in ["Alpha project", "Alpha evidence", "Alpha case", "關卡 G1"] {
+        assert!(alpha_html.contains(marker), "Alpha detail shows `{marker}`");
+    }
+    for leaked in ["Beta project", "Beta evidence", "Beta case", "關卡 G2"] {
+        assert!(
+            !alpha_html.contains(leaked),
+            "Alpha detail must not leak `{leaked}`"
+        );
+    }
+
+    let beta = get_with_cookie(&app, "/projects/PRJ-000002", Some(&cookie)).await;
+    assert_eq!(beta.status(), StatusCode::OK);
+    let beta_html = response_text(beta).await;
+    for marker in ["Beta project", "Beta evidence", "Beta case", "關卡 G2"] {
+        assert!(beta_html.contains(marker), "Beta detail shows `{marker}`");
+    }
+    for leaked in ["Alpha project", "Alpha evidence", "Alpha case", "關卡 G1"] {
+        assert!(
+            !beta_html.contains(leaked),
+            "Beta detail must not leak `{leaked}`"
+        );
+    }
+
+    let evidence = get_with_cookie(&app, "/evidence/EVD-000003", Some(&cookie)).await;
+    assert_eq!(evidence.status(), StatusCode::OK);
+    let evidence_html = response_text(evidence).await;
+    assert!(evidence_html.contains("Alpha evidence"));
+    assert!(!evidence_html.contains("Beta evidence"));
+
+    let case = get_with_cookie(&app, "/controls/QMS-000005", Some(&cookie)).await;
+    assert_eq!(case.status(), StatusCode::OK);
+    let case_html = response_text(case).await;
+    assert!(case_html.contains("Alpha case"));
+    assert!(!case_html.contains("Beta case"));
+
+    drop(app);
+    if path.exists() {
+        std::fs::remove_file(path).expect("test ledger removed");
+    }
+}
+
 /// 詳情頁邊界：不存在的 ID 必須回誠實 404（不得 200 空頁、不得捏造資料）。
 #[tokio::test]
 async fn detail_pages_return_honest_404_for_unknown_ids() {
