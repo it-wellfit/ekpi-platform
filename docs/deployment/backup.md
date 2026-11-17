@@ -1,8 +1,8 @@
 # Backup and disaster recovery
 
-- **Status:** Procedure defined; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, `41beaea`, `6ed236d` and `499e0d1` (the last three via the automatic TEMP drill with restored `scripts/check.ps1` exit 0); earlier `198d5f3`, `c77fec4`, `bc7671a` and `28b68cc` attempts were BLOCKED by host policy and are not counted as verification
+- **Status:** Procedure defined; local restore drills PASS at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b`, `56a944f`, `3ee2ee2`, `41beaea`, `6ed236d` and `499e0d1` (the last three via the automatic TEMP drill with restored `scripts/check.ps1` exit 0); earlier `198d5f3`, `c77fec4`, `bc7671a` and `28b68cc` attempts were BLOCKED by host policy; the 2026-11-17 bundle is **FAIL** at the restored docs check (out-of-repo links) and is not counted as verification
 - **Owner:** Engineering / Operations (operations owner not yet assigned)
-- **Last reviewed:** 2026-10-27
+- **Last reviewed:** 2026-11-17
 - **Canonical procedure:** [Local backup](../operations/local-backup.md)
 - **Evidence log:** [Backup log](../operations/backup-log.md)
 
@@ -10,7 +10,7 @@
 
 - `scripts/backup.ps1` and `scripts/backup.sh` create a Git bundle in a directory outside the workspace and run a restore drill.
 - The drill clones the bundle to a temporary path and runs the repository check script in the clone.
-- `docs/operations/backup-log.md` is the evidence record. It contains local PASS drills at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`, including an `age` drill with a local-simulated destination, and one BLOCKED attempt (`198d5f3`, host Application Control denied freshly built build scripts). A blocked row is not verification.
+- `docs/operations/backup-log.md` is the evidence record. It contains local PASS drills at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`, including an `age` drill with a local-simulated destination, and one BLOCKED attempt (`198d5f3`, host Application Control denied freshly built build scripts). The 2026-11-17 bundle is **FAIL** at the restored docs check because the bundle excludes sibling repositories. A blocked or failed row is not verification.
 
 ## What the bundle contains and excludes
 
@@ -19,7 +19,8 @@ A `git bundle --all` contains committed Git history and refs. It does **not** co
 - uncommitted or untracked working-tree files;
 - ignored files such as `.env` and local keys;
 - the local governance ledger outside the repository (default `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA`);
-- generated artifacts that were not committed.
+- generated artifacts that were not committed;
+- sibling repositories and the root `AGENTS.md`. Relative links from `docs/research/oekap-context-map_v1.0.md` to `Knowledge/`, `oekap/`, `Wellfit/` and the root `AGENTS.md` therefore fail the restored docs check in a repo-only clone.
 
 A bundle is **not** a full system backup. It does not replace an encrypted off-host backup, database backup (there is no database in the current prototype), or a documented RPO/RTO. For the local prototype, back up the ledger separately if it contains data you need to retain.
 

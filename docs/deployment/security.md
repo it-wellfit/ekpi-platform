@@ -2,7 +2,7 @@
 
 - **Status:** Current for the local prototype; **not** a production security control set
 - **Owner:** Engineering + Security (security owner not yet assigned)
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-11-17
 - **Threat model:** [Architecture threat model](../architecture/threat-model.md)
 - **Target controls:** [Security integration spec](../governance/07-security-integration-spec-v1.md)
 - **Readiness:** [Production readiness](../operations/production-readiness.md)
@@ -12,7 +12,7 @@
 - `#![forbid(unsafe_code)]` in Rust code.
 - Clippy with `-D warnings` (zero-warning policy) and formatting checks.
 - CSS-first, server-rendered web UI with **zero JavaScript**.
-- `governance_web` binds to `127.0.0.1:3000` only; it is not designed for network exposure.
+- `governance_web` binds `127.0.0.1:3000` by default. `EKPI_BIND_IP` accepts loopback addresses only; a non-loopback value refuses startup in Stage 1. It is not designed for network exposure.
 - Local session login for every ledger-backed page: PBKDF2-HMAC-SHA256 (600,000 iterations, random 16-byte salt), 32-byte OS-CSPRNG session tokens, constant-time comparison, a dummy hash for unknown users and a 5-failure/300-second lockout.
 - Viewer/Editor/Approver authorization on data pages and mutations; no default account; no password in logs or the ledger.
 - `HttpOnly`, `SameSite=Strict` session cookie; `Secure` can be enabled with `EKPI_COOKIE_SECURE=1`. Sessions are process-memory only and expire after 3,600 seconds.
@@ -38,20 +38,20 @@ Do **not** claim any of the following for the current repository:
 | Encryption at rest / in transit | Not implemented for the local prototype. No TLS termination exists and the ledger is plaintext JSONL. |
 | Penetration test / ASVS / certification | Not performed. |
 | Production monitoring / incident response | Local logs and metrics only; no SLO, alerting, on-call or incident owner. See [monitoring](monitoring.md) and [incident log](../operations/incident-log.md). |
-| CSRF token / enterprise session management | No dedicated CSRF token. Same-origin/fetch-metadata checks and a `SameSite=Strict` cookie are the current hardening; the session store is one in-process map. |
+| CSRF token / enterprise session management | The workbench uses a double-submit token: a per-session `ekpi_csrf` cookie plus an `X-CSRF-Token` header or hidden form field; login uses a fresh token mirrored in a hidden field and the cookie. Same-origin/fetch-metadata checks and `SameSite=Strict` cookies add defence in depth. This is not an enterprise CSRF/session service; the session store is one in-process map. |
 
 ## Secret handling
 
 - No secrets, credentials or connection strings in the repository.
 - `.env` and key files are local-only and must be ignored by Git. `.env.example` contains placeholders only.
-- The environment variables read by the current code are `EKP_GOVERNANCE_DATA` (ledger path), `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD`, `EKPI_LOCAL_AUTH_ROLE` and `EKPI_COOKIE_SECURE`. The login variables are optional, but without a user/password the data pages cannot be opened. Do not commit a real password.
+- The environment variables read by the current code are `EKP_GOVERNANCE_DATA` (ledger path), `EKP_APPROVAL_DATA` (approval store), `EKPI_LOCAL_AUTH_USER`, `EKPI_LOCAL_AUTH_PASSWORD`, `EKPI_LOCAL_AUTH_ROLE`, `EKPI_COOKIE_SECURE`, `EKPI_BIND_IP` (loopback only), `EKPI_WEB_PORT` and `EKPI_DATA_DIR` (synthetic fixture directory for `/search`). The login variables are optional, but without a user/password the data pages cannot be opened. Do not commit a real password.
 - The local login password is held in the process environment and converted to a salted PBKDF2 hash; it is never printed, logged or written to the ledger. The ledger records the validated local session username as the mutation actor and may contain operator-entered sensitive text. The session is local-only, not an enterprise identity.
 - Never place real customer, personal or regulated data in the local ledger, reports or test fixtures.
 - If a secret is exposed, follow [secrets policy](../operations/secrets-policy.md).
 
 ## Supported deployment boundary
 
-Local, single-user, loopback-only execution with synthetic or authorized non-sensitive data. There is no approved production deployment target. Exposing the web server to a LAN, shared host, container ingress or the internet is **unsupported** and requires the Phase B controls in [production readiness](../operations/production-readiness.md).
+Local, single-user, loopback-only execution with synthetic or authorized non-sensitive data. There is no approved production deployment target. Stage 1 staging is a manual foreground start on one internal Windows host; do not register a Windows service (`sc.exe create` would fail with error 1053). Exposing the web server to a LAN, shared host, container ingress or the internet is **unsupported** and requires the Phase B controls in [production readiness](../operations/production-readiness.md).
 
 ## Verification
 

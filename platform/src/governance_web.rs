@@ -3659,9 +3659,18 @@ struct SearchParams {
     q: Option<String>,
 }
 
-/// The bundled data directory (same resolution as the CLI: compile-time
-/// manifest path). The workbench reads it read-only for retrieval.
+/// The bundled data directory.
+///
+/// `EKPI_DATA_DIR` overrides the compile-time manifest path so a staged or
+/// containerized binary can read the synthetic fixtures from an operator-chosen
+/// directory. The binary validates the override at startup; when unset, the
+/// compile-time path preserves local development behavior.
 fn platform_data_dir() -> std::path::PathBuf {
+    if let Some(value) = std::env::var_os("EKPI_DATA_DIR")
+        && !value.is_empty()
+    {
+        return std::path::PathBuf::from(value);
+    }
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data")
 }
 

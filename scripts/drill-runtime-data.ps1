@@ -3,11 +3,12 @@
 # dual JSONL chains, a real kill, a real file loss, a real restore, and
 # observes both chain badges over HTTP. Nothing here is mocked.
 #
-# Usage:  powershell -ExecutionPolicy Bypass -File scripts/drill-runtime-data.ps1 [-Port 3917] [-KeepWorkDir]
+# Usage:  powershell -ExecutionPolicy Bypass -File scripts/drill-runtime-data.ps1 [-Port 3917] [-Exe <path>] [-KeepWorkDir]
 # Exit:   0 = PASS, non-zero = FAIL/BLOCKED (reason printed).
 
 param(
     [string]$Port = "3917",
+    [string]$ExePath,
     [switch]$KeepWorkDir
 )
 
@@ -24,9 +25,13 @@ function Fail([string]$step, [string]$reason) {
 }
 
 # ── 0. preflight ────────────────────────────────────────────────────────
-$exe = Join-Path $repo "target\debug\governance_web.exe"
+if ($ExePath) {
+    $exe = (Resolve-Path -LiteralPath $ExePath).Path
+} else {
+    $exe = Join-Path $repo "target\debug\governance_web.exe"
+}
 if (-not (Test-Path $exe)) {
-    Write-Output "DRILL BLOCKED: governance_web.exe not built (run: cargo build --locked -p ekp_platform --bin governance_web)"
+    Write-Output "DRILL BLOCKED: governance_web.exe not found at $exe (run: cargo build --locked -p ekp_platform --bin governance_web, or pass -Exe)"
     exit 3
 }
 $inUse = Get-NetTCPConnection -LocalPort ([int]$Port) -State Listen -ErrorAction SilentlyContinue
@@ -46,7 +51,9 @@ $env:EKP_APPROVAL_DATA = $apprData
 $env:EKPI_LOCAL_AUTH_USER = "drill-operator"
 $env:EKPI_LOCAL_AUTH_PASSWORD = "drill-pass-2026"
 $env:EKPI_LOCAL_AUTH_ROLE = "approver"
+$env:EKPI_BIND_IP = "127.0.0.1"
 $env:EKPI_WEB_PORT = $Port
+$env:EKPI_DATA_DIR = Join-Path $repo "platform\data"
 
 $proc1 = Start-Process -FilePath $exe -PassThru -NoNewWindow `
     -RedirectStandardOutput (Join-Path $workDir "boot1-out.log") `

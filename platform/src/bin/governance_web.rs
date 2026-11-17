@@ -1,14 +1,28 @@
 #![forbid(unsafe_code)]
 
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use ekp_platform::governance::{Ledger, default_ledger_path};
 use ekp_platform::governance_web;
 use ekp_platform::local_auth::{AuthStore, Role};
+use ekp_platform::runtime_config;
 
 #[tokio::main]
 async fn main() {
+    let config = match runtime_config::from_env() {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("啟動設定錯誤：{error}");
+            std::process::exit(2);
+        }
+    };
+    println!(
+        "執行期設定：bind={} port={} data_dir={}",
+        config.bind_ip,
+        config.port,
+        config.data_dir.display()
+    );
+
     let path = default_ledger_path();
     let ledger = match Ledger::open(&path) {
         Ok(ledger) => ledger,
@@ -74,13 +88,9 @@ async fn main() {
     let approvals_state = Arc::new(Mutex::new(approval_store));
 
     let app = governance_web::router_with_approvals(ledger_state, auth_state, approvals_state);
-    // Port is overridable for ops tooling (drills, parallel local runs);
-    // the default stays 3000 for interactive use.
-    let port: u16 = std::env::var("EKPI_WEB_PORT")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(3000);
-    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    // Bind address and port come from the validated runtime configuration.
+    // Stage 1 accepts loopback binds only; see `runtime_config`.
+    let address = config.socket_addr();
     let listener = match tokio::net::TcpListener::bind(address).await {
         Ok(listener) => listener,
         Err(error) => {

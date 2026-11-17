@@ -20,7 +20,7 @@ The canonical documentation index is [docs/README.md](docs/README.md). It names 
 
 This repository uses a work-type-specific engineering workflow, GitHub issue/spec templates, risk-based validation, and a documented local canonical gate. Start with [AGENTS.md](AGENTS.md) and [the engineering workflow](docs/development/README.md). The exact commands, risk gates, existing-feature [regression checklist](docs/development/regression-checklist.md), and release/retro checks are in [quality gates](docs/development/quality-gates.md) and [release guidance](docs/development/release-and-retro.md).
 
-The repository is a single Cargo workspace with one root `Cargo.toml` and lockfile; run the canonical checks once from the repository root. **No CI workflow file is tracked at HEAD:** `.github/workflows/ci.yml` was removed in `a697f47` because the available OAuth token lacked workflow scope. A Git remote (`origin`) is configured, but no CI run, branch protection, required status check or pull-request review is evidenced. Local runs are the only executed evidence. Do not treat a README test count as current evidence unless those commands were run for the revision being delivered.
+The repository is a single Cargo workspace with one root `Cargo.toml` and lockfile; run the canonical checks once from the repository root. A CI workflow file (`.github/workflows/ci.yml`) is added in this change, but **CI has never run**: no push authorization, branch protection, required status check or pull-request review is evidenced. Local runs are the only executed evidence. Do not treat a README test count as current evidence unless those commands were run for the revision being delivered.
 
 ## 目錄結構
 
@@ -121,10 +121,15 @@ cargo run --locked --bin ekp_platform -- --out out --coverage-report --export-le
 
 ```powershell
 cd platform
-cargo run --locked --bin governance_web
+$env:EKPI_LOCAL_AUTH_USER = "operator"
+$env:EKPI_LOCAL_AUTH_PASSWORD = "choose-a-long-local-password"
+$env:EKPI_LOCAL_AUTH_ROLE = "approver"   # viewer | editor | approver | admin
+cargo run --release --locked --bin governance_web
 ```
 
-開啟 `http://127.0.0.1:3000`。工作台支援本機專案登錄、Microsoft／Google／其他來源文件連結與版本參照、人工證據審查、29 項品質檢查、流程草稿與負責人發布、風險／變更／缺失／CAPA、12 階段／5 關卡，以及追加式 SHA-256 稽核事件。預設資料檔位於 `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl`，可用 `EKP_GOVERNANCE_DATA` 指定測試或試點資料檔。
+開啟 `http://127.0.0.1:3000`。預設綁定 loopback；`EKPI_BIND_IP` 只接受 loopback（非 loopback 直接拒絕啟動），`EKPI_WEB_PORT` 可改埠，`EKPI_DATA_DIR` 指定 `/search` 的合成資料目錄（未設時用編譯期 `platform/data`）。預設資料檔位於 `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl`（`EKP_GOVERNANCE_DATA`）與 `%LOCALAPPDATA%\EKPI\approvals.jsonl`（`EKP_APPROVAL_DATA`）。無預設帳號；未設帳密時資料頁回 `401`，密碼不得進版控。Stage 1 採手動前台啟動，不要註冊 Windows 服務（`sc.exe create` 會 error 1053）。
+
+工作台支援本機專案登錄、Microsoft／Google／其他來源文件連結與版本參照、人工證據審查、29 項品質檢查、流程草稿與負責人發布、風險／變更／缺失／CAPA、12 階段／5 關卡，以及追加式 SHA-256 稽核事件。
 
 本原型只記錄人工提供的來源參照，**不會**登入 Microsoft／Google、複製文件、呼叫 AI 或驗證外部權限。它沒有企業身分驗證，僅可在本機使用非敏感資料，不可直接部署到共用或公開網路。工作台會明確標示未連線與空資料狀態；工作流程 AI 草稿需待資料政策和供應者審查後接入。
 

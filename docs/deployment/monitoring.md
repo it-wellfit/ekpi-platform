@@ -2,19 +2,18 @@
 
 - **Status:** Current state documented; production monitoring **not implemented**
 - **Owner:** Operations + Engineering (operations owner not yet assigned)
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-11-17
 - **Readiness gate:** [Production readiness](../operations/production-readiness.md)
 - **Metrics register:** [metrics/targets.md](../metrics/targets.md)
 
 ## Current state
 
-The local prototype has no production monitoring:
+The local prototype has local diagnostics, not production monitoring:
 
-- No structured logging, log levels, `RUST_LOG` handling or log aggregation. The CLI prints operator-facing messages; the web binary prints its ledger path and bind address.
-- No metrics endpoint, tracing exporter, correlation ID or request ID.
-- No health/readiness endpoint for operations. (`platform/src/api.rs` defines a `/health` handler but the module is not served.)
-- No dashboards, alerting, on-call or SLO/error budget.
-- No centralized audit pipeline; the local ledger is the only governed-action record.
+- No log framework, levels, `RUST_LOG` handling or log aggregation. The CLI prints operator-facing messages; the web binary prints its resolved bind, port and data directory at startup and emits one JSON access-log line per request.
+- `governance_web` exposes liveness `GET /healthz` (liveness only), readiness `GET /ready` (checks the ledger and auth store, not the data directory) and aggregate `GET /metrics` (request, 4xx, 5xx, in-flight and rate-limit counters). Responses include a request ID.
+- No tracing exporter, dashboards, alerting, on-call or SLO/error budget.
+- No centralized audit pipeline; the local JSONL ledger is the only governed-action record.
 
 Report artifacts contain evaluation metrics such as per-system accuracy, citation recall/precision, mean latency and per-case results. Those are **offline evaluation output**, not production telemetry, and a local mean is not an SLO.
 

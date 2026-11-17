@@ -2,7 +2,7 @@
 
 - **Status:** Active; local-only operating mode
 - **Owner:** Operations (role not yet assigned)
-- **Last reviewed:** 2026-10-26
+- **Last reviewed:** 2026-11-17
 - **Readiness gate:** [Production readiness](production-readiness.md) — current answer: **not production ready**
 
 ## Operating boundary
@@ -18,7 +18,7 @@ There is no approved deployment target. The supported mode is a single local ope
 | [Monitoring](../deployment/monitoring.md) | Current observability and target requirements | Target; no production monitoring |
 | [Backup and recovery](../deployment/backup.md) | Short operator pointer | Current; canonical procedure is `local-backup.md` |
 | [Local backup](local-backup.md) | Git bundle cadence, restore drill and scope | Current |
-| [Backup log](backup-log.md) | Executed backup/restore evidence | Evidence log; local PASS drills at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`; one earlier host-blocked attempt recorded 2026-10-26 |
+| [Backup log](backup-log.md) | Executed backup/restore evidence | Evidence log; local PASS drills at `283f83a`, `7f6ab97`, `5328787`, `7fd0c0b` and `56a944f`; the 2026-11-17 bundle is **FAIL** at the restored docs check (out-of-repo links), so the latest revision is not restore-verified |
 | [Off-host backup and RPO/RTO proposal](backup-policy-draft.md) | Draft policy for encrypted off-host copies, RPO/RTO and scheduled restore tests | Proposal; not approved or implemented |
 | [Pilot runbook and ownership proposal](pilot-runbook.md) | One-workflow pilot procedure, evidence record, stop conditions and proposed owners | Draft; not executed; no owner assigned |
 | [Security hardening](../deployment/security.md) | Current controls vs target controls | Current boundary documented |
@@ -28,6 +28,7 @@ There is no approved deployment target. The supported mode is a single local ope
 | [Incident log](incident-log.md) | Operational/security incident record | Empty until an incident is recorded |
 | [Production readiness](production-readiness.md) | Phase B readiness checklist and blockers | Blocked |
 | [Staging checklist draft](staging-checklist-draft.md) | First-step checklist for the internal single-host direction (PR-02 / B-10) | Draft; not approved or executed |
+| [Stage 1 staging record](stage1-staging-record.md) | Evidence template for the Stage 1 manual-start deployment | Template; not executed |
 | [Final validation report](final-validation-report.md) | Dated 2026-10-25 validation snapshot | Historical; not current evidence |
 | [Remote collaboration criteria](../remote-collaboration-criteria.md) | When to add a remote and CI | Current |
 

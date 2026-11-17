@@ -74,7 +74,7 @@ never mistaken for success).
 ## Ledger and uncommitted work
 
 - The local governance ledger (default `%LOCALAPPDATA%\EKPI\governance-ledger.jsonl` or `EKP_GOVERNANCE_DATA`) is outside Git. Copy it separately if it contains data you need to retain, and verify its hash chain on `/audit`.
-- The approval workflow store (default `%LOCALAPPDATA%\EKPI\approvals.jsonl` or `EKP_APPROVAL_DATA`, colocated with the ledger) is likewise outside Git: copy both files together so the two chains describe the same point in time, and verify each chain (`/audit` for governance, the integrity badge on `/approvals` for approvals). No runtime-data restore drill has been executed yet (`IMP-021`); the log rows above drill the repository only.
+- The approval workflow store (default `%LOCALAPPDATA%\EKPI\approvals.jsonl` or `EKP_APPROVAL_DATA`, colocated with the ledger) is likewise outside Git: copy both files together so the two chains describe the same point in time, and verify each chain (`/audit` for governance, the integrity badge on `/approvals` for approvals). Stop the workbench before copying so the two files describe the same completed write. The runtime-data restore drill has been executed with synthetic non-sensitive data (`scripts/drill-runtime-data.ps1`; `backup-log.md` 2026-11-09); the repository bundle drills above are separate evidence.
 - Commit important work before backing up. A bundle cannot recover uncommitted changes.
 - `.env`, keys and local secrets must not be placed in the bundle or any backup artifact.
 - Generated reports/exports are reproducible from the CLI; do not treat them as authoritative backups.

@@ -1,0 +1,14 @@
+# Keep the Docker build context small and free of host-only artifacts.
+.git
+.gitignore
+.github
+.kilo
+.opencode
+target
+artifacts
+backups
+*.bundle
+*.log
+docs
+research
+scripts

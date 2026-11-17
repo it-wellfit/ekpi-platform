@@ -42,6 +42,7 @@ pub mod retrieval;
 pub mod retrieval_v2;
 pub mod rule_conflicts;
 pub mod rules;
+pub mod runtime_config;
 pub mod runtime_verification;
 pub mod session;
 pub mod snapshot;
